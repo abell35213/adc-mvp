@@ -2,12 +2,59 @@
 
 import uuid
 
-from sqlalchemy import Column, String, Text, func
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import BigInteger
 
 Base = declarative_base()
+
+
+# ── Auth / multi-tenant models ─────────────────────────────────────
+
+
+class Org(Base):
+    """Organization (tenant)."""
+
+    __tablename__ = "orgs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(Text, nullable=False)
+
+
+class User(Base):
+    """Application user with hashed password and role."""
+
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(Text, nullable=False, unique=True, index=True)
+    password_hash = Column(Text, nullable=False)
+    role = Column(Text, nullable=False, default="safety_manager")
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    is_active = Column(Boolean, nullable=False, default=True)
+
+
+class UserOrg(Base):
+    """Many-to-many link between users and organizations."""
+
+    __tablename__ = "user_orgs"
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        primary_key=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id"),
+        primary_key=True,
+    )
+
+
+# ── Core domain models ─────────────────────────────────────────────
 
 
 class Event(Base):
@@ -32,6 +79,7 @@ class Incident(Base):
     __tablename__ = "incidents"
 
     incident_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

@@ -14,11 +14,14 @@ from app.api.schemas import (
     ExportSummary,
     IncidentDetailResponse,
 )
+from app.api.deps import get_current_user
+from app.db.models import User
 from app.db.session import get_db
 from app.db.repo_incidents import create_incident, get_incident, list_incidents
 from app.db.repo_events import create_event
 from app.db.repo_artifacts import get_artifacts_by_incident
 from app.db.repo_exports import create_export, get_exports_by_incident
+from app.db.repo_users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
@@ -29,15 +32,24 @@ router = APIRouter()
 
 
 @router.get("/")
-def list_incidents_endpoint(db: Session = Depends(get_db)):
-    return list_incidents(db)
+def list_incidents_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    return list_incidents(db, org_ids=org_ids)
 
 
 @router.post("/", response_model=CreateIncidentResponse, status_code=201)
 def create_incident_endpoint(
     body: CreateIncidentRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    # Use the first org the user belongs to
+    org_ids = get_user_org_ids(db, current_user.id)
+    org_id = org_ids[0] if org_ids else None
+
     # 1. Create the incident record
     incident = create_incident(
         db,
@@ -46,6 +58,7 @@ def create_incident_endpoint(
         samsara_vehicle_id=body.samsara_vehicle_id,
         adc_driver_id=body.adc_driver_id,
         severity=body.severity,
+        org_id=org_id,
     )
 
     incident_id = incident.incident_id
@@ -55,8 +68,8 @@ def create_incident_endpoint(
         db,
         incident_id=incident_id,
         event_type=SystemEventType.INCIDENT_STARTED,
-        actor_type="system",
-        actor_id="api",
+        actor_type="user",
+        actor_id=str(current_user.id),
         payload={
             "severity": body.severity,
             "adc_vehicle_id": body.adc_vehicle_id,
@@ -70,8 +83,8 @@ def create_incident_endpoint(
         db,
         incident_id=incident_id,
         event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED,
-        actor_type="system",
-        actor_id="api",
+        actor_type="user",
+        actor_id=str(current_user.id),
     )
 
     # 4. Enqueue Celery evidence-capture workflow
@@ -91,8 +104,10 @@ def create_incident_endpoint(
 def get_incident_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    incident = get_incident(db, incident_id)
+    org_ids = get_user_org_ids(db, current_user.id)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -129,8 +144,10 @@ def get_incident_endpoint(
 def request_export_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    incident = get_incident(db, incident_id)
+    org_ids = get_user_org_ids(db, current_user.id)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -140,8 +157,8 @@ def request_export_endpoint(
         db,
         incident_id=incident_id,
         event_type=SystemEventType.EXPORT_REQUESTED,
-        actor_type="system",
-        actor_id="api",
+        actor_type="user",
+        actor_id=str(current_user.id),
         payload={"export_id": str(export.export_id)},
     )
 
