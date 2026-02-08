@@ -50,7 +50,7 @@ def client(db_session):
 # ── POST /incidents ─────────────────────────────────────────────────
 
 class TestCreateIncident:
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_create_incident_returns_201(self, mock_dash, mock_tele, client):
         mock_dash.delay = MagicMock()
@@ -67,7 +67,7 @@ class TestCreateIncident:
         assert "incident_id" in data
         assert data["status"] == "evidence_capturing"
 
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_create_incident_enqueues_tasks(self, mock_dash, mock_tele, client):
         mock_dash.delay = MagicMock()
@@ -81,10 +81,10 @@ class TestCreateIncident:
         })
         assert resp.status_code == 201
         incident_id = resp.json()["incident_id"]
-        mock_dash.delay.assert_called_once_with(incident_id)
-        mock_tele.delay.assert_called_once_with(incident_id)
+        mock_dash.delay.assert_called_once_with(incident_id, "", "")
+        mock_tele.delay.assert_called_once_with(incident_id, "", "")
 
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_create_incident_writes_events(self, mock_dash, mock_tele, client, db_session):
         mock_dash.delay = MagicMock()
@@ -114,7 +114,7 @@ class TestCreateIncident:
 # ── GET /incidents/{incident_id} ────────────────────────────────────
 
 class TestGetIncident:
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_get_incident_returns_detail(self, mock_dash, mock_tele, client):
         mock_dash.delay = MagicMock()
@@ -146,8 +146,8 @@ class TestGetIncident:
 # ── POST /incidents/{incident_id}/exports ───────────────────────────
 
 class TestRequestExport:
-    @patch("app.api.routes_incidents.generate_export")
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.build_export")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_request_export_returns_201(self, mock_dash, mock_tele, mock_gen, client):
         mock_dash.delay = MagicMock()
@@ -168,8 +168,8 @@ class TestRequestExport:
         assert "export_id" in data
         assert data["status"] == "requested"
 
-    @patch("app.api.routes_incidents.generate_export")
-    @patch("app.api.routes_incidents.capture_telematics")
+    @patch("app.api.routes_incidents.build_export")
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_request_export_enqueues_task(self, mock_dash, mock_tele, mock_gen, client):
         mock_dash.delay = MagicMock()
@@ -186,7 +186,7 @@ class TestRequestExport:
 
         resp = client.post(f"/incidents/{incident_id}/exports")
         export_id = resp.json()["export_id"]
-        mock_gen.delay.assert_called_once_with(export_id, incident_id)
+        mock_gen.delay.assert_called_once_with(incident_id, export_id)
 
     def test_request_export_incident_not_found(self, client):
         fake_id = str(uuid.uuid4())

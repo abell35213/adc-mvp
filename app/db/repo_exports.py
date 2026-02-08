@@ -32,3 +32,24 @@ def create_export(
     db.commit()
     db.refresh(export)
     return export
+
+
+def update_export(
+    db: Session,
+    export_id: _uuid.UUID,
+    status: str | None = None,
+    s3_bucket: str | None = None,
+    s3_key: str | None = None,
+):
+    export = db.query(Export).filter(Export.export_id == export_id).first()
+    if export is None:
+        return None
+    if status is not None:
+        export.status = status
+    if s3_bucket is not None:
+        export.s3_bucket = s3_bucket
+    if s3_key is not None:
+        export.s3_key = s3_key
+    db.commit()
+    db.refresh(export)
+    return export

@@ -13,6 +13,8 @@ class CreateIncidentRequest(BaseModel):
     adc_vehicle_id: str
     samsara_vehicle_id: str
     adc_driver_id: str
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
 
 
 class CreateIncidentResponse(BaseModel):
