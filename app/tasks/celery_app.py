@@ -16,4 +16,11 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    task_routes={
+        "app.tasks.evidence_tasks.capture_dashcam": {"queue": "evidence"},
+        "app.tasks.evidence_tasks.capture_telematics_bundle": {"queue": "evidence"},
+        "app.tasks.export_tasks.build_export": {"queue": "exports"},
+    },
 )

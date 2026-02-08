@@ -20,8 +20,8 @@ from app.db.repo_events import create_event
 from app.db.repo_artifacts import get_artifacts_by_incident
 from app.db.repo_exports import create_export, get_exports_by_incident
 from app.domain.system_event_types import SystemEventType
-from app.tasks.evidence_tasks import capture_dashcam, capture_telematics
-from app.tasks.export_tasks import generate_export
+from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
+from app.tasks.export_tasks import build_export
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +76,10 @@ def create_incident_endpoint(
 
     # 4. Enqueue Celery evidence-capture workflow
     str_id = str(incident_id)
-    capture_dashcam.delay(str_id)
-    capture_telematics.delay(str_id)
+    window_start = body.window_start or ""
+    window_end = body.window_end or ""
+    capture_dashcam.delay(str_id, window_start, window_end)
+    capture_telematics_bundle.delay(str_id, window_start, window_end)
 
     return CreateIncidentResponse(
         incident_id=incident_id,
@@ -143,7 +145,7 @@ def request_export_endpoint(
         payload={"export_id": str(export.export_id)},
     )
 
-    generate_export.delay(str(export.export_id), str(incident_id))
+    build_export.delay(str(incident_id), str(export.export_id))
 
     return CreateExportResponse(
         export_id=export.export_id,
