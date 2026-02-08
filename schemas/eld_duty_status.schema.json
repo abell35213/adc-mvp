@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adc.example/schemas/eld_duty_status.schema.json",
+  "title": "ADC ELD Duty Status Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "incident_id",
+    "carrier_id",
+    "vehicle",
+    "capture_window",
+    "source_system",
+    "artifacts",
+    "data"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_at_utc": { "type": "string", "format": "date-time" },
+    "incident_id": { "type": "string", "format": "uuid" },
+    "carrier_id": { "type": "string", "minLength": 1 },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adc_vehicle_id", "samsara_vehicle_id"],
+      "properties": {
+        "adc_vehicle_id": { "type": "string", "minLength": 1 },
+        "samsara_vehicle_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capture_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_utc", "end_utc", "request_reason"],
+      "properties": {
+        "start_utc": { "type": "string", "format": "date-time" },
+        "end_utc": { "type": "string", "format": "date-time" },
+        "request_reason": {
+          "type": "string",
+          "enum": ["incident_start_default_window", "supplemental_impact_time"]
+        }
+      }
+    },
+    "source_system": { "type": "string", "const": "samsara" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "related_artifact_ids"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "related_artifact_ids": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "timezone_hint", "duty_events", "summary"],
+      "properties": {
+        "driver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["adc_driver_id", "samsara_driver_id"],
+          "properties": {
+            "adc_driver_id": { "type": "string", "minLength": 1 },
+            "samsara_driver_id": { "type": ["string", "null"] }
+          }
+        },
+        "timezone_hint": { "type": "string", "minLength": 1 },
+        "hos_ruleset": { "type": ["string", "null"] },
+        "duty_events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "event_id",
+              "event_time_utc",
+              "event_type",
+              "status",
+              "location",
+              "odometer_miles",
+              "engine_hours",
+              "record_origin",
+              "notes_present",
+              "notes_redacted"
+            ],
+            "properties": {
+              "event_id": { "type": "string", "minLength": 1 },
+              "event_time_utc": { "type": "string", "format": "date-time" },
+              "event_type": {
+                "type": "string",
+                "enum": ["duty_status_change", "login", "logout", "annotation", "certification"]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "OFF_DUTY",
+                  "SLEEPER",
+                  "DRIVING",
+                  "ON_DUTY_NOT_DRIVING",
+                  "YARD_MOVE",
+                  "PERSONAL_CONVEYANCE",
+                  "UNKNOWN"
+                ]
+              },
+              "location": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon", "source"],
+                "properties": {
+                  "lat": { "type": "number" },
+                  "lon": { "type": "number" },
+                  "source": { "type": "string", "enum": ["gps", "manual", "unknown"] }
+                }
+              },
+              "odometer_miles": { "type": "number", "minimum": 0 },
+              "engine_hours": { "type": "number", "minimum": 0 },
+              "record_origin": { "type": "string", "enum": ["eld", "telematics", "unknown"] },
+              "notes_present": { "type": "boolean" },
+              "notes_redacted": { "type": "boolean", "const": true }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["events_count", "first_event_time_utc", "last_event_time_utc"],
+          "properties": {
+            "events_count": { "type": "integer", "minimum": 0 },
+            "first_event_time_utc": { "type": ["string", "null"], "format": "date-time" },
+            "last_event_time_utc": { "type": ["string", "null"], "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}
