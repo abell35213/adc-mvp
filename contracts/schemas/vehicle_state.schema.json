@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adc.example/schemas/vehicle_state.schema.json",
+  "title": "ADC Vehicle State Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "incident_id",
+    "carrier_id",
+    "vehicle",
+    "capture_window",
+    "source_system",
+    "artifacts",
+    "data"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_at_utc": { "type": "string", "format": "date-time" },
+    "incident_id": { "type": "string", "format": "uuid" },
+    "carrier_id": { "type": "string", "minLength": 1 },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adc_vehicle_id", "samsara_vehicle_id"],
+      "properties": {
+        "adc_vehicle_id": { "type": "string", "minLength": 1 },
+        "samsara_vehicle_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capture_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_utc", "end_utc", "request_reason"],
+      "properties": {
+        "start_utc": { "type": "string", "format": "date-time" },
+        "end_utc": { "type": "string", "format": "date-time" },
+        "request_reason": {
+          "type": "string",
+          "enum": ["incident_start_default_window", "supplemental_impact_time"]
+        }
+      }
+    },
+    "source_system": { "type": "string", "const": "samsara" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "related_artifact_ids"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "related_artifact_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshots", "summary"],
+      "properties": {
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "snapshot_time_utc",
+              "odometer_miles",
+              "engine_hours",
+              "fuel_percent",
+              "engine_rpm",
+              "speed_mph",
+              "dtc_codes_present",
+              "source"
+            ],
+            "properties": {
+              "snapshot_time_utc": { "type": "string", "format": "date-time" },
+              "odometer_miles": { "type": "number", "minimum": 0 },
+              "engine_hours": { "type": "number", "minimum": 0 },
+              "fuel_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+              "engine_rpm": { "type": "number", "minimum": 0 },
+              "speed_mph": { "type": "number", "minimum": 0 },
+              "dtc_codes_present": { "type": "boolean" },
+              "source": { "type": "string", "const": "samsara_vehicle_state" }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshots_count", "first_snapshot_time_utc", "last_snapshot_time_utc"],
+          "properties": {
+            "snapshots_count": { "type": "integer", "minimum": 0 },
+            "first_snapshot_time_utc": { "type": ["string", "null"], "format": "date-time" },
+            "last_snapshot_time_utc": { "type": ["string", "null"], "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}
