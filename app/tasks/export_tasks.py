@@ -64,6 +64,7 @@ def build_export(self, incident_id: str, export_id: str):
     from app.db.repo_events import get_events_by_incident
     from app.db.repo_exports import get_export, update_export
     from app.domain.system_event_types import SystemEventType
+    from app.services import s3_key_builder
     from app.services.vault_s3 import VaultS3
     from app.services.pdf_render import render_pdf
 
@@ -175,7 +176,10 @@ def build_export(self, incident_id: str, export_id: str):
         zip_bytes = zip_buffer.getvalue()
 
         # 6. Upload ZIP to S3
-        zip_key = f"exports/{incident_id}/{export_id}.zip"
+        zip_key = s3_key_builder.export_key(
+            incident_id=incident_id,
+            export_id=export_id,
+        )
         s3.upload(zip_key, zip_bytes)
 
         # 7. Update export row to ready
