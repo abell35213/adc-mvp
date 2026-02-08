@@ -17,6 +17,7 @@ def create_artifact(
     incident_id: _uuid.UUID,
     artifact_type: str,
     status: str = "pending",
+    artifact_id: _uuid.UUID | None = None,
     capture_window_start_utc: datetime | None = None,
     capture_window_end_utc: datetime | None = None,
     s3_bucket: str | None = None,
@@ -26,7 +27,7 @@ def create_artifact(
     unavailable_reason_code: str | None = None,
     unavailable_reason_detail: str | None = None,
 ):
-    artifact = Artifact(
+    kwargs = dict(
         incident_id=incident_id,
         artifact_type=artifact_type,
         status=status,
@@ -39,6 +40,9 @@ def create_artifact(
         unavailable_reason_code=unavailable_reason_code,
         unavailable_reason_detail=unavailable_reason_detail,
     )
+    if artifact_id is not None:
+        kwargs["artifact_id"] = artifact_id
+    artifact = Artifact(**kwargs)
     db.add(artifact)
     db.commit()
     db.refresh(artifact)
