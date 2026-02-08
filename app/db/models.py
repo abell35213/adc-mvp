@@ -38,6 +38,7 @@ class Incident(Base):
     status = Column(Text, nullable=False, default="open")
     adc_vehicle_id = Column(Text, nullable=True)
     samsara_vehicle_id = Column(Text, nullable=True)
+    adc_driver_id = Column(Text, nullable=True)
     severity = Column(Text, nullable=True)
 
 

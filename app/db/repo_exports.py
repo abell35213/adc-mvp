@@ -11,6 +11,10 @@ def get_exports_by_incident(db: Session, incident_id: _uuid.UUID):
     return db.query(Export).filter(Export.incident_id == incident_id).all()
 
 
+def get_export(db: Session, export_id: _uuid.UUID):
+    return db.query(Export).filter(Export.export_id == export_id).first()
+
+
 def create_export(
     db: Session,
     incident_id: _uuid.UUID,
