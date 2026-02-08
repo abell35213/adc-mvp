@@ -210,6 +210,10 @@ def capture_telematics_bundle(
     5. Generate CSV/PDF renderings, upload each, compute SHA-256
     6. Record artifact metadata and emit events
     """
+    import json
+    import csv
+    import io
+
     from app.core.config import settings
     from app.db.repo_artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
@@ -221,10 +225,6 @@ def capture_telematics_bundle(
     from app.services.normalizers.gps import normalize_gps_record
     from app.services.normalizers.safety_events import normalize_safety_event
     from app.services.normalizers.vehicle_state import normalize_vehicle_state
-
-    import json
-    import csv
-    import io
 
     inc_uuid = _uuid.UUID(incident_id)
     ws_dt = _parse_iso(window_start)

@@ -120,13 +120,15 @@ def build_export(self, incident_id: str, export_id: str):
         })
 
         # 4. Generate Chain-of-Custody CSV (derived from events timeline)
+        sorted_events = sorted(events, key=lambda e: str(e.occurred_at_utc))
+
         coc_buf = io.StringIO()
         coc_writer = csv.writer(coc_buf)
         coc_writer.writerow([
             "event_id", "event_type", "occurred_at_utc",
             "actor_type", "actor_id",
         ])
-        for ev in sorted(events, key=lambda e: str(e.occurred_at_utc)):
+        for ev in sorted_events:
             coc_writer.writerow([
                 str(ev.id), ev.event_type,
                 str(ev.occurred_at_utc),
@@ -144,7 +146,7 @@ def build_export(self, incident_id: str, export_id: str):
                     "actor_type": ev.actor_type,
                     "actor_id": ev.actor_id,
                 }
-                for ev in sorted(events, key=lambda e: str(e.occurred_at_utc))
+                for ev in sorted_events
             ],
         })
 
@@ -167,6 +169,7 @@ def build_export(self, incident_id: str, export_id: str):
                         logger.warning(
                             "Could not include artifact %s in export",
                             a.s3_key,
+                            exc_info=True,
                         )
 
         zip_bytes = zip_buffer.getvalue()

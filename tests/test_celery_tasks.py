@@ -337,7 +337,7 @@ class TestCaptureTelematicsBundle:
         artifacts = db_session.query(Artifact).filter(
             Artifact.incident_id == incident.incident_id
         ).all()
-        # 1 unavailable + 3 datasets × 3 formats = 10
+        # 1 unavailable dataset + 3 datasets × 3 formats each = 10 total
         unavailable = [a for a in artifacts if a.status == "unavailable"]
         captured = [a for a in artifacts if a.status == "captured"]
         assert len(unavailable) == 1
