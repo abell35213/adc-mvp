@@ -1,8 +1,7 @@
 """SQLAlchemy database models."""
 
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime, Text, func
 from sqlalchemy.orm import declarative_base
-from datetime import datetime, timezone
 
 Base = declarative_base()
 
@@ -13,7 +12,7 @@ class Incident(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Event(Base):
@@ -23,7 +22,7 @@ class Event(Base):
     incident_id = Column(Integer, nullable=False, index=True)
     event_type = Column(String, nullable=False)
     payload = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Artifact(Base):
@@ -33,7 +32,7 @@ class Artifact(Base):
     incident_id = Column(Integer, nullable=False, index=True)
     artifact_type = Column(String, nullable=False)
     storage_path = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Export(Base):
@@ -43,4 +42,4 @@ class Export(Base):
     incident_id = Column(Integer, nullable=False, index=True)
     format = Column(String, nullable=False)
     storage_path = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, server_default=func.now())
