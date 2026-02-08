@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adc.example/schemas/gps_trace.schema.json",
+  "title": "ADC GPS Trace Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "incident_id",
+    "carrier_id",
+    "vehicle",
+    "capture_window",
+    "source_system",
+    "artifacts",
+    "data"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_at_utc": { "type": "string", "format": "date-time" },
+    "incident_id": { "type": "string", "format": "uuid" },
+    "carrier_id": { "type": "string", "minLength": 1 },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adc_vehicle_id", "samsara_vehicle_id"],
+      "properties": {
+        "adc_vehicle_id": { "type": "string", "minLength": 1 },
+        "samsara_vehicle_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capture_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_utc", "end_utc", "request_reason"],
+      "properties": {
+        "start_utc": { "type": "string", "format": "date-time" },
+        "end_utc": { "type": "string", "format": "date-time" },
+        "request_reason": {
+          "type": "string",
+          "enum": ["incident_start_default_window", "supplemental_impact_time"]
+        }
+      }
+    },
+    "source_system": { "type": "string", "const": "samsara" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "related_artifact_ids"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "related_artifact_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["points", "summary"],
+      "properties": {
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["point_time_utc", "lat", "lon", "speed_mph", "heading_degrees", "source"],
+            "properties": {
+              "point_time_utc": { "type": "string", "format": "date-time" },
+              "lat": { "type": "number" },
+              "lon": { "type": "number" },
+              "speed_mph": { "type": "number", "minimum": 0 },
+              "heading_degrees": { "type": "number", "minimum": 0, "maximum": 360 },
+              "source": { "type": "string", "const": "samsara_gps" }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["points_count", "start_point_time_utc", "end_point_time_utc", "approx_distance_miles"],
+          "properties": {
+            "points_count": { "type": "integer", "minimum": 0 },
+            "start_point_time_utc": { "type": ["string", "null"], "format": "date-time" },
+            "end_point_time_utc": { "type": ["string", "null"], "format": "date-time" },
+            "approx_distance_miles": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}
