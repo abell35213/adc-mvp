@@ -22,12 +22,14 @@ def create_incident(
     status: str = "open",
     adc_vehicle_id: str | None = None,
     samsara_vehicle_id: str | None = None,
+    adc_driver_id: str | None = None,
     severity: str | None = None,
 ):
     incident = Incident(
         status=status,
         adc_vehicle_id=adc_vehicle_id,
         samsara_vehicle_id=samsara_vehicle_id,
+        adc_driver_id=adc_driver_id,
         severity=severity,
     )
     db.add(incident)
