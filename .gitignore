@@ -8,3 +8,4 @@ build/
 *.egg
 .venv/
 venv/
+.pytest_cache/
