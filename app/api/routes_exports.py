@@ -1,5 +1,7 @@
 """Export API routes."""
 
+import uuid
+
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -11,5 +13,5 @@ async def list_exports():
 
 
 @router.get("/{export_id}")
-async def get_export(export_id: int):
-    return {"export_id": export_id}
+async def get_export(export_id: uuid.UUID):
+    return {"export_id": str(export_id)}
