@@ -1,5 +1,7 @@
 """Incident API routes."""
 
+import uuid
+
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -11,5 +13,5 @@ async def list_incidents():
 
 
 @router.get("/{incident_id}")
-async def get_incident(incident_id: int):
-    return {"incident_id": incident_id}
+async def get_incident(incident_id: uuid.UUID):
+    return {"incident_id": str(incident_id)}
