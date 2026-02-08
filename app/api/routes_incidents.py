@@ -11,14 +11,16 @@ from app.api.schemas import (
     CreateExportResponse,
     CreateIncidentRequest,
     CreateIncidentResponse,
+    EventSummary,
     ExportSummary,
     IncidentDetailResponse,
+    IncidentListItem,
 )
 from app.api.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.db.repo_incidents import create_incident, get_incident, list_incidents
-from app.db.repo_events import create_event
+from app.db.repo_events import create_event, get_events_by_incident
 from app.db.repo_artifacts import get_artifacts_by_incident
 from app.db.repo_exports import create_export, get_exports_by_incident
 from app.db.repo_users import get_user_org_ids
@@ -31,13 +33,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
-    return list_incidents(db, org_ids=org_ids)
+    incidents = list_incidents(db, org_ids=org_ids)
+    result = []
+    for inc in incidents:
+        artifacts = get_artifacts_by_incident(db, inc.incident_id)
+        captured = sum(1 for a in artifacts if a.status == "captured")
+        result.append(
+            IncidentListItem(
+                incident_id=inc.incident_id,
+                status=inc.status,
+                severity=inc.severity,
+                adc_vehicle_id=inc.adc_vehicle_id,
+                samsara_vehicle_id=inc.samsara_vehicle_id,
+                adc_driver_id=inc.adc_driver_id,
+                created_at_utc=inc.created_at_utc.isoformat() if inc.created_at_utc else None,
+                evidence_captured=captured,
+                evidence_total=len(artifacts),
+            )
+        )
+    return result
 
 
 @router.post("/", response_model=CreateIncidentResponse, status_code=201)
@@ -113,6 +133,7 @@ def get_incident_endpoint(
 
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
+    events = get_events_by_incident(db, incident_id)
 
     return IncidentDetailResponse(
         incident_id=incident.incident_id,
@@ -121,17 +142,37 @@ def get_incident_endpoint(
         adc_vehicle_id=incident.adc_vehicle_id,
         samsara_vehicle_id=incident.samsara_vehicle_id,
         adc_driver_id=incident.adc_driver_id,
+        created_at_utc=incident.created_at_utc.isoformat() if incident.created_at_utc else None,
         evidence_inventory=[
             ArtifactSummary(
                 artifact_id=a.artifact_id,
                 artifact_type=a.artifact_type,
                 status=a.status,
+                captured_at_utc=(
+                    a.capture_window_end_utc.isoformat()
+                    if a.capture_window_end_utc
+                    else None
+                ),
+                unavailable_reason=a.unavailable_reason_code,
             )
             for a in artifacts
         ],
         export_status=[
-            ExportSummary(export_id=e.export_id, status=e.status)
+            ExportSummary(
+                export_id=e.export_id,
+                status=e.status,
+                created_at_utc=e.created_at_utc.isoformat() if e.created_at_utc else None,
+            )
             for e in exports
+        ],
+        timeline=[
+            EventSummary(
+                event_type=ev.event_type,
+                occurred_at_utc=ev.occurred_at_utc.isoformat() if ev.occurred_at_utc else "",
+                actor_type=ev.actor_type,
+                payload=ev.payload,
+            )
+            for ev in sorted(events, key=lambda e: e.occurred_at_utc or "")
         ],
     )
 

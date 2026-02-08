@@ -5,6 +5,32 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { listIncidents, logout, type Incident } from "@/lib/api";
 
+function friendlyStatus(s: string): string {
+  if (s === "evidence_capturing" || s === "open") return "Capturing Evidence";
+  if (s === "ready" || s === "closed") return "Export Ready";
+  if (s === "export_ready") return "Export Ready";
+  return "Ready for Export";
+}
+
+function statusColor(s: string): string {
+  if (s === "evidence_capturing" || s === "open")
+    return "bg-yellow-100 text-yellow-800";
+  if (s === "ready" || s === "closed" || s === "export_ready")
+    return "bg-green-100 text-green-800";
+  return "bg-blue-100 text-blue-800";
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function IncidentsPage() {
   const router = useRouter();
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -22,12 +48,6 @@ export default function IncidentsPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [router]);
-
-  const statusColor = (s: string) => {
-    if (s === "open" || s === "evidence_capturing") return "bg-yellow-100 text-yellow-800";
-    if (s === "ready" || s === "closed") return "bg-green-100 text-green-800";
-    return "bg-gray-100 text-gray-800";
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -59,52 +79,69 @@ export default function IncidentsPage() {
               <thead className="bg-gray-100 dark:bg-gray-700">
                 <tr>
                   <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
-                    ID
+                    Incident ID
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
-                    Severity
+                    Created
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
                     Vehicle
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
-                    Driver
+                    Status
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                    Evidence
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-gray-700">
-                {incidents.map((inc) => (
-                  <tr
-                    key={inc.incident_id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-750"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/incidents/${inc.incident_id}`}
-                        className="font-mono text-blue-600 hover:underline dark:text-blue-400"
-                      >
-                        {inc.incident_id.slice(0, 8)}…
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(inc.status)}`}
-                      >
-                        {inc.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 capitalize">{inc.severity ?? "—"}</td>
-                    <td className="px-4 py-3 font-mono text-xs">
-                      {inc.adc_vehicle_id ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs">
-                      {inc.adc_driver_id ?? "—"}
-                    </td>
-                  </tr>
-                ))}
+                {incidents.map((inc) => {
+                  const captured = inc.evidence_captured ?? 0;
+                  const total = inc.evidence_total ?? 0;
+                  const pct = total > 0 ? Math.round((captured / total) * 100) : 0;
+                  return (
+                    <tr
+                      key={inc.incident_id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-750"
+                    >
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/incidents/${inc.incident_id}`}
+                          className="font-mono text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                          {inc.incident_id.slice(0, 8)}…
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                        {formatTime(inc.created_at_utc)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {inc.adc_vehicle_id ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(inc.status)}`}
+                        >
+                          {friendlyStatus(inc.status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600">
+                            <div
+                              className="h-full rounded-full bg-blue-500"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {captured}/{total}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
