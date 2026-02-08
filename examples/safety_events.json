@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "safetyEventType": "hard_brake",
+      "severity": "high",
+      "time": "2024-06-15T14:30:45Z",
+      "vehicleId": "veh-001",
+      "driverId": "drv-101",
+      "latitude": 34.0522,
+      "longitude": -118.2437
+    },
+    {
+      "safetyEventType": "speeding",
+      "severity": "medium",
+      "time": "2024-06-15T14:28:00Z",
+      "vehicleId": "veh-001",
+      "driverId": "drv-101",
+      "latitude": 34.0510,
+      "longitude": -118.2400
+    }
+  ]
+}
