@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adc.example/schemas/evidence_inventory.schema.json",
+  "title": "ADC Evidence Inventory Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "incident_id",
+    "carrier_id",
+    "vehicle",
+    "capture_window",
+    "source_system",
+    "artifacts",
+    "data"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_at_utc": { "type": "string", "format": "date-time" },
+    "incident_id": { "type": "string", "format": "uuid" },
+    "carrier_id": { "type": "string", "minLength": 1 },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adc_vehicle_id", "samsara_vehicle_id"],
+      "properties": {
+        "adc_vehicle_id": { "type": "string", "minLength": 1 },
+        "samsara_vehicle_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capture_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_utc", "end_utc", "request_reason"],
+      "properties": {
+        "start_utc": { "type": "string", "format": "date-time" },
+        "end_utc": { "type": "string", "format": "date-time" },
+        "request_reason": {
+          "type": "string",
+          "enum": ["incident_start_default_window", "supplemental_impact_time"]
+        }
+      }
+    },
+    "source_system": { "type": "string", "const": "samsara" },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "related_artifact_ids"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "related_artifact_ids": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidence_type",
+              "source_system",
+              "capture_window",
+              "status",
+              "captured_at_utc",
+              "artifact_id",
+              "filename",
+              "sha256",
+              "unavailable"
+            ],
+            "properties": {
+              "evidence_type": {
+                "type": "string",
+                "enum": [
+                  "dashcam_video_road",
+                  "dashcam_video_driver",
+                  "dashcam_manifest",
+                  "eld_duty_status",
+                  "gps_trace",
+                  "safety_events",
+                  "vehicle_state",
+                  "policy_snapshot",
+                  "training_snapshot",
+                  "maintenance_snapshot",
+                  "driver_statement",
+                  "scene_photos",
+                  "police_info",
+                  "other"
+                ]
+              },
+              "source_system": { "type": "string", "minLength": 1 },
+              "capture_window": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["start_utc", "end_utc"],
+                "properties": {
+                  "start_utc": { "type": "string", "format": "date-time" },
+                  "end_utc": { "type": "string", "format": "date-time" }
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": ["captured", "unavailable", "not_applicable", "pending"]
+              },
+              "captured_at_utc": { "type": ["string", "null"], "format": "date-time" },
+              "artifact_id": { "type": ["string", "null"], "format": "uuid" },
+              "filename": { "type": ["string", "null"], "minLength": 1 },
+              "sha256": {
+                "type": ["string", "null"],
+                "pattern": "^[A-Fa-f0-9]{64}$"
+              },
+              "unavailable": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["reason_code", "reason_detail"],
+                "properties": {
+                  "reason_code": {
+                    "type": ["string", "null"],
+                    "enum": [
+                      null,
+                      "NOT_CONFIGURED",
+                      "VEHICLE_NOT_MAPPED",
+                      "DEVICE_OFFLINE",
+                      "MEDIA_NOT_AVAILABLE",
+                      "DATA_NOT_AVAILABLE",
+                      "API_AUTH_FAILED",
+                      "API_RATE_LIMIT",
+                      "API_TIMEOUT",
+                      "PROVIDER_ERROR",
+                      "STORAGE_ERROR",
+                      "OTHER"
+                    ]
+                  },
+                  "reason_detail": { "type": ["string", "null"], "maxLength": 240 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
