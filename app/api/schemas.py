@@ -6,6 +6,34 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# ── Auth ────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    role: str = "safety_manager"
+    org_name: str = "Default"
+
+
+class RegisterResponse(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    role: str
+    org_id: uuid.UUID
+    access_token: str
+
+
 # ── Incidents ───────────────────────────────────────────────────────
 
 class CreateIncidentRequest(BaseModel):

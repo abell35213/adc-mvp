@@ -1,0 +1,122 @@
+/** Thin wrapper around fetch for talking to the FastAPI backend. */
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+async function request<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? res.statusText);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+/* ── Auth ──────────────────────────────────────────────────────── */
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  role: string;
+}
+
+export async function login(email: string, password: string) {
+  const data = await request<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  localStorage.setItem("token", data.access_token);
+  return data;
+}
+
+export interface RegisterResponse {
+  user_id: string;
+  email: string;
+  role: string;
+  org_id: string;
+  access_token: string;
+}
+
+export async function register(
+  email: string,
+  password: string,
+  role = "safety_manager",
+  orgName = "Default"
+) {
+  const data = await request<RegisterResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password, role, org_name: orgName }),
+  });
+  localStorage.setItem("token", data.access_token);
+  return data;
+}
+
+export function logout() {
+  localStorage.removeItem("token");
+  window.location.href = "/login";
+}
+
+/* ── Incidents ─────────────────────────────────────────────────── */
+
+export interface Incident {
+  incident_id: string;
+  status: string;
+  severity: string | null;
+  adc_vehicle_id: string | null;
+  samsara_vehicle_id: string | null;
+  adc_driver_id: string | null;
+  created_at_utc?: string;
+}
+
+export interface ArtifactSummary {
+  artifact_id: string;
+  artifact_type: string;
+  status: string;
+}
+
+export interface ExportSummary {
+  export_id: string;
+  status: string;
+}
+
+export interface IncidentDetail extends Incident {
+  evidence_inventory: ArtifactSummary[];
+  export_status: ExportSummary[];
+}
+
+export function listIncidents() {
+  return request<Incident[]>("/incidents/");
+}
+
+export function getIncident(id: string) {
+  return request<IncidentDetail>(`/incidents/${id}`);
+}
+
+export function requestExport(incidentId: string) {
+  return request<{ export_id: string; status: string }>(
+    `/incidents/${incidentId}/exports`,
+    { method: "POST" }
+  );
+}

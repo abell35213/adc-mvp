@@ -1,13 +1,25 @@
 """FastAPI application entry point."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_auth import router as auth_router
 from app.api.routes_incidents import router as incidents_router
 from app.api.routes_exports import router as exports_router
 from app.core.config import settings
 
 app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
 
+# CORS — allow the Next.js dev server and any configured origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(incidents_router, prefix="/incidents", tags=["incidents"])
 app.include_router(exports_router, prefix="/exports", tags=["exports"])
 

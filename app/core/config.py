@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     DEBUG: bool = False
 
+    # Auth / JWT
+    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
     class Config:
         env_file = ".env"
 

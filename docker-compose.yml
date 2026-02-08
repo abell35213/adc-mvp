@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=change-me-in-production
     depends_on:
       - db
       - redis
@@ -21,6 +22,15 @@ services:
     depends_on:
       - db
       - redis
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://app:8000
+    depends_on:
+      - app
 
   db:
     image: postgres:15
