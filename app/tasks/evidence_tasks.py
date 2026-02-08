@@ -74,6 +74,7 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
     from app.core.config import settings
     from app.db.repo_artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
+    from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
     from app.services.vault_s3 import VaultS3
 
@@ -111,9 +112,11 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
                     raise ValueError(f"No footage returned for {stream_label}")
 
                 # 3a. Upload to S3
-                s3_key = (
-                    f"incidents/{incident_id}/dashcam/"
-                    f"{stream_label}_{window_start}_{window_end}.mp4"
+                art_id = _uuid.uuid4()
+                s3_key = s3_key_builder.dashcam_key(
+                    incident_id=incident_id,
+                    camera_view=stream_label,
+                    artifact_id=str(art_id),
                 )
                 s3_path = s3.upload(s3_key, video_bytes)
 
@@ -217,6 +220,7 @@ def capture_telematics_bundle(
     from app.core.config import settings
     from app.db.repo_artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
+    from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
     from app.services.vault_s3 import VaultS3
     from app.services.schema_validate import validate_payload
@@ -292,9 +296,12 @@ def capture_telematics_bundle(
 
                 # 4. Upload JSON to S3
                 json_bytes = json.dumps(normalized, default=str).encode()
-                json_key = (
-                    f"incidents/{incident_id}/telematics/"
-                    f"{dataset_name}_{window_start}_{window_end}.json"
+                json_art_id = _uuid.uuid4()
+                json_key = s3_key_builder.telematics_key(
+                    incident_id=incident_id,
+                    artifact_type=spec["artifact_type"],
+                    artifact_id=str(json_art_id),
+                    extension="json",
                 )
                 s3.upload(json_key, json_bytes)
                 json_sha = _hash_bytes(json_bytes)
@@ -334,9 +341,12 @@ def capture_telematics_bundle(
                 else:
                     csv_bytes = b""
 
-                csv_key = (
-                    f"incidents/{incident_id}/telematics/"
-                    f"{dataset_name}_{window_start}_{window_end}.csv"
+                csv_art_id = _uuid.uuid4()
+                csv_key = s3_key_builder.telematics_key(
+                    incident_id=incident_id,
+                    artifact_type=spec["artifact_type"],
+                    artifact_id=str(csv_art_id),
+                    extension="csv",
                 )
                 s3.upload(csv_key, csv_bytes)
                 csv_sha = _hash_bytes(csv_bytes)
@@ -371,9 +381,12 @@ def capture_telematics_bundle(
                     f"{dataset_name}_report",
                     {"records": normalized, "incident_id": incident_id},
                 )
-                pdf_key = (
-                    f"incidents/{incident_id}/telematics/"
-                    f"{dataset_name}_{window_start}_{window_end}.pdf"
+                pdf_art_id = _uuid.uuid4()
+                pdf_key = s3_key_builder.telematics_key(
+                    incident_id=incident_id,
+                    artifact_type=spec["artifact_type"],
+                    artifact_id=str(pdf_art_id),
+                    extension="pdf",
                 )
                 s3.upload(pdf_key, pdf_bytes)
                 pdf_sha = _hash_bytes(pdf_bytes)
