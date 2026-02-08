@@ -24,3 +24,12 @@ celery_app.conf.update(
         "app.tasks.export_tasks.build_export": {"queue": "exports"},
     },
 )
+
+
+# ── Hello-world smoke-test task ─────────────────────────────────────
+
+
+@celery_app.task
+def hello_world():
+    """Minimal task used to verify that the Celery worker is wired up."""
+    return {"message": "hello world", "status": "ok"}

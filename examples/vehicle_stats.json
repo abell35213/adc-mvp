@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "vehicleId": "veh-001",
+      "speed": 55,
+      "odometer": 102345,
+      "fuelLevel": 72,
+      "engineState": "on",
+      "time": "2024-06-15T14:30:00Z"
+    },
+    {
+      "vehicleId": "veh-001",
+      "speed": 0,
+      "odometer": 102350,
+      "fuelLevel": 71,
+      "engineState": "on",
+      "time": "2024-06-15T14:35:00Z"
+    }
+  ]
+}

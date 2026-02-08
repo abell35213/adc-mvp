@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "driverId": "drv-101",
+      "eldStatus": "DRIVING",
+      "time": "2024-06-15T14:00:00Z",
+      "vehicleId": "veh-001"
+    },
+    {
+      "driverId": "drv-101",
+      "eldStatus": "ON_DUTY_NOT_DRIVING",
+      "time": "2024-06-15T14:35:00Z",
+      "vehicleId": "veh-001"
+    }
+  ]
+}
