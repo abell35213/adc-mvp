@@ -7,8 +7,7 @@ import { listIncidents, logout, type Incident } from "@/lib/api";
 
 function friendlyStatus(s: string): string {
   if (s === "evidence_capturing" || s === "open") return "Capturing Evidence";
-  if (s === "ready" || s === "closed") return "Export Ready";
-  if (s === "export_ready") return "Export Ready";
+  if (s === "ready" || s === "closed" || s === "export_ready") return "Export Ready";
   return "Ready for Export";
 }
 
