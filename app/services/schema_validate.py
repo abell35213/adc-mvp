@@ -11,7 +11,8 @@ SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent / "contracts" / "sch
 def _resolve_schema_path(schema_name: str) -> Path:
     """Resolve a schema name to its file path.
 
-    Tries ``<name>.json`` first, then ``<name>.schema.json``.
+    Tries ``<name>.json`` first, then ``<name>.schema.json``
+    (the convention used by the shipped contract schemas).
     """
     for suffix in (f"{schema_name}.json", f"{schema_name}.schema.json"):
         candidate = SCHEMAS_DIR / suffix
