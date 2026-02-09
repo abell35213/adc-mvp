@@ -118,7 +118,7 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
                     camera_view=stream_label,
                     artifact_id=str(art_id),
                 )
-                s3_path = s3.upload(s3_key, video_bytes)
+                s3.upload(s3_key, video_bytes)
 
                 # 3b. Compute SHA-256
                 sha = _hash_bytes(video_bytes)
