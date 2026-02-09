@@ -10,7 +10,11 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     SAMSARA_API_KEY: str = ""
     S3_BUCKET: str = ""
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
+    S3_ARTIFACTS_BUCKET: str = "adc-mvp-artifacts"
+    S3_EXPORTS_BUCKET: str = "adc-mvp-exports"
     DEBUG: bool = False
 
     # Auth / JWT

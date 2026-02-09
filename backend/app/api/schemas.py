@@ -39,6 +39,7 @@ class MeResponse(BaseModel):
     email: str
     role: str
     org_ids: list[uuid.UUID] = []
+    active_org_id: Optional[uuid.UUID] = None
 
 
 class LogoutResponse(BaseModel):

@@ -194,7 +194,25 @@ class TestMe:
         assert me_data["role"] == "safety_manager"
         assert "user_id" in me_data
         assert len(me_data["org_ids"]) == 1
+        assert me_data["active_org_id"] == me_data["org_ids"][0]
 
     def test_me_no_auth_returns_401(self, client):
         resp = client.get("/auth/me")
         assert resp.status_code in (401, 403)
+
+
+# ── Login sets httpOnly cookie ─────────────────────────────────────
+
+class TestLoginCookie:
+    def test_login_sets_httponly_cookie(self, client):
+        client.post("/auth/register", json={
+            "email": "cookie@example.com",
+            "password": "secret",
+        })
+        resp = client.post("/auth/login", json={
+            "email": "cookie@example.com",
+            "password": "secret",
+        })
+        assert resp.status_code == 200
+        cookies = resp.cookies
+        assert "access_token" in cookies
