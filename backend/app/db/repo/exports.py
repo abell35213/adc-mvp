@@ -51,7 +51,7 @@ def update_export(
     s3_key: Optional[str] = None,
 ) -> Optional[Export]:
     """Update an existing export record."""
-    export = _get_export_query(db, export_id).first()
+    export = _get_export_query(db, export_id).with_for_update().first()
     
     if export is None:
         return None
