@@ -10,7 +10,7 @@ import {
   type IncidentDetail,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
-import EvidenceTable from "@/components/EvidenceTable";
+import EvidenceTable, { EVIDENCE_TYPES } from "@/components/EvidenceTable";
 import Timeline from "@/components/Timeline";
 import ExportPanel from "@/components/ExportPanel";
 
@@ -83,7 +83,7 @@ export default function IncidentDetailPage() {
   const captured = incident.evidence_inventory.filter(
     (a) => a.status === "captured"
   ).length;
-  const total = incident.evidence_inventory.length || 8;
+  const total = incident.evidence_inventory.length || EVIDENCE_TYPES.length;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
