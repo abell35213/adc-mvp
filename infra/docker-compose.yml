@@ -9,6 +9,11 @@ services:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=change-me-in-production
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
+      - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
     depends_on:
       - db
       - redis
@@ -19,6 +24,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
       - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
+      - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
     depends_on:
       - db
       - redis

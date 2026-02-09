@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -23,7 +23,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = get_user_by_email(db, body.email)
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(
@@ -37,6 +37,17 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         )
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
+
+    # Set httpOnly cookie for browser-based dashboard access
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=30 * 60,
+    )
+
     return LoginResponse(access_token=token, role=user.role)
 
 
@@ -67,9 +78,10 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(current_user: User = Depends(get_current_user)):
+def logout(response: Response, current_user: User = Depends(get_current_user)):
     # Stateless JWT — the client discards the token.
-    # This endpoint exists so the UI has a clean POST to call.
+    # Clear the httpOnly cookie as well.
+    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax")
     return LogoutResponse()
 
 
@@ -84,4 +96,5 @@ def me(
         email=current_user.email,
         role=current_user.role,
         org_ids=org_ids,
+        active_org_id=org_ids[0] if org_ids else None,
     )

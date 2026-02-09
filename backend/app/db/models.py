@@ -63,6 +63,7 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
     incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
@@ -96,6 +97,7 @@ class Artifact(Base):
     __tablename__ = "artifacts"
 
     artifact_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
     incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     artifact_type = Column(Text, nullable=False)
     status = Column(Text, nullable=False, default="pending")
@@ -115,6 +117,7 @@ class Export(Base):
     __tablename__ = "exports"
 
     export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
     incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     status = Column(Text, nullable=False, default="requested")
     s3_bucket = Column(Text, nullable=True)
