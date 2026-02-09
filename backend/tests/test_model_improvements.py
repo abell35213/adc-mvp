@@ -4,8 +4,9 @@ import uuid
 from datetime import datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db.models import Base, Org, Incident, Event, Artifact, Export
 
@@ -14,6 +15,13 @@ from app.db.models import Base, Org, Incident, Event, Artifact, Export
 def db():
     """Create an in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
+    # Enable foreign key constraints in SQLite
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    
     Base.metadata.create_all(engine)
     session = Session(engine)
     yield session
@@ -25,15 +33,8 @@ class TestForeignKeyConstraints:
 
     def test_event_incident_foreign_key_enforced(self, db):
         """Event.incident_id must reference a valid Incident."""
-        # Note: SQLite by default doesn't enforce foreign keys, so this test
-        # documents expected behavior in PostgreSQL
-        org = Org(name="Test Org")
-        db.add(org)
-        db.commit()
-
         # Try to create event with non-existent incident_id
-        # In PostgreSQL, this would fail with IntegrityError
-        # In SQLite (used in tests), it's allowed unless PRAGMA foreign_keys=ON
+        # This should raise IntegrityError due to foreign key constraint
         invalid_incident_id = uuid.uuid4()
         event = Event(
             incident_id=invalid_incident_id,
@@ -42,13 +43,14 @@ class TestForeignKeyConstraints:
             actor_id="test",
         )
         db.add(event)
-        # SQLite doesn't enforce FK by default, so this passes in tests
-        # but would fail in production PostgreSQL
-        db.commit()
+        
+        with pytest.raises(IntegrityError):
+            db.commit()
 
     def test_artifact_incident_foreign_key_enforced(self, db):
         """Artifact.incident_id must reference a valid Incident."""
-        # Similar to above - documents expected PostgreSQL behavior
+        # Try to create artifact with non-existent incident_id
+        # This should raise IntegrityError due to foreign key constraint
         invalid_incident_id = uuid.uuid4()
         artifact = Artifact(
             incident_id=invalid_incident_id,
@@ -56,17 +58,53 @@ class TestForeignKeyConstraints:
             status="pending",
         )
         db.add(artifact)
-        db.commit()
+        
+        with pytest.raises(IntegrityError):
+            db.commit()
 
     def test_export_incident_foreign_key_enforced(self, db):
         """Export.incident_id must reference a valid Incident."""
+        # Try to create export with non-existent incident_id
+        # This should raise IntegrityError due to foreign key constraint
         invalid_incident_id = uuid.uuid4()
         export = Export(
             incident_id=invalid_incident_id,
             status="requested",
         )
         db.add(export)
+        
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+    def test_foreign_key_allows_valid_incident(self, db):
+        """Foreign key constraints allow valid incident references."""
+        org = Org(name="Test Org")
+        incident = Incident(status="open", org_id=org.id)
+        db.add_all([org, incident])
         db.commit()
+
+        # These should all succeed with valid incident_id
+        event = Event(
+            incident_id=incident.incident_id,
+            event_type="test_event",
+            actor_type="system",
+            actor_id="test",
+        )
+        artifact = Artifact(
+            incident_id=incident.incident_id,
+            artifact_type="dashcam_video",
+            status="pending",
+        )
+        export = Export(
+            incident_id=incident.incident_id,
+            status="requested",
+        )
+        db.add_all([event, artifact, export])
+        db.commit()
+        
+        assert event.incident_id == incident.incident_id
+        assert artifact.incident_id == incident.incident_id
+        assert export.incident_id == incident.incident_id
 
 
 class TestStatusEnums:
@@ -205,7 +243,11 @@ class TestDefaultValues:
 
     def test_incident_default_status_is_open(self, db):
         """Incident defaults to 'open' status."""
-        incident = Incident()
+        org = Org(name="Test Org")
+        db.add(org)
+        db.commit()
+        
+        incident = Incident(org_id=org.id)
         db.add(incident)
         db.commit()
         assert incident.status == "open"
