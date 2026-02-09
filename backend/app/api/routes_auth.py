@@ -10,6 +10,7 @@ from app.api.schemas import (
     RegisterRequest, RegisterResponse,
     MeResponse, LogoutResponse,
 )
+from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.security import hash_password, verify_password, create_access_token
 from app.db.models import User
@@ -43,7 +44,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         key="access_token",
         value=token,
         httponly=True,
-        secure=True,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=30 * 60,
     )
@@ -81,7 +82,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 def logout(response: Response, current_user: User = Depends(get_current_user)):
     # Stateless JWT — the client discards the token.
     # Clear the httpOnly cookie as well.
-    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax")
+    response.delete_cookie(key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax")
     return LogoutResponse()
 
 
