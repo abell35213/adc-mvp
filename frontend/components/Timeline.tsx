@@ -20,6 +20,8 @@ function formatTime(iso?: string | null): string {
   });
 }
 
+const MAX_EVENTS = 50;
+
 interface TimelineProps {
   events: EventSummary[];
 }
@@ -29,9 +31,11 @@ export default function Timeline({ events }: TimelineProps) {
     return <p className="text-sm text-gray-400">No events yet.</p>;
   }
 
+  const displayed = events.slice(-MAX_EVENTS);
+
   return (
     <ol className="relative border-l border-gray-200 dark:border-gray-600">
-      {events.map((ev, i) => (
+      {displayed.map((ev, i) => (
         <li key={i} className="mb-4 ml-4">
           <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-blue-500 dark:border-gray-800" />
           <time className="mb-1 text-xs text-gray-400">{formatTime(ev.occurred_at_utc)}</time>
