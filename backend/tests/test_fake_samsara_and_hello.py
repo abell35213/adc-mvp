@@ -1,8 +1,6 @@
 """Tests for the FakeSamsaraAdapter."""
 
-from pathlib import Path
 
-import pytest
 
 from app.services.fake_samsara_adapter import FakeSamsaraAdapter, EXAMPLES_DIR
 

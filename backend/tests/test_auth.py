@@ -1,13 +1,12 @@
 """Tests for auth endpoints and helpers."""
 
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base, User, Org, UserOrg
+from app.db.models import Base
 from app.db.session import get_db
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.main import app

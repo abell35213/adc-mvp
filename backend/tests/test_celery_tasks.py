@@ -5,7 +5,6 @@ all external dependencies mocked so they run in-memory with SQLite.
 """
 
 import hashlib
-import json
 import uuid
 from unittest.mock import MagicMock, patch
 

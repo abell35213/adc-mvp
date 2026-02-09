@@ -1,7 +1,6 @@
 """Repository layer for incidents."""
 
 import uuid as _uuid
-from typing import Sequence
 
 from sqlalchemy.orm import Session
 

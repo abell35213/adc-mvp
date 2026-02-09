@@ -3,7 +3,6 @@
 import csv
 import hashlib
 import io
-import json
 import logging
 import uuid as _uuid
 import zipfile
@@ -62,7 +61,7 @@ def build_export(self, incident_id: str, export_id: str):
     from app.core.config import settings
     from app.db.repo.artifacts import get_artifacts_by_incident
     from app.db.repo.events import get_events_by_incident
-    from app.db.repo.exports import get_export, update_export
+    from app.db.repo.exports import update_export
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.vault_s3 import VaultS3

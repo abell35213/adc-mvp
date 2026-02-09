@@ -3,6 +3,7 @@
 import uuid
 
 from sqlalchemy import Column, Text, Boolean, ForeignKey, func, Enum, Index, BigInteger
+from sqlalchemy import Column, Text, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 
