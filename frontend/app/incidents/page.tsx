@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { listIncidents, logout, type Incident } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
 
 function friendlyStatus(s: string): string {
   if (s === "evidence_capturing" || s === "open") return "Capturing Evidence";
@@ -31,22 +31,18 @@ function formatTime(iso?: string): string {
 }
 
 export default function IncidentsPage() {
-  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
+    if (!user) return;
     listIncidents()
       .then(setIncidents)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -65,7 +61,7 @@ export default function IncidentsPage() {
 
       {/* Content */}
       <main className="mx-auto max-w-5xl p-6">
-        {loading && <p className="text-gray-500">Loading…</p>}
+        {(loading || authLoading) && <p className="text-gray-500">Loading…</p>}
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && incidents.length === 0 && (

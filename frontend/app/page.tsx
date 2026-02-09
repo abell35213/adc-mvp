@@ -2,13 +2,23 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getMe } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    router.replace(token ? "/incidents" : "/login");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    getMe()
+      .then(() => router.replace("/incidents"))
+      .catch(() => {
+        localStorage.removeItem("token");
+        router.replace("/login");
+      });
   }, [router]);
 
   return (

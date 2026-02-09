@@ -4,7 +4,7 @@
 
 import { type ArtifactSummary } from "@/lib/api";
 
-const EVIDENCE_TYPES: { type: string; label: string }[] = [
+export const EVIDENCE_TYPES: { type: string; label: string }[] = [
   { type: "dashcam_road", label: "Dashcam Road" },
   { type: "dashcam_driver", label: "Dashcam Driver" },
   { type: "eld_duty_status", label: "ELD Duty Status" },
