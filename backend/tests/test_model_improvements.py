@@ -4,9 +4,8 @@ import uuid
 from datetime import datetime
 
 import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from app.db.models import Base, Org, Incident, Event, Artifact, Export
 
