@@ -6,8 +6,57 @@ import Link from "next/link";
 import {
   getIncident,
   requestExport,
+  downloadExport,
   type IncidentDetail,
+  type ArtifactSummary,
 } from "@/lib/api";
+
+/** Canonical evidence types with display labels. */
+const EVIDENCE_TYPES: { type: string; label: string }[] = [
+  { type: "dashcam_road", label: "Dashcam Road" },
+  { type: "dashcam_driver", label: "Dashcam Driver" },
+  { type: "eld_duty_status", label: "ELD Duty Status" },
+  { type: "gps_trace", label: "GPS Trace" },
+  { type: "safety_events", label: "Safety Events" },
+  { type: "vehicle_state", label: "Vehicle State" },
+  { type: "evidence_inventory", label: "Evidence Inventory" },
+  { type: "chain_of_custody", label: "Chain of Custody" },
+];
+
+function friendlyEventType(t: string): string {
+  return t
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatTime(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function artifactStatusBadge(status: string) {
+  if (status === "captured")
+    return "bg-green-100 text-green-800";
+  if (status === "unavailable")
+    return "bg-red-100 text-red-800";
+  if (status === "pending")
+    return "bg-yellow-100 text-yellow-800";
+  return "bg-gray-100 text-gray-800";
+}
+
+function artifactStatusLabel(status: string): string {
+  if (status === "captured") return "Captured";
+  if (status === "unavailable") return "Unavailable";
+  if (status === "pending") return "Pending";
+  return status;
+}
 
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +82,6 @@ export default function IncidentDetailPage() {
     setExporting(true);
     try {
       await requestExport(id);
-      // Refresh to show new export
       const updated = await getIncident(id);
       setIncident(updated);
     } catch (err: unknown) {
@@ -43,12 +91,14 @@ export default function IncidentDetailPage() {
     }
   }
 
-  const statusColor = (s: string) => {
-    if (s === "pending" || s === "requested") return "bg-yellow-100 text-yellow-800";
-    if (s === "ready" || s === "captured") return "bg-green-100 text-green-800";
-    if (s === "failed" || s === "unavailable") return "bg-red-100 text-red-800";
-    return "bg-gray-100 text-gray-800";
-  };
+  async function handleDownload(exportId: string) {
+    try {
+      const data = await downloadExport(exportId);
+      window.open(data.url, "_blank");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    }
+  }
 
   if (loading) {
     return (
@@ -66,6 +116,17 @@ export default function IncidentDetailPage() {
     );
   }
 
+  // Build evidence map for the inventory table
+  const artifactMap = new Map<string, ArtifactSummary>();
+  for (const a of incident.evidence_inventory) {
+    artifactMap.set(a.artifact_type, a);
+  }
+
+  const captured = incident.evidence_inventory.filter(
+    (a) => a.status === "captured"
+  ).length;
+  const total = incident.evidence_inventory.length || EVIDENCE_TYPES.length;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -80,83 +141,107 @@ export default function IncidentDetailPage() {
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">
             Incident {incident.incident_id.slice(0, 8)}…
           </h1>
+          <span className="text-xs text-gray-400">
+            {formatTime(incident.created_at_utc)}
+          </span>
         </div>
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {exporting ? "Requesting…" : "Request Export"}
-        </button>
+        <span className="text-sm text-gray-500">
+          Evidence: {captured}/{total} captured
+        </span>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 p-6">
-        {/* Summary card */}
+      <main className="mx-auto max-w-6xl space-y-6 p-6">
+        {/* ── Panel A: Evidence Inventory ────────────────────────── */}
         <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Summary
+            A) Evidence Inventory
           </h2>
-          <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Status</dt>
-              <dd className="mt-1 font-medium">{incident.status}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Severity</dt>
-              <dd className="mt-1 font-medium capitalize">
-                {incident.severity ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Vehicle</dt>
-              <dd className="mt-1 font-mono">{incident.adc_vehicle_id ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Samsara ID</dt>
-              <dd className="mt-1 font-mono">
-                {incident.samsara_vehicle_id ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-gray-500 dark:text-gray-400">Driver</dt>
-              <dd className="mt-1 font-mono">{incident.adc_driver_id ?? "—"}</dd>
-            </div>
-          </dl>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+                    Evidence Type
+                  </th>
+                  <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+                    Status
+                  </th>
+                  <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+                    Captured Time
+                  </th>
+                  <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+                    Reason
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y dark:divide-gray-700">
+                {EVIDENCE_TYPES.map(({ type, label }) => {
+                  const art = artifactMap.get(type);
+                  const status = art?.status ?? "pending";
+                  return (
+                    <tr key={type}>
+                      <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">
+                        {label}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${artifactStatusBadge(status)}`}
+                        >
+                          {artifactStatusLabel(status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                        {formatTime(art?.captured_at_utc)}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                        {art?.unavailable_reason ?? "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Evidence inventory */}
+        {/* ── Panel B: Timeline ──────────────────────────────────── */}
         <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Evidence Inventory
+            B) Timeline
           </h2>
-          {incident.evidence_inventory.length === 0 ? (
-            <p className="text-sm text-gray-400">No artifacts yet.</p>
+          {(!incident.timeline || incident.timeline.length === 0) ? (
+            <p className="text-sm text-gray-400">No events yet.</p>
           ) : (
-            <ul className="space-y-2">
-              {incident.evidence_inventory.map((a) => (
-                <li
-                  key={a.artifact_id}
-                  className="flex items-center justify-between rounded border px-4 py-2 text-sm"
-                >
-                  <span className="font-mono text-xs">
-                    {a.artifact_type}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(a.status)}`}
-                  >
-                    {a.status}
-                  </span>
+            <ol className="relative border-l border-gray-200 dark:border-gray-600">
+              {incident.timeline.map((ev, i) => (
+                <li key={i} className="mb-4 ml-4">
+                  <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-blue-500 dark:border-gray-800" />
+                  <time className="mb-1 text-xs text-gray-400">
+                    {formatTime(ev.occurred_at_utc)}
+                  </time>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {friendlyEventType(ev.event_type)}
+                  </p>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </div>
 
-        {/* Exports */}
+        {/* ── Panel C: Export Actions ────────────────────────────── */}
         <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Exports
+            C) Export Actions
           </h2>
+          <div className="mb-4">
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="rounded bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {exporting ? "Generating…" : "Generate Court Package"}
+            </button>
+          </div>
           {incident.export_status.length === 0 ? (
             <p className="text-sm text-gray-400">No exports yet.</p>
           ) : (
@@ -164,16 +249,37 @@ export default function IncidentDetailPage() {
               {incident.export_status.map((ex) => (
                 <li
                   key={ex.export_id}
-                  className="flex items-center justify-between rounded border px-4 py-2 text-sm"
+                  className="flex items-center justify-between rounded border px-4 py-3 text-sm"
                 >
-                  <span className="font-mono text-xs">
-                    {ex.export_id.slice(0, 8)}…
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(ex.status)}`}
-                  >
-                    {ex.status}
-                  </span>
+                  <div>
+                    <span className="font-mono text-xs text-gray-600 dark:text-gray-300">
+                      {ex.export_id.slice(0, 8)}…
+                    </span>
+                    <span className="ml-2 text-xs text-gray-400">
+                      {formatTime(ex.created_at_utc)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ex.status === "ready"
+                          ? "bg-green-100 text-green-800"
+                          : ex.status === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                      }`}
+                    >
+                      {ex.status}
+                    </span>
+                    {ex.status === "ready" && (
+                      <button
+                        onClick={() => handleDownload(ex.export_id)}
+                        className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                      >
+                        Download ZIP
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

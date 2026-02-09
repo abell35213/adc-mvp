@@ -179,10 +179,124 @@ class TestGetIncident:
         assert "evidence_inventory" in data
         assert "export_status" in data
 
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
+    @patch("app.api.routes_incidents.capture_dashcam")
+    def test_get_incident_returns_timeline(self, mock_dash, mock_tele, client, auth_headers):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+
+        create_resp = client.post("/incidents/", json={
+            "severity": "serious",
+            "adc_vehicle_id": "veh-123",
+            "samsara_vehicle_id": "sm-veh-987",
+            "adc_driver_id": "drv-555",
+        }, headers=auth_headers)
+        incident_id = create_resp.json()["incident_id"]
+
+        resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
+        data = resp.json()
+        assert "timeline" in data
+        assert len(data["timeline"]) >= 2
+        event_types = [e["event_type"] for e in data["timeline"]]
+        assert "incident_started" in event_types
+        assert "evidence_lockdown_started" in event_types
+        for event in data["timeline"]:
+            assert "occurred_at_utc" in event
+            assert "actor_type" in event
+
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
+    @patch("app.api.routes_incidents.capture_dashcam")
+    def test_get_incident_returns_created_at(self, mock_dash, mock_tele, client, auth_headers):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+
+        create_resp = client.post("/incidents/", json={
+            "severity": "minor",
+            "adc_vehicle_id": "v1",
+            "samsara_vehicle_id": "s1",
+            "adc_driver_id": "d1",
+        }, headers=auth_headers)
+        incident_id = create_resp.json()["incident_id"]
+
+        resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
+        data = resp.json()
+        assert "created_at_utc" in data
+
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
+    @patch("app.api.routes_incidents.capture_dashcam")
+    def test_get_incident_artifact_has_extra_fields(self, mock_dash, mock_tele, client, db_session, auth_headers):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+
+        create_resp = client.post("/incidents/", json={
+            "severity": "serious",
+            "adc_vehicle_id": "veh-1",
+            "samsara_vehicle_id": "sm-1",
+            "adc_driver_id": "drv-1",
+        }, headers=auth_headers)
+        incident_id = create_resp.json()["incident_id"]
+
+        # Add an artifact with unavailable reason
+        art = Artifact(
+            incident_id=uuid.UUID(incident_id),
+            artifact_type="dashcam_road",
+            status="unavailable",
+            unavailable_reason_code="camera_offline",
+        )
+        db_session.add(art)
+        db_session.commit()
+
+        resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
+        data = resp.json()
+        found = [a for a in data["evidence_inventory"] if a["artifact_type"] == "dashcam_road"]
+        assert len(found) == 1
+        assert found[0]["unavailable_reason"] == "camera_offline"
+
     def test_get_incident_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
         resp = client.get(f"/incidents/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
+
+
+# ── GET /incidents (list) ───────────────────────────────────────────
+
+class TestListIncidents:
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
+    @patch("app.api.routes_incidents.capture_dashcam")
+    def test_list_incidents_returns_evidence_counts(self, mock_dash, mock_tele, client, db_session, auth_headers):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+
+        create_resp = client.post("/incidents/", json={
+            "severity": "minor",
+            "adc_vehicle_id": "v1",
+            "samsara_vehicle_id": "s1",
+            "adc_driver_id": "d1",
+        }, headers=auth_headers)
+        incident_id = create_resp.json()["incident_id"]
+
+        # Add some artifacts
+        art1 = Artifact(
+            incident_id=uuid.UUID(incident_id),
+            artifact_type="dashcam_road",
+            status="captured",
+        )
+        art2 = Artifact(
+            incident_id=uuid.UUID(incident_id),
+            artifact_type="gps_trace",
+            status="pending",
+        )
+        db_session.add_all([art1, art2])
+        db_session.commit()
+
+        resp = client.get("/incidents/", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        inc = [i for i in data if i["incident_id"] == incident_id][0]
+        assert inc["evidence_captured"] == 1
+        assert inc["evidence_total"] == 2
+        assert "created_at_utc" in inc
 
 
 # ── POST /incidents/{incident_id}/exports ───────────────────────────

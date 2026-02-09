@@ -54,11 +54,33 @@ class ArtifactSummary(BaseModel):
     artifact_id: uuid.UUID
     artifact_type: str
     status: str
+    captured_at_utc: Optional[str] = None
+    unavailable_reason: Optional[str] = None
 
 
 class ExportSummary(BaseModel):
     export_id: uuid.UUID
     status: str
+    created_at_utc: Optional[str] = None
+
+
+class EventSummary(BaseModel):
+    event_type: str
+    occurred_at_utc: str
+    actor_type: str
+    payload: Optional[dict] = None
+
+
+class IncidentListItem(BaseModel):
+    incident_id: uuid.UUID
+    status: str
+    severity: Optional[str] = None
+    adc_vehicle_id: Optional[str] = None
+    samsara_vehicle_id: Optional[str] = None
+    adc_driver_id: Optional[str] = None
+    created_at_utc: Optional[str] = None
+    evidence_captured: int = 0
+    evidence_total: int = 0
 
 
 class IncidentDetailResponse(BaseModel):
@@ -68,8 +90,10 @@ class IncidentDetailResponse(BaseModel):
     adc_vehicle_id: Optional[str] = None
     samsara_vehicle_id: Optional[str] = None
     adc_driver_id: Optional[str] = None
+    created_at_utc: Optional[str] = None
     evidence_inventory: list[ArtifactSummary] = []
     export_status: list[ExportSummary] = []
+    timeline: list[EventSummary] = []
 
 
 # ── Exports ─────────────────────────────────────────────────────────

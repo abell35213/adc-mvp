@@ -88,22 +88,35 @@ export interface Incident {
   samsara_vehicle_id: string | null;
   adc_driver_id: string | null;
   created_at_utc?: string;
+  evidence_captured?: number;
+  evidence_total?: number;
 }
 
 export interface ArtifactSummary {
   artifact_id: string;
   artifact_type: string;
   status: string;
+  captured_at_utc?: string | null;
+  unavailable_reason?: string | null;
 }
 
 export interface ExportSummary {
   export_id: string;
   status: string;
+  created_at_utc?: string | null;
+}
+
+export interface EventSummary {
+  event_type: string;
+  occurred_at_utc: string;
+  actor_type: string;
+  payload?: Record<string, unknown> | null;
 }
 
 export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
+  timeline: EventSummary[];
 }
 
 export function listIncidents() {
@@ -118,5 +131,11 @@ export function requestExport(incidentId: string) {
   return request<{ export_id: string; status: string }>(
     `/incidents/${incidentId}/exports`,
     { method: "POST" }
+  );
+}
+
+export function downloadExport(exportId: string) {
+  return request<{ export_id: string; url: string; status: string }>(
+    `/exports/${exportId}/download`
   );
 }
