@@ -27,7 +27,7 @@ def _get_db():
 
 def _emit(db, incident_id, event_type, payload=None):
     """Append an event to the append-only log."""
-    from app.db.repo_events import create_event
+    from app.db.repo.events import create_event
 
     return create_event(
         db,
@@ -60,9 +60,9 @@ def build_export(self, incident_id: str, export_id: str):
     8. Emit EXPORT_GENERATED
     """
     from app.core.config import settings
-    from app.db.repo_artifacts import get_artifacts_by_incident
-    from app.db.repo_events import get_events_by_incident
-    from app.db.repo_exports import get_export, update_export
+    from app.db.repo.artifacts import get_artifacts_by_incident
+    from app.db.repo.events import get_events_by_incident
+    from app.db.repo.exports import get_export, update_export
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.vault_s3 import VaultS3

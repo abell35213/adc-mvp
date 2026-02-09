@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DownloadExportResponse
-from app.api.deps import get_current_user
+from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo_exports import get_export, get_exports_by_incident
-from app.db.repo_events import create_event
+from app.db.repo.exports import get_export, get_exports_by_incident
+from app.db.repo.events import create_event
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 

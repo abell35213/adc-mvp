@@ -38,7 +38,7 @@ def _get_db():
 
 def _emit(db, incident_id, event_type, payload=None):
     """Append an event to the append-only log."""
-    from app.db.repo_events import create_event
+    from app.db.repo.events import create_event
 
     return create_event(
         db,
@@ -72,7 +72,7 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
     4. Emit EVIDENCE_CAPTURE_SUCCEEDED when complete
     """
     from app.core.config import settings
-    from app.db.repo_artifacts import create_artifact
+    from app.db.repo.artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
@@ -219,7 +219,7 @@ def capture_telematics_bundle(
     import io
 
     from app.core.config import settings
-    from app.db.repo_artifacts import create_artifact
+    from app.db.repo.artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient

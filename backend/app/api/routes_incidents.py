@@ -16,14 +16,14 @@ from app.api.schemas import (
     IncidentDetailResponse,
     IncidentListItem,
 )
-from app.api.deps import get_current_user
+from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo_incidents import create_incident, get_incident, list_incidents
-from app.db.repo_events import create_event, get_events_by_incident
-from app.db.repo_artifacts import get_artifacts_by_incident
-from app.db.repo_exports import create_export, get_exports_by_incident
-from app.db.repo_users import get_user_org_ids
+from app.db.repo.incidents import create_incident, get_incident, list_incidents
+from app.db.repo.events import create_event, get_events_by_incident
+from app.db.repo.artifacts import get_artifacts_by_incident
+from app.db.repo.exports import create_export, get_exports_by_incident
+from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
