@@ -11,7 +11,7 @@ test:
 
 ## Format & lint backend code
 fmt:
-	cd backend && pip install -q ruff && ruff check --fix app/ tests/
+	cd backend && pip install -q ruff && ruff check --fix --unsafe-fixes app/ tests/
 	cd backend && ruff format app/ tests/
 
 ## Lint only (no auto-fix)
