@@ -5,7 +5,7 @@ from pathlib import Path
 
 import jsonschema
 
-SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent / "contracts" / "schemas"
+SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "contracts" / "schemas"
 
 
 def _resolve_schema_path(schema_name: str) -> Path:

@@ -10,12 +10,12 @@ from app.api.schemas import (
     RegisterRequest, RegisterResponse,
     MeResponse, LogoutResponse,
 )
-from app.api.deps import get_current_user
-from app.core.auth import hash_password, verify_password, create_access_token
+from app.core.deps import get_current_user
+from app.core.security import hash_password, verify_password, create_access_token
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo_users import get_user_by_email, create_user, link_user_org
-from app.db.repo_users import create_org, get_user_org_ids
+from app.db.repo.users import get_user_by_email, create_user, link_user_org
+from app.db.repo.users import create_org, get_user_org_ids
 
 logger = logging.getLogger(__name__)
 

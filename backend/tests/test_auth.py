@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import Base, User, Org, UserOrg
 from app.db.session import get_db
-from app.core.auth import hash_password, verify_password, create_access_token, decode_access_token
+from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.main import app
 
 

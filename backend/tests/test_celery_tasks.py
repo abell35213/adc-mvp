@@ -501,7 +501,7 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         # Pre-emit EXPORT_REQUESTED like the API does
-        from app.db.repo_events import create_event
+        from app.db.repo.events import create_event
 
         create_event(
             db_session,
@@ -562,13 +562,13 @@ class TestBuildExport:
 
 class TestUpdateExport:
     def test_update_export_status(self, db_session, incident, export_row):
-        from app.db.repo_exports import update_export
+        from app.db.repo.exports import update_export
 
         updated = update_export(db_session, export_row.export_id, status="ready")
         assert updated.status == "ready"
 
     def test_update_export_s3_fields(self, db_session, incident, export_row):
-        from app.db.repo_exports import update_export
+        from app.db.repo.exports import update_export
 
         updated = update_export(
             db_session, export_row.export_id,
@@ -578,7 +578,7 @@ class TestUpdateExport:
         assert updated.s3_key == "exports/test.zip"
 
     def test_update_export_not_found(self, db_session):
-        from app.db.repo_exports import update_export
+        from app.db.repo.exports import update_export
 
         result = update_export(db_session, uuid.uuid4(), status="ready")
         assert result is None

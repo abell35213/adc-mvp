@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    build: .
+    build: ../backend
     ports:
       - "8000:8000"
     environment:
@@ -14,7 +14,7 @@ services:
       - redis
 
   worker:
-    build: .
+    build: ../backend
     command: celery -A app.tasks.celery_app worker --loglevel=info
     environment:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
@@ -24,7 +24,7 @@ services:
       - redis
 
   frontend:
-    build: ./frontend
+    build: ../frontend
     ports:
       - "3000:3000"
     environment:
