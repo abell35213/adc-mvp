@@ -34,6 +34,17 @@ class RegisterResponse(BaseModel):
     access_token: str
 
 
+class MeResponse(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    role: str
+    org_ids: list[uuid.UUID] = []
+
+
+class LogoutResponse(BaseModel):
+    detail: str = "Logged out"
+
+
 # ── Incidents ───────────────────────────────────────────────────────
 
 class CreateIncidentRequest(BaseModel):

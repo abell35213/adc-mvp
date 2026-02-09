@@ -74,8 +74,30 @@ export async function register(
 }
 
 export function logout() {
+  const token = localStorage.getItem("token");
+  if (token) {
+    // Fire-and-forget; clear local state regardless
+    fetch(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => {});
+  }
   localStorage.removeItem("token");
   window.location.href = "/login";
+}
+
+export interface MeResponse {
+  user_id: string;
+  email: string;
+  role: string;
+  org_ids: string[];
+}
+
+export function getMe() {
+  return request<MeResponse>("/auth/me");
 }
 
 /* ── Incidents ─────────────────────────────────────────────────── */
@@ -121,6 +143,20 @@ export interface IncidentDetail extends Incident {
 
 export function listIncidents() {
   return request<Incident[]>("/incidents/");
+}
+
+export function createIncident(data: {
+  severity: string;
+  adc_vehicle_id: string;
+  samsara_vehicle_id: string;
+  adc_driver_id: string;
+  window_start?: string;
+  window_end?: string;
+}) {
+  return request<{ incident_id: string; status: string }>("/incidents/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function getIncident(id: string) {

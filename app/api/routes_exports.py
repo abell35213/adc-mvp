@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DownloadExportResponse
+from app.api.deps import get_current_user
+from app.db.models import User
 from app.db.session import get_db
 from app.db.repo_exports import get_export, get_exports_by_incident
 from app.db.repo_events import create_event
@@ -19,12 +21,19 @@ router = APIRouter()
 
 
 @router.get("/")
-def list_exports_endpoint(db: Session = Depends(get_db)):
+def list_exports_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return []
 
 
 @router.get("/{export_id}")
-def get_export_endpoint(export_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_export_endpoint(
+    export_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
@@ -39,6 +48,7 @@ def get_export_endpoint(export_id: uuid.UUID, db: Session = Depends(get_db)):
 def download_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     export = get_export(db, export_id)
     if not export:

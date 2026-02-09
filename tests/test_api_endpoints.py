@@ -353,12 +353,12 @@ class TestRequestExport:
 # ── GET /exports/{export_id}/download ───────────────────────────────
 
 class TestDownloadExport:
-    def test_download_export_not_found(self, client):
+    def test_download_export_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
-        resp = client.get(f"/exports/{fake_id}/download")
+        resp = client.get(f"/exports/{fake_id}/download", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_download_export_not_ready(self, client, db_session):
+    def test_download_export_not_ready(self, client, db_session, auth_headers):
         inc = Incident(status="open")
         db_session.add(inc)
         db_session.commit()
@@ -369,10 +369,10 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
-        resp = client.get(f"/exports/{exp.export_id}/download")
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 409
 
-    def test_download_export_ready(self, client, db_session):
+    def test_download_export_ready(self, client, db_session, auth_headers):
         inc = Incident(status="open")
         db_session.add(inc)
         db_session.commit()
@@ -388,14 +388,14 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
-        resp = client.get(f"/exports/{exp.export_id}/download")
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
         assert "url" in data
         assert "my-bucket" in data["url"]
 
-    def test_download_export_logs_event(self, client, db_session):
+    def test_download_export_logs_event(self, client, db_session, auth_headers):
         inc = Incident(status="open")
         db_session.add(inc)
         db_session.commit()
@@ -411,7 +411,7 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
-        client.get(f"/exports/{exp.export_id}/download")
+        client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
 
         from app.db.models import Event
         events = db_session.query(Event).filter(
@@ -420,16 +420,21 @@ class TestDownloadExport:
         event_types = [e.event_type for e in events]
         assert "export_downloaded" in event_types
 
+    def test_download_export_no_auth_returns_401(self, client):
+        fake_id = str(uuid.uuid4())
+        resp = client.get(f"/exports/{fake_id}/download")
+        assert resp.status_code in (401, 403)
+
 
 # ── GET /exports/{export_id} ───────────────────────────────────────
 
 class TestGetExport:
-    def test_get_export_not_found(self, client):
+    def test_get_export_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
-        resp = client.get(f"/exports/{fake_id}")
+        resp = client.get(f"/exports/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_get_export_found(self, client, db_session):
+    def test_get_export_found(self, client, db_session, auth_headers):
         inc = Incident(status="open")
         db_session.add(inc)
         db_session.commit()
@@ -440,10 +445,15 @@ class TestGetExport:
         db_session.commit()
         db_session.refresh(exp)
 
-        resp = client.get(f"/exports/{exp.export_id}")
+        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "requested"
+
+    def test_get_export_no_auth_returns_401(self, client):
+        fake_id = str(uuid.uuid4())
+        resp = client.get(f"/exports/{fake_id}")
+        assert resp.status_code in (401, 403)
 
 
 # ── Health check ────────────────────────────────────────────────────

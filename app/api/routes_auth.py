@@ -1,15 +1,21 @@
-"""Auth API routes — login and register."""
+"""Auth API routes — login, register, logout, and me."""
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.schemas import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
+from app.api.schemas import (
+    LoginRequest, LoginResponse,
+    RegisterRequest, RegisterResponse,
+    MeResponse, LogoutResponse,
+)
+from app.api.deps import get_current_user
 from app.core.auth import hash_password, verify_password, create_access_token
+from app.db.models import User
 from app.db.session import get_db
 from app.db.repo_users import get_user_by_email, create_user, link_user_org
-from app.db.repo_users import create_org
+from app.db.repo_users import create_org, get_user_org_ids
 
 logger = logging.getLogger(__name__)
 
@@ -57,4 +63,25 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         role=user.role,
         org_id=org.id,
         access_token=token,
+    )
+
+
+@router.post("/logout", response_model=LogoutResponse)
+def logout(current_user: User = Depends(get_current_user)):
+    # Stateless JWT — the client discards the token.
+    # This endpoint exists so the UI has a clean POST to call.
+    return LogoutResponse()
+
+
+@router.get("/me", response_model=MeResponse)
+def me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    return MeResponse(
+        user_id=current_user.id,
+        email=current_user.email,
+        role=current_user.role,
+        org_ids=org_ids,
     )

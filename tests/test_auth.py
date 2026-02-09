@@ -147,3 +147,54 @@ class TestLogin:
             "password": "whatever",
         })
         assert resp.status_code == 401
+
+
+# ── POST /auth/logout ──────────────────────────────────────────────
+
+class TestLogout:
+    def test_logout_returns_200(self, client):
+        # Register to get a token
+        reg = client.post("/auth/register", json={
+            "email": "logout@example.com",
+            "password": "secret",
+        })
+        token = reg.json()["access_token"]
+
+        resp = client.post(
+            "/auth/logout",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["detail"] == "Logged out"
+
+    def test_logout_no_auth_returns_401(self, client):
+        resp = client.post("/auth/logout")
+        assert resp.status_code in (401, 403)
+
+
+# ── GET /auth/me ───────────────────────────────────────────────────
+
+class TestMe:
+    def test_me_returns_user_info(self, client):
+        reg = client.post("/auth/register", json={
+            "email": "me@example.com",
+            "password": "secret",
+            "org_name": "My Org",
+        })
+        data = reg.json()
+        token = data["access_token"]
+
+        resp = client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        me_data = resp.json()
+        assert me_data["email"] == "me@example.com"
+        assert me_data["role"] == "safety_manager"
+        assert "user_id" in me_data
+        assert len(me_data["org_ids"]) == 1
+
+    def test_me_no_auth_returns_401(self, client):
+        resp = client.get("/auth/me")
+        assert resp.status_code in (401, 403)
