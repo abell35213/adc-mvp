@@ -121,24 +121,35 @@ class DownloadExportResponse(BaseModel):
     status: str
 
 
-# ── Driver Auth ────────────────────────────────────────────────────
+# ── Driver ──────────────────────────────────────────────────────────
 
-class RequestOtpRequest(BaseModel):
-    phone: str
-
-
-class RequestOtpResponse(BaseModel):
-    ok: bool = True
-    challenge_id: uuid.UUID
-    expires_in_seconds: int
+class VehicleInfo(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
 
 
-class VerifyOtpRequest(BaseModel):
-    challenge_id: uuid.UUID
-    otp: str
-
-
-class VerifyOtpResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class DriverMeResponse(BaseModel):
     driver_id: uuid.UUID
+    org_id: uuid.UUID
+    phone_e164: str
+    display_name: str
+    vehicle: Optional[VehicleInfo] = None
+
+
+class ResolveQrRequest(BaseModel):
+    qr_token: str
+
+
+class ResolveQrResponse(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
+
+
+# ── Admin vehicles / QR ────────────────────────────────────────────
+
+class RotateQrResponse(BaseModel):
+    qr_token: str
+
+
+class QrPayloadResponse(BaseModel):
+    deep_link: str
