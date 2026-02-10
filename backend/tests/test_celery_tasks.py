@@ -16,7 +16,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Artifact, Base, Event, Export, Incident
+from app.db.models import Artifact, Base, Event, Export, Incident, Org
+from app.domain.system_event_types import SystemEventType
+from app.tasks.notification_tasks import notify_safety_manager
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -63,6 +65,34 @@ def export_row(db_session, incident):
     db_session.commit()
     db_session.refresh(exp)
     return exp
+
+
+@pytest.fixture()
+def org(db_session):
+    org = Org(
+        name="Test Org",
+        sms_enabled=True,
+        voice_enabled=True,
+        safety_manager_phone="+15551234567",
+    )
+    db_session.add(org)
+    db_session.commit()
+    db_session.refresh(org)
+    return org
+
+
+@pytest.fixture()
+def incident_with_org(db_session, org):
+    inc = Incident(
+        status="evidence_capturing",
+        adc_vehicle_id="v1",
+        severity="serious",
+        org_id=org.id,
+    )
+    db_session.add(inc)
+    db_session.commit()
+    db_session.refresh(inc)
+    return inc
 
 
 # ── Celery app config ───────────────────────────────────────────────
@@ -675,3 +705,30 @@ class TestHashBytes:
 
         expected = hashlib.sha256(b"").hexdigest()
         assert _hash_bytes(b"") == expected
+
+
+# ── notify_safety_manager ────────────────────────────────────────────
+
+
+class TestNotifySafetyManager:
+    @patch("app.tasks.notification_tasks._get_db")
+    @patch("app.tasks.notification_tasks.place_call")
+    @patch("app.tasks.notification_tasks.send_sms")
+    def test_notify_safety_manager_sends(self, mock_send_sms, mock_place_call, mock_get_db, db_session, incident_with_org):
+        mock_get_db.return_value = db_session
+        mock_send_sms.return_value = "SM123"
+        mock_place_call.return_value = "CA123"
+
+        result = notify_safety_manager(str(incident_with_org.incident_id))
+
+        assert result["sms_sid"] == "SM123"
+        assert result["call_sid"] == "CA123"
+        mock_send_sms.assert_called_once()
+        mock_place_call.assert_called_once()
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident_with_org.incident_id
+        ).all()
+        event_types = {event.event_type for event in events}
+        assert SystemEventType.SAFETY_MANAGER_SMS_SENT in event_types
+        assert SystemEventType.SAFETY_MANAGER_CALL_PLACED in event_types
