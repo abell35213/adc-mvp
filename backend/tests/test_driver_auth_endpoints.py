@@ -69,7 +69,7 @@ def test_driver_otp_flow(client, db_session):
     phone_e164 = normalize_phone(raw_phone)
     verify_phone = "5551234567"
     assert normalize_phone(verify_phone) == phone_e164
-    _create_driver(db_session, phone_e164)
+    driver = _create_driver(db_session, phone_e164)
 
     with (
         patch("app.services.twilio_verify.start_verification", return_value="sid-123"),
@@ -97,9 +97,7 @@ def test_driver_otp_flow(client, db_session):
         assert token
 
         payload = decode_access_token(token)
-        assert payload["sub"] == str(
-            db_session.query(Driver).filter_by(phone_e164=phone_e164).first().driver_id
-        )
+        assert payload["sub"] == str(driver.driver_id)
         assert payload["scope"] == "driver"
         assert payload["phone"] == phone_e164
 
