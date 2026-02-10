@@ -13,6 +13,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RequestOtpRequest(BaseModel):
+    phone_e164: str
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
