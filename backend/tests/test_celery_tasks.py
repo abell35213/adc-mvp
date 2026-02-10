@@ -459,7 +459,7 @@ class TestBuildExport:
             }
             assert expected.issubset(names)
             readme = zf.read("ADC_Court_Package/00_README.txt").decode()
-            assert "Capture window (UTC):" in readme
+            assert "Capture window (UTC" in readme
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")

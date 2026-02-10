@@ -179,7 +179,10 @@ def build_export(self, incident_id: str, export_id: str):
             "",
             f"Incident ID: {incident_id}",
             f"Export ID: {export_id}",
-            f"Capture window (UTC): {capture_start_str} to {capture_end_str}",
+            (
+                "Capture window (UTC, earliest start to latest end): "
+                f"{capture_start_str} to {capture_end_str}"
+            ),
             "",
             "Hashes:",
             "SHA-256 hashes are computed from the raw bytes of each artifact",
@@ -211,24 +214,23 @@ def build_export(self, incident_id: str, export_id: str):
 
             # Include stored artifact files
             for artifact, filename in exportable_artifacts:
-                if artifact.status == "captured" and artifact.s3_key:
-                    try:
-                        artifact_data = s3.download(artifact.s3_key)
-                        artifact_type = artifact.artifact_type or "unknown"
-                        safe_artifact_type = artifact_type.replace("/", "_")
-                        zf.writestr(
-                            (
-                                f"{package_root}/artifacts/{safe_artifact_type}/"
-                                f"{filename}"
-                            ),
-                            artifact_data,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Could not include artifact %s in export",
-                            artifact.s3_key,
-                            exc_info=True,
-                        )
+                try:
+                    artifact_data = s3.download(artifact.s3_key)
+                    artifact_type = artifact.artifact_type or "unknown"
+                    safe_artifact_type = artifact_type.replace("/", "_")
+                    zf.writestr(
+                        (
+                            f"{package_root}/artifacts/{safe_artifact_type}/"
+                            f"{filename}"
+                        ),
+                        artifact_data,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not include artifact %s in export",
+                        artifact.s3_key,
+                        exc_info=True,
+                    )
 
         zip_bytes = zip_buffer.getvalue()
 
