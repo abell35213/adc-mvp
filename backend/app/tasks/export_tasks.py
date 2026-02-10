@@ -12,7 +12,24 @@ from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 ALLOWED_ARTIFACT_EXTENSIONS = {"json", "csv", "mp4"}
-SAFE_ARTIFACT_TYPE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+SAFE_ARTIFACT_TYPE_RE = re.compile(r"[^A-Za-z0-9_-]+")
+README_TEMPLATE = "\n".join([
+    "ADC Court Evidence Package",
+    "",
+    "Incident ID: {incident_id}",
+    "Export ID: {export_id}",
+    "Capture window (UTC, earliest start to latest end): "
+    "{capture_start} to {capture_end}",
+    "",
+    "Hashes:",
+    "SHA-256 hashes are computed from the raw bytes of each artifact",
+    "at capture time and recorded in integrity_appendix.csv.",
+    "",
+    "Verification:",
+    "1. Compute the SHA-256 hash of a file (e.g., `sha256sum <file>`).",
+    "2. Compare the result with integrity_appendix.csv.",
+    "3. Matching hashes confirm the file integrity.",
+])
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -56,10 +73,7 @@ def _artifact_extension(filename):
 def _safe_artifact_type(artifact_type):
     if not artifact_type:
         return "unknown"
-    sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type)
-    if "/" in sanitized or "\\" in sanitized:
-        sanitized = sanitized.replace("/", "_").replace("\\", "_")
-    sanitized = sanitized.replace("..", "_").strip("._-")
+    sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type).strip("_-")
     return sanitized or "unknown"
 
 
@@ -186,26 +200,12 @@ def build_export(self, incident_id: str, export_id: str):
         capture_end = max(capture_ends) if capture_ends else None
         capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
         capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
-        capture_window_line = (
-            "Capture window (UTC, earliest start to latest end): "
-            f"{capture_start_str} to {capture_end_str}"
+        readme_content = README_TEMPLATE.format(
+            incident_id=incident_id,
+            export_id=export_id,
+            capture_start=capture_start_str,
+            capture_end=capture_end_str,
         )
-        readme_content = "\n".join([
-            "ADC Court Evidence Package",
-            "",
-            f"Incident ID: {incident_id}",
-            f"Export ID: {export_id}",
-            capture_window_line,
-            "",
-            "Hashes:",
-            "SHA-256 hashes are computed from the raw bytes of each artifact",
-            "at capture time and recorded in integrity_appendix.csv.",
-            "",
-            "Verification:",
-            "1. Compute the SHA-256 hash of a file (e.g., `sha256sum <file>`).",
-            "2. Compare the result with integrity_appendix.csv.",
-            "3. Matching hashes confirm the file integrity.",
-        ])
 
         # 6. Create ZIP
         zip_buffer = io.BytesIO()
