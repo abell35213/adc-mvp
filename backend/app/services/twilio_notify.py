@@ -73,9 +73,9 @@ def place_call(to: str, twiml_url_or_twiml: str) -> str:
         "To": to,
         "From": from_number,
     }
-    trimmed_value = twiml_url_or_twiml.lstrip()
-    if trimmed_value.startswith(("http://", "https://")):
-        data["Url"] = trimmed_value
+    stripped_value = twiml_url_or_twiml.lstrip()
+    if stripped_value.startswith(("http://", "https://")):
+        data["Url"] = stripped_value
     else:
         data["Twiml"] = twiml_url_or_twiml
     payload = _post_twilio("Calls.json", data)

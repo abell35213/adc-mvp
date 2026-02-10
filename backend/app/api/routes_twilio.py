@@ -50,7 +50,8 @@ def _validate_twilio_request(request: Request, params: dict[str, str]) -> None:
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request):
     body = await request.body()
-    params = {key: values[0] for key, values in parse_qs(body.decode()).items()}
+    raw_params = parse_qs(body.decode())
+    params = {key: values[0] if values else "" for key, values in raw_params.items()}
     _validate_twilio_request(request, params)
     return Response(
         content=build_voice_twiml(VOICE_MESSAGE),

@@ -88,6 +88,9 @@ def notify_safety_manager(self, incident_id: str):
         if org is None:
             raise ValueError(f"Org {incident.org_id} not found")
 
+        if not org.sms_enabled and not org.voice_enabled:
+            return {"incident_id": incident_id, "status": "skipped"}
+
         phone = org.safety_manager_phone
         if not phone:
             reason = f"Safety manager phone missing for org {incident.org_id}"
@@ -167,9 +170,6 @@ def notify_safety_manager(self, incident_id: str):
                     },
                 )
                 errors.append(f"Call failed: {exc}")
-
-        if not org.sms_enabled and not org.voice_enabled:
-            result["status"] = "skipped"
 
         if errors:
             raise RuntimeError(" | ".join(errors))
