@@ -15,6 +15,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -166,11 +167,15 @@ class Driver(Base):
     __tablename__ = "drivers"
 
     driver_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
     phone_e164 = Column(Text, nullable=False, unique=True, index=True)
-    display_name = Column(Text, nullable=False)
+    display_name = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+    @hybrid_property
+    def id(self):
+        return self.driver_id
 
 
 class OtpChallenge(Base):
@@ -190,6 +195,28 @@ class OtpChallenge(Base):
     )
     twilio_sid = Column(Text, nullable=True)
     last_sent_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    @hybrid_property
+    def id(self):
+        return self.challenge_id
+
+    @hybrid_property
+    def is_locked(self):
+        return self.status == "locked"
+
+    @is_locked.setter  # type: ignore[no-redef]
+    def is_locked(self, value):
+        if value:
+            self.status = "locked"
+
+    @hybrid_property
+    def is_verified(self):
+        return self.status == "verified"
+
+    @is_verified.setter  # type: ignore[no-redef]
+    def is_verified(self, value):
+        if value:
+            self.status = "verified"
 
 
 class DriverVehicleAssignment(Base):

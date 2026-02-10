@@ -119,3 +119,26 @@ class DownloadExportResponse(BaseModel):
     export_id: uuid.UUID
     url: str
     status: str
+
+
+# ── Driver Auth ────────────────────────────────────────────────────
+
+class RequestOtpRequest(BaseModel):
+    phone: str
+
+
+class RequestOtpResponse(BaseModel):
+    ok: bool = True
+    challenge_id: uuid.UUID
+    expires_in_seconds: int
+
+
+class VerifyOtpRequest(BaseModel):
+    challenge_id: uuid.UUID
+    otp: str
+
+
+class VerifyOtpResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    driver_id: uuid.UUID

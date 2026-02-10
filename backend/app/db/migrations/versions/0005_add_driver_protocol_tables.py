@@ -57,9 +57,9 @@ def upgrade() -> None:
     op.create_table(
         "drivers",
         sa.Column("driver_id", UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("org_id", UUID(as_uuid=True), nullable=False),
+        sa.Column("org_id", UUID(as_uuid=True), nullable=True),
         sa.Column("phone_e164", sa.Text(), nullable=False, unique=True),
-        sa.Column("display_name", sa.Text(), nullable=False),
+        sa.Column("display_name", sa.Text(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column(
             "created_at_utc",
