@@ -16,7 +16,11 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: init?.credentials ?? "include",
+  });
 
   if (res.status === 401) {
     if (typeof window !== "undefined") {
@@ -79,6 +83,7 @@ export function logout() {
     // Fire-and-forget; clear local state regardless
     fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
