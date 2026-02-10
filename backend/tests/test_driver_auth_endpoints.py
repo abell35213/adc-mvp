@@ -4,14 +4,19 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.routes_driver import _generate_otp_code, _hash_otp_code
-from app.db.models import Base, Driver, OtpChallenge
+from app.api.routes_driver_auth import router as driver_auth_router
+from app.core.security import decode_access_token
+from app.db.models import Base, Driver, Org, OtpChallenge
 from app.db.session import get_db
-from app.main import app
+from app.services.phone_normalize import normalize_phone
+
+app = FastAPI()
+app.include_router(driver_auth_router, prefix="/driver/auth")
 
 
 @pytest.fixture()
@@ -46,12 +51,31 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
+def _create_driver(db_session, phone_e164: str) -> Driver:
+    org = Org(name="Test Org")
+    db_session.add(org)
+    db_session.commit()
+    db_session.refresh(org)
+
+    driver = Driver(org_id=org.id, phone_e164=phone_e164, display_name=phone_e164)
+    db_session.add(driver)
+    db_session.commit()
+    db_session.refresh(driver)
+    return driver
+
+
 def test_driver_otp_flow(client, db_session):
-    phone_e164 = "+15551234567"
-    with patch("app.api.routes_driver._generate_otp_code", return_value="123456"):
+    raw_phone = "(555) 123-4567"
+    phone_e164 = normalize_phone(raw_phone)
+    _create_driver(db_session, phone_e164)
+
+    with (
+        patch("app.services.twilio_verify.start_verification", return_value="sid-123"),
+        patch("app.services.twilio_verify.check_verification", return_value=True),
+    ):
         request_resp = client.post(
             "/driver/auth/request-otp",
-            json={"phone_e164": phone_e164},
+            json={"phone_e164": raw_phone},
         )
         assert request_resp.status_code == 200
         assert request_resp.json()["detail"] == "OTP sent"
@@ -60,49 +84,54 @@ def test_driver_otp_flow(client, db_session):
             db_session.query(OtpChallenge).filter_by(phone_e164=phone_e164).first()
         )
         assert challenge is not None
-        assert challenge.otp_code_hash == _hash_otp_code("123456")
+        assert challenge.twilio_sid == "sid-123"
 
         verify_resp = client.post(
             "/driver/auth/verify-otp",
-            json={"phone_e164": phone_e164, "otp_code": "123456"},
+            json={"phone_e164": "5551234567", "otp_code": "123456"},
         )
         assert verify_resp.status_code == 200
         token = verify_resp.json()["access_token"]
         assert token
 
-        me_resp = client.get(
-            "/driver/me",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert me_resp.status_code == 200
-        data = me_resp.json()
-        assert data["phone_e164"] == phone_e164
-        assert data["driver_id"] == str(
+        payload = decode_access_token(token)
+        assert payload["sub"] == str(
             db_session.query(Driver).filter_by(phone_e164=phone_e164).first().driver_id
         )
+        assert payload["scope"] == "driver"
+        assert payload["phone"] == phone_e164
 
 
 def test_driver_otp_rejects_invalid_code(client, db_session):
-    phone_e164 = "+15551230000"
-    with patch("app.api.routes_driver._generate_otp_code", return_value="123456"):
+    phone_e164 = normalize_phone("5551230000")
+    _create_driver(db_session, phone_e164)
+
+    with (
+        patch("app.services.twilio_verify.start_verification", return_value="sid-456"),
+        patch("app.services.twilio_verify.check_verification", return_value=False),
+    ):
         request_resp = client.post(
             "/driver/auth/request-otp",
             json={"phone_e164": phone_e164},
         )
         assert request_resp.status_code == 200
 
-    verify_resp = client.post(
-        "/driver/auth/verify-otp",
-        json={"phone_e164": phone_e164, "otp_code": "000000"},
-    )
-    assert verify_resp.status_code == 401
-    challenge = db_session.query(OtpChallenge).filter_by(phone_e164=phone_e164).first()
-    assert challenge.attempt_count == 1
+        verify_resp = client.post(
+            "/driver/auth/verify-otp",
+            json={"phone_e164": phone_e164, "otp_code": "000000"},
+        )
+        assert verify_resp.status_code == 401
+        challenge = (
+            db_session.query(OtpChallenge).filter_by(phone_e164=phone_e164).first()
+        )
+        assert challenge.attempt_count == 1
 
 
 def test_driver_otp_expires(client, db_session):
-    phone_e164 = "+15550001111"
-    with patch("app.api.routes_driver._generate_otp_code", return_value="123456"):
+    phone_e164 = normalize_phone("5550001111")
+    _create_driver(db_session, phone_e164)
+
+    with patch("app.services.twilio_verify.start_verification", return_value="sid-789"):
         request_resp = client.post(
             "/driver/auth/request-otp",
             json={"phone_e164": phone_e164},
@@ -117,26 +146,21 @@ def test_driver_otp_expires(client, db_session):
         "/driver/auth/verify-otp",
         json={"phone_e164": phone_e164, "otp_code": "123456"},
     )
-    assert verify_resp.status_code == 401
+    assert verify_resp.status_code == 410
 
 
-def test_generate_otp_code_format():
-    with patch("app.api.routes_driver.secrets.randbelow", return_value=42):
-        assert _generate_otp_code() == "000042"
-
-
-def test_driver_otp_resend_cooldown(client):
-    phone_e164 = "+15559990000"
-    with patch("app.api.routes_driver._generate_otp_code", return_value="123456"):
-        first_resp = client.post(
+def test_driver_otp_request_handles_twilio_failure(client, db_session):
+    phone_e164 = normalize_phone("5559990000")
+    with patch(
+        "app.services.twilio_verify.start_verification",
+        side_effect=Exception("Twilio down"),
+    ):
+        request_resp = client.post(
             "/driver/auth/request-otp",
             json={"phone_e164": phone_e164},
         )
-        assert first_resp.status_code == 200
+        assert request_resp.status_code == 200
 
-        second_resp = client.post(
-            "/driver/auth/request-otp",
-            json={"phone_e164": phone_e164},
-        )
-        assert second_resp.status_code == 429
-        assert "Retry-After" in second_resp.headers
+    challenge = db_session.query(OtpChallenge).filter_by(phone_e164=phone_e164).first()
+    assert challenge is not None
+    assert challenge.twilio_sid is None

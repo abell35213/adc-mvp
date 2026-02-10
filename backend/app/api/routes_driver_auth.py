@@ -86,7 +86,13 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
 @router.post("/verify-otp", response_model=DriverOtpVerifyResponse)
 def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     """Verify an OTP code and issue a driver-scoped JWT on success."""
-    phone_e164 = body.phone_e164.strip()
+    try:
+        phone_e164 = normalize_phone(body.phone_e164)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid phone number",
+        )
 
     # Find the latest pending challenge for this phone
     challenge = (
