@@ -19,7 +19,7 @@ def get_driver_by_phone(db: Session, phone_e164: str) -> Driver | None:
 
 
 def get_driver_by_id(db: Session, driver_id: _uuid.UUID) -> Driver | None:
-    return db.query(Driver).filter(Driver.id == driver_id).first()
+    return db.query(Driver).filter(Driver.driver_id == driver_id).first()
 
 
 def find_or_create_driver(db: Session, phone_e164: str) -> Driver:
