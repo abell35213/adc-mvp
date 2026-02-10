@@ -63,6 +63,7 @@ class TestDriverProtocolDefaults:
     def test_otp_challenge_defaults(self, db):
         challenge = OtpChallenge(
             phone_e164="+15550001111",
+            otp_code_hash="dummyhash",
             expires_at_utc=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
         db.add(challenge)

@@ -780,10 +780,17 @@ class TestHashBytes:
 
 class TestNotifySafetyManager:
     @patch("app.tasks.notification_tasks._get_db")
-    @patch("app.tasks.notification_tasks.place_call")
-    @patch("app.tasks.notification_tasks.send_sms")
+    @patch("app.services.twilio_notify.place_call")
+    @patch("app.services.twilio_notify.send_sms")
+    @patch("app.services.twilio_notify.build_voice_twiml", return_value="<Response/>")
     def test_notify_safety_manager_sends(
-        self, mock_send_sms, mock_place_call, mock_get_db, db_session, incident_with_org
+        self,
+        mock_twiml,
+        mock_send_sms,
+        mock_place_call,
+        mock_get_db,
+        db_session,
+        incident_with_org,
     ):
         mock_get_db.return_value = db_session
         mock_send_sms.return_value = "SM123"

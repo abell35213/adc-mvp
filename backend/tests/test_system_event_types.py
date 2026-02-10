@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 21 system event types."""
-        assert len(SystemEventType) == 21
+        """There must be exactly 23 system event types."""
+        assert len(SystemEventType) == 23
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
