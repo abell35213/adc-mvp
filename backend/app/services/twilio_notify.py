@@ -45,7 +45,10 @@ def _post_twilio(path: str, data: dict[str, str]) -> dict[str, Any]:
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
-        raise ValueError("Unexpected Twilio response payload")
+        raise ValueError(
+            "Unexpected Twilio response payload: expected dict, got "
+            f"{type(payload).__name__}"
+        )
     return payload
 
 
@@ -62,7 +65,7 @@ def send_sms(to: str, message: str) -> str:
     )
     sid = payload.get("sid")
     if not sid:
-        raise ValueError("Twilio SMS response missing SID")
+        raise ValueError(f"Twilio SMS response missing SID. Response: {payload}")
     return sid
 
 
@@ -81,7 +84,7 @@ def place_call(to: str, twiml_url_or_twiml: str) -> str:
     payload = _post_twilio("Calls.json", data)
     sid = payload.get("sid")
     if not sid:
-        raise ValueError("Twilio call response missing SID")
+        raise ValueError(f"Twilio call response missing SID. Response: {payload}")
     return sid
 
 

@@ -93,7 +93,10 @@ def notify_safety_manager(self, incident_id: str):
 
         phone = org.safety_manager_phone
         if not phone:
-            reason = f"Safety manager phone missing for org {incident.org_id}"
+            reason = (
+                "Safety manager phone number not configured for organization "
+                f"{incident.org_id}. Please configure a phone number in organization settings."
+            )
             if org.sms_enabled:
                 _emit(
                     db,
