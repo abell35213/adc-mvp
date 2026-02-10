@@ -5,7 +5,10 @@ all external dependencies mocked so they run in-memory with SQLite.
 """
 
 import hashlib
+import io
 import uuid
+import zipfile
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -475,6 +478,8 @@ class TestBuildExport:
             s3_key="incidents/x/telematics/eld.json",
             sha256="abc",
             byte_size=100,
+            capture_window_start_utc=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            capture_window_end_utc=datetime(2024, 1, 1, 1, tzinfo=timezone.utc),
         )
         db_session.add(art)
         db_session.commit()
@@ -497,6 +502,20 @@ class TestBuildExport:
         ).first()
         assert updated_export.status == "ready"
         assert updated_export.s3_key is not None
+
+        zip_bytes = s3_inst.upload.call_args[0][1]
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            names = set(zf.namelist())
+            expected = {
+                "ADC_Court_Package/00_README.txt",
+                "ADC_Court_Package/02_Evidence_Inventory.csv",
+                "ADC_Court_Package/03_Chain_of_Custody.csv",
+                "ADC_Court_Package/integrity_appendix.csv",
+                "ADC_Court_Package/artifacts/eld_log/eld.json",
+            }
+            assert expected.issubset(names)
+            readme = zf.read("ADC_Court_Package/00_README.txt").decode()
+            assert "Capture window (UTC" in readme
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
