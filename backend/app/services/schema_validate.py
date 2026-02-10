@@ -3,9 +3,41 @@
 import json
 from pathlib import Path
 
-import jsonschema
+from jsonschema import Draft202012Validator
 
 SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "contracts" / "schemas"
+MAX_ERRORS_TO_DISPLAY = 10
+
+
+def _error_sort_key(error):
+    """Return a sortable key for validation error paths.
+
+    Args:
+        error: ValidationError instance with a JSON path.
+
+    Returns:
+        Tuple used to order errors consistently by path.
+    """
+    return tuple(
+        (0, part) if isinstance(part, int) else (1, str(part))
+        for part in error.path
+    )
+
+
+def _format_error_path(path):
+    """Format a validation error path using JSONPath-style notation.
+
+    Args:
+        path: ValidationError path iterable.
+
+    Returns:
+        JSONPath-like string starting at "$".
+    """
+    parts = [
+        f"[{part}]" if isinstance(part, int) else f".{part}"
+        for part in path
+    ]
+    return "$" + "".join(parts)
 
 
 def _resolve_schema_path(schema_name: str) -> Path:
@@ -33,11 +65,21 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
     with open(schema_path) as f:
         schema = json.load(f)
 
-    try:
-        jsonschema.validate(instance=payload, schema=schema)
-    except jsonschema.ValidationError as exc:
+    validator = Draft202012Validator(schema)
+    errors = sorted(
+        validator.iter_errors(payload),
+        key=_error_sort_key,
+    )
+
+    if errors:
+        formatted_errors = []
+        for error in errors[:MAX_ERRORS_TO_DISPLAY]:
+            location = _format_error_path(error.path)
+            formatted_errors.append(f"{location}: {error.message}")
+
+        error_list = "\n- ".join(formatted_errors)
         raise ValueError(
-            f"Schema validation failed for '{schema_name}': {exc.message}"
-        ) from exc
+            f"Schema validation failed for '{schema_name}':\n- {error_list}"
+        )
 
     return True
