@@ -24,6 +24,7 @@ def test_put_get_bytes_round_trip(tmp_path):
         "../secrets.txt",
         "/etc/passwd",
         "org/../secrets.txt",
+        "org/foo/../secrets.txt",
         "org\\secrets.txt",
     ],
 )

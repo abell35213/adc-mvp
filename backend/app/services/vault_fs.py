@@ -19,7 +19,7 @@ class VaultFilesystem:
         posix_key = PurePosixPath(key)
         if posix_key.is_absolute():
             raise ValueError("Key must be a relative path")
-        if not posix_key.parts or any(part in {"", ".", ".."} for part in posix_key.parts):
+        if not posix_key.parts or any(part in {".", ".."} for part in posix_key.parts):
             raise ValueError("Key contains invalid path segments")
         target = self.root.joinpath(*posix_key.parts)
         root_resolved = self.root.resolve(strict=False)
@@ -55,7 +55,10 @@ class VaultFilesystem:
         return target.read_bytes()
 
     def presign_download(self, key: str, expires_in: int = 3600) -> str:
-        """Return a local file URL for the stored object."""
+        """Return a local file URL for the stored object.
+
+        The expires_in parameter is accepted for interface compatibility but unused.
+        """
         _ = expires_in
         target = self._safe_path(key)
         return target.resolve(strict=False).as_uri()
