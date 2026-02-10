@@ -36,7 +36,7 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
     validator = Draft202012Validator(schema)
     errors = sorted(
         validator.iter_errors(payload),
-        key=lambda err: [str(part) for part in err.path],
+        key=lambda err: tuple(str(part) for part in err.path),
     )
 
     if errors:
@@ -46,9 +46,9 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
             location = f"$.{path}" if path else "$"
             formatted_errors.append(f"{location}: {error.message}")
 
+        error_list = "\n- ".join(formatted_errors)
         raise ValueError(
-            "Schema validation failed for "
-            f"'{schema_name}':\n- " + "\n- ".join(formatted_errors)
+            f"Schema validation failed for '{schema_name}':\n- {error_list}"
         )
 
     return True
