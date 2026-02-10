@@ -1,7 +1,7 @@
 """Pydantic request / response schemas for the API."""
 
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -143,6 +143,51 @@ class ResolveQrRequest(BaseModel):
 class ResolveQrResponse(BaseModel):
     adc_vehicle_id: str
     display_label: str
+
+
+# ── Driver incidents / instructions ─────────────────────────────────
+
+class DriverIncidentInitiateRequest(BaseModel):
+    vehicle_strategy: Literal["last_assigned", "qr"]
+    device_location: Optional[dict] = None
+    device: Optional[dict] = None
+    qr_token: Optional[str] = None
+
+
+class DriverIncidentInitiateResponse(BaseModel):
+    incident_id: uuid.UUID
+    safety_notified: bool
+    capture_started: bool
+
+
+class DriverInstructionStepResponse(BaseModel):
+    step_id: uuid.UUID
+    step_order: int
+    title: str
+    body: str
+
+
+class DriverInstructionSetResponse(BaseModel):
+    instruction_set_id: uuid.UUID
+    scope: str
+    require_ack: bool
+    steps: list[DriverInstructionStepResponse] = []
+
+
+class DriverInstructionAckRequest(BaseModel):
+    instruction_set_id: uuid.UUID
+
+
+class DriverInstructionAckResponse(BaseModel):
+    acknowledged: bool
+
+
+class DriverIncidentStatusResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: str
+    safety_notified: bool
+    capture_state: str
+    last_evidence_update_utc: Optional[str] = None
 
 
 # ── Admin vehicles / QR ────────────────────────────────────────────

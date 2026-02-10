@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 17 system event types."""
-        assert len(SystemEventType) == 17
+        """There must be exactly 19 system event types."""
+        assert len(SystemEventType) == 19
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -17,6 +17,12 @@ class TestSystemEventType:
             assert member == member.value
 
     # ── Incident lifecycle ──────────────────────────────────────────
+
+    def test_incident_protocol_initiated(self):
+        assert (
+            SystemEventType.INCIDENT_PROTOCOL_INITIATED
+            == "incident_protocol_initiated"
+        )
 
     def test_incident_started(self):
         assert SystemEventType.INCIDENT_STARTED == "incident_started"
@@ -69,11 +75,23 @@ class TestSystemEventType:
     def test_export_downloaded(self):
         assert SystemEventType.EXPORT_DOWNLOADED == "export_downloaded"
 
+    # ── Driver / Vehicle QR ─────────────────────────────────────────
+
+    def test_driver_vehicle_resolved(self):
+        assert SystemEventType.DRIVER_VEHICLE_RESOLVED == "driver_vehicle_resolved"
+
+    def test_driver_instruction_acknowledged(self):
+        assert (
+            SystemEventType.DRIVER_INSTRUCTION_ACKNOWLEDGED
+            == "driver_instruction_acknowledged"
+        )
+
     # ── Grouping helpers ────────────────────────────────────────────
 
     def test_incident_lifecycle_types_exist(self):
         """All incident lifecycle types must be present."""
         expected = {
+            "incident_protocol_initiated",
             "incident_started",
             "incident_updated",
             "evidence_lockdown_started",

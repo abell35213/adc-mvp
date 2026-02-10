@@ -11,6 +11,7 @@ class SystemEventType(str, Enum):
     """Strict set of system event types for the append-only event log."""
 
     # ── Incident lifecycle ──────────────────────────────────────────
+    INCIDENT_PROTOCOL_INITIATED = "incident_protocol_initiated"
     INCIDENT_STARTED = "incident_started"
     INCIDENT_UPDATED = "incident_updated"
     EVIDENCE_LOCKDOWN_STARTED = "evidence_lockdown_started"
@@ -35,4 +36,5 @@ class SystemEventType(str, Enum):
 
     # ── Driver / Vehicle QR ────────────────────────────────────────
     DRIVER_VEHICLE_RESOLVED = "driver_vehicle_resolved"
+    DRIVER_INSTRUCTION_ACKNOWLEDGED = "driver_instruction_acknowledged"
     VEHICLE_QR_ROTATED = "vehicle_qr_rotated"

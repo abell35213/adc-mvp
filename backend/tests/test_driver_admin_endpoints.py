@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,8 +13,11 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import (
     Base,
     Driver,
+    DriverInstructionSet,
+    DriverInstructionStep,
     DriverVehicleAssignment,
     Event,
+    Incident,
     Org,
     User,
     UserOrg,
@@ -302,6 +306,157 @@ class TestRotateQr:
     def test_rotate_no_auth_returns_401(self, client):
         resp = client.post("/admin/vehicles/veh-800/qr/rotate")
         assert resp.status_code in (401, 403)
+
+
+# ── POST /driver/incidents/initiate ─────────────────────────────────
+
+
+class TestDriverInitiate:
+    @patch("app.api.routes_driver.notify_safety")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    def test_driver_initiate_creates_incident_and_events(
+        self,
+        mock_dash,
+        mock_tele,
+        mock_notify,
+        client,
+        db_session,
+        test_driver,
+        test_assignment,
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify.delay = MagicMock()
+
+        resp = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["safety_notified"] is True
+        assert data["capture_started"] is True
+
+        incident = db_session.query(Incident).first()
+        assert incident is not None
+        assert incident.adc_vehicle_id == "veh-100"
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident.incident_id
+        ).all()
+        event_types = {event.event_type for event in events}
+        assert "incident_protocol_initiated" in event_types
+        assert "evidence_lockdown_started" in event_types
+
+    @patch("app.api.routes_driver.notify_safety")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    def test_driver_initiate_resolves_vehicle_by_qr(
+        self,
+        mock_dash,
+        mock_tele,
+        mock_notify,
+        client,
+        db_session,
+        test_driver,
+        active_qr_token,
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify.delay = MagicMock()
+
+        resp = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "qr", "qr_token": "test-token-abc123"},
+        )
+        assert resp.status_code == 200
+        incident = db_session.query(Incident).first()
+        assert incident.adc_vehicle_id == "veh-200"
+
+
+# ── GET /driver/instructions/active ─────────────────────────────────
+
+
+def _seed_instruction_set(db_session, org_id, scope, require_ack=False):
+    instruction_set = DriverInstructionSet(
+        org_id=org_id, scope=scope, require_ack=require_ack
+    )
+    db_session.add(instruction_set)
+    db_session.commit()
+    step = DriverInstructionStep(
+        instruction_set_id=instruction_set.instruction_set_id,
+        step_order=1,
+        title=f"{scope} step",
+        body="Do the thing.",
+    )
+    db_session.add(step)
+    db_session.commit()
+    return instruction_set
+
+
+class TestDriverInstructions:
+    def test_active_instructions_prefers_company(
+        self, client, db_session, test_org, test_driver
+    ):
+        _seed_instruction_set(db_session, test_org.id, "default")
+        company_set = _seed_instruction_set(db_session, test_org.id, "company")
+
+        resp = client.get("/driver/instructions/active")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["instruction_set_id"] == str(company_set.instruction_set_id)
+        assert data["scope"] == "company"
+
+    def test_active_instructions_prefers_insurer_over_default(
+        self, client, db_session, test_org, test_driver
+    ):
+        _seed_instruction_set(db_session, test_org.id, "default")
+        insurer_set = _seed_instruction_set(db_session, test_org.id, "insurer")
+
+        resp = client.get("/driver/instructions/active")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["instruction_set_id"] == str(insurer_set.instruction_set_id)
+        assert data["scope"] == "insurer"
+
+    def test_active_instructions_falls_back_to_default(
+        self, client, db_session, test_org, test_driver
+    ):
+        default_set = _seed_instruction_set(db_session, test_org.id, "default")
+
+        resp = client.get("/driver/instructions/active")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["instruction_set_id"] == str(default_set.instruction_set_id)
+        assert data["scope"] == "default"
+
+
+# ── POST /driver/instructions/ack ───────────────────────────────────
+
+
+class TestDriverInstructionAck:
+    def test_ack_writes_event(
+        self, client, db_session, test_org, test_driver
+    ):
+        instruction_set = _seed_instruction_set(
+            db_session, test_org.id, "default", require_ack=True
+        )
+
+        resp = client.post(
+            "/driver/instructions/ack",
+            json={"instruction_set_id": str(instruction_set.instruction_set_id)},
+        )
+        assert resp.status_code == 200
+
+        events = db_session.query(Event).filter(
+            Event.event_type == "driver_instruction_acknowledged"
+        ).all()
+        assert len(events) == 1
+        assert (
+            events[0].payload["instruction_set_id"]
+            == str(instruction_set.instruction_set_id)
+        )
 
 
 # ── GET /admin/vehicles/{vehicle_id}/qr ─────────────────────────────
