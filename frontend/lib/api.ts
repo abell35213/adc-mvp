@@ -1,6 +1,7 @@
 /** Thin wrapper around fetch for talking to the FastAPI backend. */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function request<T>(
   path: string,

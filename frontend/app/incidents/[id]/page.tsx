@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -26,6 +26,8 @@ function formatTime(iso?: string | null): string {
   });
 }
 
+const REFRESH_INTERVAL_MS = 4000;
+
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, loading: authLoading } = useAuth();
@@ -34,6 +36,30 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
+  const artifactStatuses = useMemo(() => {
+    if (!incident) return [];
+    const artifactMap = new Map(
+      incident.evidence_inventory.map((artifact) => [
+        artifact.artifact_type,
+        artifact,
+      ])
+    );
+    return EVIDENCE_TYPES.map(
+      ({ type }) => artifactMap.get(type)?.status ?? "pending"
+    );
+  }, [incident]);
+
+  const captured = artifactStatuses.filter((status) => status === "captured")
+    .length;
+  const unavailable = artifactStatuses.filter(
+    (status) => status === "unavailable"
+  ).length;
+  const pending = artifactStatuses.filter((status) => status === "pending")
+    .length;
+  const total = artifactStatuses.length || EVIDENCE_TYPES.length;
+  const isCapturing = pending > 0;
+  const refreshIntervalSeconds = REFRESH_INTERVAL_MS / 1000;
+
   useEffect(() => {
     if (!user) return;
     getIncident(id)
@@ -41,6 +67,20 @@ export default function IncidentDetailPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id, user]);
+
+  const refreshIncident = useCallback(() => {
+    return getIncident(id)
+      .then(setIncident)
+      .catch((err) => console.warn("Incident refresh failed", err));
+  }, [id]);
+
+  useEffect(() => {
+    if (!user || !isCapturing) return;
+    const interval = window.setInterval(() => {
+      refreshIncident();
+    }, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [isCapturing, refreshIncident, user]);
 
   async function handleExport() {
     setExporting(true);
@@ -80,10 +120,13 @@ export default function IncidentDetailPage() {
     );
   }
 
-  const captured = incident.evidence_inventory.filter(
-    (a) => a.status === "captured"
-  ).length;
-  const total = incident.evidence_inventory.length || EVIDENCE_TYPES.length;
+  const captureSummary = isCapturing
+    ? `Capture in progress (auto-refreshing every ${refreshIntervalSeconds} seconds).`
+    : unavailable > 0
+      ? `Capture finished with ${unavailable} unavailable artifact${
+          unavailable === 1 ? "" : "s"
+        }.`
+      : "Capture complete.";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -103,9 +146,21 @@ export default function IncidentDetailPage() {
             {formatTime(incident.created_at_utc)}
           </span>
         </div>
-        <span className="text-sm text-gray-500">
-          Evidence: {captured}/{total} captured
-        </span>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800">
+            Captured {captured}/{total}
+          </span>
+          {pending > 0 && (
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 font-medium text-yellow-800">
+              Pending {pending}
+            </span>
+          )}
+          {unavailable > 0 && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-800">
+              Unavailable {unavailable}
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -114,6 +169,7 @@ export default function IncidentDetailPage() {
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
             A) Evidence Inventory
           </h2>
+          <p className="mb-4 text-xs text-gray-500">{captureSummary}</p>
           <EvidenceTable artifacts={incident.evidence_inventory} />
         </div>
 
