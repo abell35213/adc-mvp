@@ -14,7 +14,10 @@ class LoginRequest(BaseModel):
 
 
 class RequestOtpRequest(BaseModel):
-    phone_e164: str = Field(pattern=r"^\+[1-9]\d{1,14}$")
+    phone_e164: str = Field(
+        pattern=r"^\+[1-9]\d{1,14}$",
+        description="Phone number in E.164 format, e.g. +15551234567.",
+    )
 
 
 class LoginResponse(BaseModel):
