@@ -152,6 +152,8 @@ class DriverIncidentInitiateRequest(BaseModel):
     device_location: Optional[dict] = None
     device: Optional[dict] = None
     qr_token: Optional[str] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
 
 
 class DriverIncidentInitiateResponse(BaseModel):

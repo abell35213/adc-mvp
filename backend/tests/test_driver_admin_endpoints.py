@@ -378,7 +378,7 @@ class TestDriverInitiate:
 # ── GET /driver/instructions/active ─────────────────────────────────
 
 
-def _seed_instruction_set(db_session, org_id, scope, require_ack=False):
+def seed_instruction_set(db_session, org_id, scope, require_ack=False):
     instruction_set = DriverInstructionSet(
         org_id=org_id, scope=scope, require_ack=require_ack
     )
@@ -399,8 +399,8 @@ class TestDriverInstructions:
     def test_active_instructions_prefers_company(
         self, client, db_session, test_org, test_driver
     ):
-        _seed_instruction_set(db_session, test_org.id, "default")
-        company_set = _seed_instruction_set(db_session, test_org.id, "company")
+        seed_instruction_set(db_session, test_org.id, "default")
+        company_set = seed_instruction_set(db_session, test_org.id, "company")
 
         resp = client.get("/driver/instructions/active")
         assert resp.status_code == 200
@@ -411,8 +411,8 @@ class TestDriverInstructions:
     def test_active_instructions_prefers_insurer_over_default(
         self, client, db_session, test_org, test_driver
     ):
-        _seed_instruction_set(db_session, test_org.id, "default")
-        insurer_set = _seed_instruction_set(db_session, test_org.id, "insurer")
+        seed_instruction_set(db_session, test_org.id, "default")
+        insurer_set = seed_instruction_set(db_session, test_org.id, "insurer")
 
         resp = client.get("/driver/instructions/active")
         assert resp.status_code == 200
@@ -423,7 +423,7 @@ class TestDriverInstructions:
     def test_active_instructions_falls_back_to_default(
         self, client, db_session, test_org, test_driver
     ):
-        default_set = _seed_instruction_set(db_session, test_org.id, "default")
+        default_set = seed_instruction_set(db_session, test_org.id, "default")
 
         resp = client.get("/driver/instructions/active")
         assert resp.status_code == 200
@@ -439,7 +439,7 @@ class TestDriverInstructionAck:
     def test_ack_writes_event(
         self, client, db_session, test_org, test_driver
     ):
-        instruction_set = _seed_instruction_set(
+        instruction_set = seed_instruction_set(
             db_session, test_org.id, "default", require_ack=True
         )
 

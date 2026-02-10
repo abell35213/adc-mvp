@@ -59,6 +59,7 @@ def _get_current_driver(db: Session = Depends(get_db)):
 def _resolve_vehicle_for_driver(
     body: DriverIncidentInitiateRequest, driver: Driver, db: Session
 ):
+    """Resolve the driver vehicle based on last assignment or QR token."""
     if body.vehicle_strategy == "last_assigned":
         assignment = (
             db.query(DriverVehicleAssignment)
@@ -100,6 +101,7 @@ def _resolve_vehicle_for_driver(
 
 
 def _select_instruction_set(db: Session, org_id: uuid.UUID):
+    """Select the highest-priority instruction set (company > insurer > default)."""
     for scope in ("company", "insurer", "default"):
         instruction_set = (
             db.query(DriverInstructionSet)
@@ -128,6 +130,7 @@ def _instruction_steps(db: Session, instruction_set_id: uuid.UUID):
 
 
 def _evidence_capture_state(events: list[Event], incident_status: str):
+    """Derive a simplified evidence capture state for driver status responses."""
     event_types = {event.event_type for event in events}
     if SystemEventType.EVIDENCE_CAPTURE_FAILED.value in event_types:
         return "failed"
@@ -277,8 +280,8 @@ def initiate_incident(
     db.commit()
 
     str_id = str(incident.incident_id)
-    capture_dashcam.delay(str_id, "", "")
-    capture_telematics_bundle.delay(str_id, "", "")
+    capture_dashcam.delay(str_id, body.window_start, body.window_end)
+    capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
     notify_safety.delay(str_id)
 
     return DriverIncidentInitiateResponse(
@@ -379,14 +382,15 @@ def driver_incident_status(
         SystemEventType.ARTIFACT_RECORDED.value,
         SystemEventType.ARTIFACT_HASHED.value,
     }
-    evidence_events = [e for e in events if e.event_type in evidence_event_types]
+    evidence_events = [
+        e
+        for e in events
+        if e.event_type in evidence_event_types and e.occurred_at_utc is not None
+    ]
     last_evidence_update = None
     if evidence_events:
-        latest_event = max(
-            evidence_events, key=lambda e: e.occurred_at_utc or ""
-        )
-        if latest_event.occurred_at_utc:
-            last_evidence_update = latest_event.occurred_at_utc.isoformat()
+        latest_event = max(evidence_events, key=lambda e: e.occurred_at_utc)
+        last_evidence_update = latest_event.occurred_at_utc.isoformat()
 
     return DriverIncidentStatusResponse(
         incident_id=incident.incident_id,

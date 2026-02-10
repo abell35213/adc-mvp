@@ -72,7 +72,9 @@ def _emit(db, incident_id, event_type, payload=None):
     soft_time_limit=600,
     time_limit=660,
 )
-def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
+def capture_dashcam(
+    self, incident_id: str, window_start: str | None, window_end: str | None
+):
     """Capture dashcam footage for an incident.
 
     Steps:
@@ -227,7 +229,7 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
     time_limit=360,
 )
 def capture_telematics_bundle(
-    self, incident_id: str, window_start: str, window_end: str
+    self, incident_id: str, window_start: str | None, window_end: str | None
 ):
     """Capture telematics bundle for an incident.
 
