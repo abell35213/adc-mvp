@@ -25,11 +25,7 @@ export default function OtpEntryScreen({ navigation, route }: Props) {
     setIsLoading(true);
     try {
       const response = await verifyOtp(phoneE164, otpCode.trim());
-      const token = response.token ?? response.access_token ?? response.jwt;
-      if (!token) {
-        throw new Error('OTP verified but no token returned.');
-      }
-      await setStoredToken(token);
+      await setStoredToken(response.access_token);
       navigation.reset({ index: 0, routes: [{ name: 'DriverHome' }] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to verify OTP.');

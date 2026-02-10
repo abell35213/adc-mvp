@@ -11,6 +11,7 @@ import { RootStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'QrScan'>;
 
 const QR_PREFIX = 'adc://vehicle/';
+const SUCCESS_MESSAGE_DURATION_MILLISECONDS = 900;
 
 export default function QrScanScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -44,7 +45,7 @@ export default function QrScanScreen({ navigation }: Props) {
     try {
       const response = await resolveQr(qrToken);
       setStatusMessage(`Resolved vehicle ${response.display_label}.`);
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), SUCCESS_MESSAGE_DURATION_MILLISECONDS);
     } catch (err) {
       setStatusMessage(
         err instanceof Error ? err.message : 'Failed to resolve vehicle.',

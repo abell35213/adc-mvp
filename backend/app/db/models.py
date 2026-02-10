@@ -180,6 +180,7 @@ class OtpChallenge(Base):
 
     challenge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     phone_e164 = Column(Text, nullable=False, index=True)
+    otp_code_hash = Column(Text, nullable=False)
     created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
     attempt_count = Column(Integer, nullable=False, default=0)

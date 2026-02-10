@@ -24,9 +24,7 @@ export type ResolveQrResponse = {
 };
 
 export type VerifyOtpResponse = {
-  token?: string;
-  access_token?: string;
-  jwt?: string;
+  access_token: string;
 };
 
 const request = async <T>(
