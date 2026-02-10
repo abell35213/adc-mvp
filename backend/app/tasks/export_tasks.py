@@ -13,22 +13,21 @@ from app.tasks.celery_app import celery_app
 logger = logging.getLogger(__name__)
 ALLOWED_ARTIFACT_EXTENSIONS = {"json", "csv", "mp4"}
 SAFE_ARTIFACT_TYPE_RE = re.compile(r"[^A-Za-z0-9_-]+")
-README_TEMPLATE = "\n".join([
-    "ADC Court Evidence Package",
-    "",
-    "Incident ID: {incident_id}",
-    "Export ID: {export_id}",
-    "Capture window (UTC, earliest start to latest end): {capture_start} to {capture_end}",
-    "",
-    "Hashes:",
-    "SHA-256 hashes are computed from the raw bytes of each artifact",
-    "at capture time and recorded in integrity_appendix.csv.",
-    "",
-    "Verification:",
-    "1. Compute the SHA-256 hash of a file (e.g., `sha256sum <file>`).",
-    "2. Compare the result with integrity_appendix.csv.",
-    "3. Matching hashes confirm the file integrity.",
-])
+README_TEMPLATE = """ADC Court Evidence Package
+
+Incident ID: {incident_id}
+Export ID: {export_id}
+Capture window (UTC, earliest start to latest end): {capture_start} to {capture_end}
+
+Hashes:
+SHA-256 hashes are computed from the raw bytes of each artifact
+at capture time and recorded in integrity_appendix.csv.
+
+Verification:
+1. Compute the SHA-256 hash of a file (e.g., `sha256sum <file>`).
+2. Compare the result with integrity_appendix.csv.
+3. Matching hashes confirm the file integrity.
+"""
 
 
 def _hash_bytes(data: bytes) -> str:
