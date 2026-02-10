@@ -17,6 +17,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.models import Artifact, Base, Event, Export, Incident, Org
+from app.domain.system_event_types import SystemEventType
+from app.tasks.notification_tasks import notify_safety_manager
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -716,9 +718,6 @@ class TestNotifySafetyManager:
         mock_get_db.return_value = db_session
         mock_send_sms.return_value = "SM123"
         mock_place_call.return_value = "CA123"
-
-        from app.domain.system_event_types import SystemEventType
-        from app.tasks.notification_tasks import notify_safety_manager
 
         result = notify_safety_manager(str(incident_with_org.incident_id))
 

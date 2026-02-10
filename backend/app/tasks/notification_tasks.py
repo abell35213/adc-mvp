@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import uuid as _uuid
 
+import httpx
+
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -94,8 +96,7 @@ def notify_safety_manager(self, incident_id: str):
         phone = org.safety_manager_phone
         if not phone:
             reason = (
-                "Safety manager phone number not configured. Please configure a phone number in "
-                "organization settings."
+                "Safety manager phone number not configured. Please configure a phone number in organization settings."
             )
             if org.sms_enabled:
                 _emit(
@@ -137,7 +138,7 @@ def notify_safety_manager(self, incident_id: str):
                         "sms_sid": sms_sid,
                     },
                 )
-            except Exception as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 _emit(
                     db,
                     inc_uuid,
@@ -162,7 +163,7 @@ def notify_safety_manager(self, incident_id: str):
                         "call_sid": call_sid,
                     },
                 )
-            except Exception as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 _emit(
                     db,
                     inc_uuid,
