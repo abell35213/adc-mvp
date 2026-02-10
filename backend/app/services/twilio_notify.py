@@ -80,7 +80,7 @@ def place_call(to: str, twiml_url_or_twiml: str) -> str:
     if stripped_value.startswith(("http://", "https://")):
         data["Url"] = stripped_value
     else:
-        data["Twiml"] = twiml_url_or_twiml
+        data["Twiml"] = stripped_value
     payload = _post_twilio("Calls.json", data)
     sid = payload.get("sid")
     if not sid:

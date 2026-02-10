@@ -47,14 +47,23 @@ def _validate_twilio_request(request: Request, params: dict[str, str]) -> None:
         )
 
 
+def _flatten_twilio_params(raw_params: dict[str, list[str]]) -> dict[str, str]:
+    params = {}
+    for key, values in raw_params.items():
+        if not values:
+            params[key] = ""
+        elif len(values) == 1:
+            params[key] = values[0]
+        else:
+            params[key] = ",".join(values)
+    return params
+
+
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request):
     body = await request.body()
     raw_params = parse_qs(body.decode(), keep_blank_values=True)
-    params = {
-        key: ",".join(values) if len(values) > 1 else (values[0] if values else "")
-        for key, values in raw_params.items()
-    }
+    params = _flatten_twilio_params(raw_params)
     _validate_twilio_request(request, params)
     return Response(
         content=build_voice_twiml(VOICE_MESSAGE),
