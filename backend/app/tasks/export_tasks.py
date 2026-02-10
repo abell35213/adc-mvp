@@ -105,7 +105,6 @@ def build_export(self, incident_id: str, export_id: str):
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
 
         exportable_artifacts = []
-        inventory_artifacts = []
         capture_starts = []
         capture_ends = []
         for artifact in artifacts:
@@ -116,12 +115,12 @@ def build_export(self, incident_id: str, export_id: str):
             if artifact.capture_window_end_utc:
                 capture_ends.append(artifact.capture_window_end_utc)
 
-            if artifact.status == "captured" and artifact.s3_key:
-                if extension in ALLOWED_ARTIFACT_EXTENSIONS:
-                    exportable_artifacts.append((artifact, filename))
-                    inventory_artifacts.append(artifact)
-                continue
-            inventory_artifacts.append(artifact)
+            if (
+                artifact.status == "captured"
+                and artifact.s3_key
+                and extension in ALLOWED_ARTIFACT_EXTENSIONS
+            ):
+                exportable_artifacts.append((artifact, filename))
 
         # 3. Generate Evidence Inventory CSV
         inv_buf = io.StringIO()
@@ -130,7 +129,7 @@ def build_export(self, incident_id: str, export_id: str):
             "artifact_id", "artifact_type", "status", "s3_key",
             "sha256", "byte_size",
         ])
-        for a in inventory_artifacts:
+        for a in artifacts:
             inv_writer.writerow([
                 str(a.artifact_id), a.artifact_type, a.status,
                 a.s3_key or "", a.sha256 or "", a.byte_size or "",
