@@ -266,7 +266,7 @@ class DriverInstructionStep(Base):
         nullable=False,
         index=True,
     )
-    order = Column("order", Integer, nullable=False)
+    step_order = Column("order", Integer, nullable=False, quote=True)
     title = Column(Text, nullable=False)
     body = Column(Text, nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)

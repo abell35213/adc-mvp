@@ -113,7 +113,7 @@ class TestDriverProtocolDefaults:
 
         step = DriverInstructionStep(
             instruction_set_id=instruction_set.instruction_set_id,
-            order=1,
+            step_order=1,
             title="Step 1",
             body="Do the thing.",
         )
