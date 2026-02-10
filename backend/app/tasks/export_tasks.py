@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import logging
+import re
 import uuid as _uuid
 import zipfile
 
@@ -11,6 +12,7 @@ from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 ALLOWED_ARTIFACT_EXTENSIONS = {"json", "csv", "mp4"}
+SAFE_ARTIFACT_TYPE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -49,6 +51,14 @@ def _artifact_extension(filename):
     if "." not in filename:
         return ""
     return filename.rsplit(".", 1)[-1].lower()
+
+
+def _safe_artifact_type(artifact_type):
+    if not artifact_type:
+        return "unknown"
+    sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type)
+    sanitized = sanitized.replace("..", "_").strip("._-")
+    return sanitized or "unknown"
 
 
 @celery_app.task(
@@ -173,15 +183,16 @@ def build_export(self, incident_id: str, export_id: str):
         capture_end = max(capture_ends) if capture_ends else None
         capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
         capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
+        capture_window_line = (
+            "Capture window (UTC, earliest start to latest end): "
+            f"{capture_start_str} to {capture_end_str}"
+        )
         readme_content = "\n".join([
             "ADC Court Evidence Package",
             "",
             f"Incident ID: {incident_id}",
             f"Export ID: {export_id}",
-            (
-                "Capture window (UTC, earliest start to latest end): "
-                f"{capture_start_str} to {capture_end_str}"
-            ),
+            capture_window_line,
             "",
             "Hashes:",
             "SHA-256 hashes are computed from the raw bytes of each artifact",
@@ -215,8 +226,7 @@ def build_export(self, incident_id: str, export_id: str):
             for artifact, filename in exportable_artifacts:
                 try:
                     artifact_data = s3.download(artifact.s3_key)
-                    artifact_type = artifact.artifact_type or "unknown"
-                    safe_artifact_type = artifact_type.replace("/", "_")
+                    safe_artifact_type = _safe_artifact_type(artifact.artifact_type)
                     zf.writestr(
                         (
                             f"{package_root}/artifacts/{safe_artifact_type}/"
