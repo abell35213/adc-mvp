@@ -55,3 +55,60 @@ def get_current_user(
             detail="User not found or inactive",
         )
     return user
+
+
+def get_current_driver(
+    request: Request,
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+):
+    """Decode a driver-scoped JWT and return the active Driver row."""
+    from app.db.repo.drivers import get_driver_by_id
+
+    token = None
+    if creds is not None:
+        token = creds.credentials
+    else:
+        token = request.cookies.get("access_token")
+
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    if payload.get("scope") != "driver":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a driver token",
+        )
+
+    driver_id = payload.get("sub")
+    if driver_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing subject",
+        )
+
+    try:
+        driver_uuid = uuid.UUID(driver_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid subject in token",
+        )
+
+    driver = get_driver_by_id(db, driver_uuid)
+    if driver is None or not driver.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Driver not found or inactive",
+        )
+    return driver
