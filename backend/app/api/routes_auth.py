@@ -6,9 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
-    LoginRequest, LoginResponse,
-    RegisterRequest, RegisterResponse,
-    MeResponse, LogoutResponse,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
+    MeResponse,
+    LogoutResponse,
 )
 from app.core.config import settings
 from app.core.deps import get_current_user
@@ -82,7 +85,9 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 def logout(response: Response, current_user: User = Depends(get_current_user)):
     # Stateless JWT — the client discards the token.
     # Clear the httpOnly cookie as well.
-    response.delete_cookie(key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax")
+    response.delete_cookie(
+        key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
+    )
     return LogoutResponse()
 
 

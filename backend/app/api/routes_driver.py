@@ -9,9 +9,17 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
+    DriverIncidentInitiateRequest,
+    DriverIncidentInitiateResponse,
+    DriverIncidentStatusResponse,
+    DriverInstructionAckRequest,
+    DriverInstructionAckResponse,
+    DriverInstructionSetResponse,
+    DriverInstructionStepResponse,
     DriverMeResponse,
     DriverOtpRequest,
     DriverOtpRequestResponse,
@@ -23,7 +31,18 @@ from app.api.schemas import (
 )
 from app.core.config import settings
 from app.core.security import create_access_token, decode_access_token
-from app.db.models import Driver, DriverVehicleAssignment, Event, Org, OtpChallenge, VehicleQrToken
+from app.db.models import (
+    Driver,
+    DriverInstructionSet,
+    DriverInstructionStep as DriverInstructionStepModel,
+    DriverVehicleAssignment,
+    Event,
+    Incident,
+    Org,
+    OtpChallenge,
+    VehicleQrToken,
+)
+from app.db.repo.incidents import create_incident, get_incident
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
@@ -219,7 +238,7 @@ def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db
         )
 
     challenge.attempt_count += 1
-    if _hash_otp_code(otp_code) != challenge.otp_code_hash:
+    if not hmac.compare_digest(_hash_otp_code(otp_code), challenge.otp_code_hash):
         if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
             challenge.status = "locked"
         db.commit()
@@ -322,6 +341,109 @@ def resolve_qr(
         adc_vehicle_id=token_row.adc_vehicle_id,
         display_label=token_row.adc_vehicle_id,
     )
+
+
+# ── Helper functions for incident / instruction endpoints ──────────
+
+
+def _resolve_vehicle_for_driver(
+    body: DriverIncidentInitiateRequest,
+    driver: Driver,
+    db: Session,
+) -> str:
+    """Resolve a vehicle ID from the request body using the chosen strategy."""
+    if body.vehicle_strategy == "qr":
+        if not body.qr_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="qr_token required for qr strategy",
+            )
+        token_row = (
+            db.query(VehicleQrToken)
+            .filter(
+                VehicleQrToken.qr_token == body.qr_token,
+                VehicleQrToken.status == "active",
+                VehicleQrToken.org_id == driver.org_id,
+            )
+            .first()
+        )
+        if token_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="QR token not found or inactive",
+            )
+        return token_row.adc_vehicle_id
+
+    # Default: last_assigned — find the driver's current vehicle assignment
+    assignment = (
+        db.query(DriverVehicleAssignment)
+        .filter(
+            DriverVehicleAssignment.driver_id == driver.driver_id,
+            DriverVehicleAssignment.unassigned_at_utc.is_(None),
+        )
+        .first()
+    )
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active vehicle assignment for driver",
+        )
+    return assignment.adc_vehicle_id
+
+
+_INSTRUCTION_SCOPE_PRIORITY = ["company", "insurer", "default"]
+
+
+def _select_instruction_set(
+    db: Session,
+    org_id: uuid.UUID,
+) -> DriverInstructionSet | None:
+    """Return the highest-priority instruction set for the org."""
+    for scope in _INSTRUCTION_SCOPE_PRIORITY:
+        instruction_set = (
+            db.query(DriverInstructionSet)
+            .filter(
+                DriverInstructionSet.org_id == org_id,
+                DriverInstructionSet.scope == scope,
+            )
+            .first()
+        )
+        if instruction_set is not None:
+            return instruction_set
+    return None
+
+
+def _instruction_steps(
+    db: Session,
+    instruction_set_id: uuid.UUID,
+) -> list:
+    """Return ordered instruction steps for the given set."""
+    return (
+        db.query(DriverInstructionStepModel)
+        .filter(
+            DriverInstructionStepModel.instruction_set_id == instruction_set_id,
+        )
+        .order_by(DriverInstructionStepModel.step_order)
+        .all()
+    )
+
+
+def _evidence_capture_state(events: list, incident_status: str) -> str:
+    """Derive the evidence capture state from incident events."""
+    event_types = {e.event_type for e in events}
+    if SystemEventType.EVIDENCE_CAPTURE_FAILED.value in event_types:
+        return "failed"
+    if SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED.value in event_types:
+        return "complete"
+    if SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED.value in event_types:
+        return "in_progress"
+    if SystemEventType.EVIDENCE_CAPTURE_REQUESTED.value in event_types:
+        return "requested"
+    if SystemEventType.EVIDENCE_LOCKDOWN_STARTED.value in event_types:
+        return "lockdown"
+    if incident_status == "closed":
+        return "closed"
+    return "pending"
 
 
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)

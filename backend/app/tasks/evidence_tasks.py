@@ -98,16 +98,26 @@ def capture_dashcam(
     try:
         org_id = _get_org_id(db, inc_uuid)
         # 1. Emit EVIDENCE_CAPTURE_REQUESTED
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_REQUESTED, {
-            "type": "dashcam",
-            "window_start": window_start,
-            "window_end": window_end,
-        })
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED, {
-            "type": "dashcam",
-            "window_start": window_start,
-            "window_end": window_end,
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_REQUESTED,
+            {
+                "type": "dashcam",
+                "window_start": window_start,
+                "window_end": window_end,
+            },
+        )
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED,
+            {
+                "type": "dashcam",
+                "window_start": window_start,
+                "window_end": window_end,
+            },
+        )
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
@@ -143,18 +153,28 @@ def capture_dashcam(
                 sha = _hash_bytes(video_bytes)
 
                 # 3c. Emit ARTIFACT_RECORDED
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": artifact_type,
-                    "stream": stream_label,
-                    "s3_key": s3_key,
-                    "status": "captured",
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": artifact_type,
+                        "stream": stream_label,
+                        "s3_key": s3_key,
+                        "status": "captured",
+                    },
+                )
 
                 # 3d. Emit ARTIFACT_HASHED
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_HASHED, {
-                    "artifact_type": artifact_type,
-                    "sha256": sha,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_HASHED,
+                    {
+                        "artifact_type": artifact_type,
+                        "sha256": sha,
+                    },
+                )
 
                 # 3e. Insert artifact row
                 create_artifact(
@@ -176,15 +196,22 @@ def capture_dashcam(
                 reason = str(stream_exc)
                 logger.warning(
                     "Dashcam stream %s unavailable for incident %s: %s",
-                    stream_label, incident_id, reason,
+                    stream_label,
+                    incident_id,
+                    reason,
                 )
 
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": artifact_type,
-                    "stream": stream_label,
-                    "status": "unavailable",
-                    "reason": reason,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": artifact_type,
+                        "stream": stream_label,
+                        "status": "unavailable",
+                        "reason": reason,
+                    },
+                )
 
                 create_artifact(
                     db,
@@ -198,18 +225,28 @@ def capture_dashcam(
                 )
 
         # 4. Emit EVIDENCE_CAPTURE_SUCCEEDED
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED, {
-            "type": "dashcam",
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            {
+                "type": "dashcam",
+            },
+        )
 
         return {"incident_id": incident_id, "type": "dashcam", "status": "captured"}
 
     except Exception as exc:
         logger.exception("Dashcam capture failed for incident %s", incident_id)
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_FAILED, {
-            "type": "dashcam",
-            "reason": str(exc),
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_FAILED,
+            {
+                "type": "dashcam",
+                "reason": str(exc),
+            },
+        )
         raise
 
     finally:
@@ -265,16 +302,26 @@ def capture_telematics_bundle(
 
     try:
         org_id = _get_org_id(db, inc_uuid)
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_REQUESTED, {
-            "type": "telematics",
-            "window_start": window_start,
-            "window_end": window_end,
-        })
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED, {
-            "type": "telematics",
-            "window_start": window_start,
-            "window_end": window_end,
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_REQUESTED,
+            {
+                "type": "telematics",
+                "window_start": window_start,
+                "window_end": window_end,
+            },
+        )
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED,
+            {
+                "type": "telematics",
+                "window_start": window_start,
+                "window_end": window_end,
+            },
+        )
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
@@ -341,17 +388,27 @@ def capture_telematics_bundle(
                 s3.put_bytes(json_key, json_bytes)
                 json_sha = _hash_bytes(json_bytes)
 
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "json",
-                    "s3_key": json_key,
-                    "status": "captured",
-                })
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_HASHED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "json",
-                    "sha256": json_sha,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "json",
+                        "s3_key": json_key,
+                        "status": "captured",
+                    },
+                )
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_HASHED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "json",
+                        "sha256": json_sha,
+                    },
+                )
 
                 create_artifact(
                     db,
@@ -388,17 +445,27 @@ def capture_telematics_bundle(
                 s3.put_bytes(csv_key, csv_bytes)
                 csv_sha = _hash_bytes(csv_bytes)
 
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "csv",
-                    "s3_key": csv_key,
-                    "status": "captured",
-                })
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_HASHED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "csv",
-                    "sha256": csv_sha,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "csv",
+                        "s3_key": csv_key,
+                        "status": "captured",
+                    },
+                )
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_HASHED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "csv",
+                        "sha256": csv_sha,
+                    },
+                )
 
                 create_artifact(
                     db,
@@ -430,17 +497,27 @@ def capture_telematics_bundle(
                 s3.put_bytes(pdf_key, pdf_bytes)
                 pdf_sha = _hash_bytes(pdf_bytes)
 
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "pdf",
-                    "s3_key": pdf_key,
-                    "status": "captured",
-                })
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_HASHED, {
-                    "artifact_type": spec["artifact_type"],
-                    "format": "pdf",
-                    "sha256": pdf_sha,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "pdf",
+                        "s3_key": pdf_key,
+                        "status": "captured",
+                    },
+                )
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_HASHED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "format": "pdf",
+                        "sha256": pdf_sha,
+                    },
+                )
 
                 create_artifact(
                     db,
@@ -460,14 +537,21 @@ def capture_telematics_bundle(
                 reason = str(ds_exc)
                 logger.warning(
                     "Telematics dataset %s unavailable for incident %s: %s",
-                    dataset_name, incident_id, reason,
+                    dataset_name,
+                    incident_id,
+                    reason,
                 )
 
-                _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
-                    "artifact_type": spec["artifact_type"],
-                    "status": "unavailable",
-                    "reason": reason,
-                })
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.ARTIFACT_RECORDED,
+                    {
+                        "artifact_type": spec["artifact_type"],
+                        "status": "unavailable",
+                        "reason": reason,
+                    },
+                )
 
                 create_artifact(
                     db,
@@ -480,18 +564,28 @@ def capture_telematics_bundle(
                     unavailable_reason_detail=reason,
                 )
 
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED, {
-            "type": "telematics",
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            {
+                "type": "telematics",
+            },
+        )
 
         return {"incident_id": incident_id, "type": "telematics", "status": "captured"}
 
     except Exception as exc:
         logger.exception("Telematics capture failed for incident %s", incident_id)
-        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_FAILED, {
-            "type": "telematics",
-            "reason": str(exc),
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_FAILED,
+            {
+                "type": "telematics",
+                "reason": str(exc),
+            },
+        )
         raise
 
     finally:

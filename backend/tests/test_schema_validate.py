@@ -2,7 +2,11 @@
 
 import pytest
 
-from app.services.schema_validate import SCHEMAS_DIR, _resolve_schema_path, validate_payload
+from app.services.schema_validate import (
+    SCHEMAS_DIR,
+    _resolve_schema_path,
+    validate_payload,
+)
 
 
 # ── _resolve_schema_path ────────────────────────────────────────────

@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 21 system event types."""
-        assert len(SystemEventType) == 21
+        """There must be exactly 23 system event types."""
+        assert len(SystemEventType) == 23
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -20,8 +20,7 @@ class TestSystemEventType:
 
     def test_incident_protocol_initiated(self):
         assert (
-            SystemEventType.INCIDENT_PROTOCOL_INITIATED
-            == "incident_protocol_initiated"
+            SystemEventType.INCIDENT_PROTOCOL_INITIATED == "incident_protocol_initiated"
         )
 
     def test_incident_started(self):
@@ -36,13 +35,19 @@ class TestSystemEventType:
     # ── Evidence capture tasks ──────────────────────────────────────
 
     def test_evidence_capture_requested(self):
-        assert SystemEventType.EVIDENCE_CAPTURE_REQUESTED == "evidence_capture_requested"
+        assert (
+            SystemEventType.EVIDENCE_CAPTURE_REQUESTED == "evidence_capture_requested"
+        )
 
     def test_evidence_capture_attempted(self):
-        assert SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED == "evidence_capture_attempted"
+        assert (
+            SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED == "evidence_capture_attempted"
+        )
 
     def test_evidence_capture_succeeded(self):
-        assert SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED == "evidence_capture_succeeded"
+        assert (
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED == "evidence_capture_succeeded"
+        )
 
     def test_evidence_capture_failed(self):
         assert SystemEventType.EVIDENCE_CAPTURE_FAILED == "evidence_capture_failed"
@@ -84,10 +89,14 @@ class TestSystemEventType:
         assert SystemEventType.SAFETY_MANAGER_SMS_FAILED == "safety_manager_sms_failed"
 
     def test_safety_manager_call_placed(self):
-        assert SystemEventType.SAFETY_MANAGER_CALL_PLACED == "safety_manager_call_placed"
+        assert (
+            SystemEventType.SAFETY_MANAGER_CALL_PLACED == "safety_manager_call_placed"
+        )
 
     def test_safety_manager_call_failed(self):
-        assert SystemEventType.SAFETY_MANAGER_CALL_FAILED == "safety_manager_call_failed"
+        assert (
+            SystemEventType.SAFETY_MANAGER_CALL_FAILED == "safety_manager_call_failed"
+        )
 
     # ── Grouping helpers ────────────────────────────────────────────
 

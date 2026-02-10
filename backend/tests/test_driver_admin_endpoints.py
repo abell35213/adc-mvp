@@ -1,7 +1,6 @@
 """Tests for driver and admin endpoints."""
 
 import hashlib
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -96,7 +95,9 @@ def non_admin_user(db_session, test_org):
 
 @pytest.fixture()
 def non_admin_headers(non_admin_user):
-    token = create_access_token({"sub": str(non_admin_user.id), "role": non_admin_user.role})
+    token = create_access_token(
+        {"sub": str(non_admin_user.id), "role": non_admin_user.role}
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -111,6 +112,12 @@ def test_driver(db_session, test_org):
     db_session.commit()
     db_session.refresh(driver)
     return driver
+
+
+@pytest.fixture()
+def driver_headers(test_driver):
+    token = create_access_token({"sub": str(test_driver.driver_id), "role": "driver"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture()
@@ -159,9 +166,9 @@ def client(db_session):
 
 class TestDriverMe:
     def test_driver_me_returns_profile_with_vehicle(
-        self, client, test_driver, test_assignment
+        self, client, test_driver, driver_headers, test_assignment
     ):
-        resp = client.get("/driver/me")
+        resp = client.get("/driver/me", headers=driver_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["driver_id"] == str(test_driver.driver_id)
@@ -171,9 +178,9 @@ class TestDriverMe:
         assert data["vehicle"]["adc_vehicle_id"] == "veh-100"
 
     def test_driver_me_returns_null_vehicle_when_no_assignment(
-        self, client, test_driver
+        self, client, test_driver, driver_headers
     ):
-        resp = client.get("/driver/me")
+        resp = client.get("/driver/me", headers=driver_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["vehicle"] is None
@@ -187,24 +194,32 @@ class TestDriverMe:
 
 
 class TestResolveQr:
-    def test_resolve_qr_returns_vehicle(self, client, active_qr_token):
+    def test_resolve_qr_returns_vehicle(
+        self, client, test_driver, driver_headers, active_qr_token
+    ):
         resp = client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "test-token-abc123"},
+            headers=driver_headers,
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["adc_vehicle_id"] == "veh-200"
         assert "display_label" in data
 
-    def test_resolve_qr_emits_event(self, client, db_session, active_qr_token):
+    def test_resolve_qr_emits_event(
+        self, client, db_session, test_driver, driver_headers, active_qr_token
+    ):
         client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "test-token-abc123"},
+            headers=driver_headers,
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_vehicle_resolved"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_vehicle_resolved")
+            .all()
+        )
         assert len(events) == 1
         payload = events[0].payload
         expected_hash = hashlib.sha256(b"test-token-abc123").hexdigest()
@@ -212,21 +227,26 @@ class TestResolveQr:
         assert payload["adc_vehicle_id"] == "veh-200"
 
     def test_resolve_qr_stores_hash_not_raw_token(
-        self, client, db_session, active_qr_token
+        self, client, db_session, test_driver, driver_headers, active_qr_token
     ):
         client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "test-token-abc123"},
+            headers=driver_headers,
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_vehicle_resolved"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_vehicle_resolved")
+            .all()
+        )
         assert len(events) == 1
         payload = events[0].payload
         # Must NOT contain the raw token
         assert "test-token-abc123" not in str(payload)
 
-    def test_resolve_qr_inactive_token_returns_404(self, client, db_session, test_org):
+    def test_resolve_qr_inactive_token_returns_404(
+        self, client, db_session, test_org, test_driver, driver_headers
+    ):
         revoked = VehicleQrToken(
             qr_token="revoked-token",
             org_id=test_org.id,
@@ -238,13 +258,17 @@ class TestResolveQr:
         resp = client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "revoked-token"},
+            headers=driver_headers,
         )
         assert resp.status_code == 404
 
-    def test_resolve_qr_unknown_token_returns_404(self, client):
+    def test_resolve_qr_unknown_token_returns_404(
+        self, client, test_driver, driver_headers
+    ):
         resp = client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "nonexistent-token"},
+            headers=driver_headers,
         )
         assert resp.status_code == 404
 
@@ -289,9 +313,11 @@ class TestRotateQr:
             "/admin/vehicles/veh-700/qr/rotate",
             headers=admin_headers,
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "vehicle_qr_rotated"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "vehicle_qr_rotated")
+            .all()
+        )
         assert len(events) == 1
         assert events[0].payload["adc_vehicle_id"] == "veh-700"
         assert "new_token_sha256" in events[0].payload
@@ -323,6 +349,7 @@ class TestDriverInitiate:
         client,
         db_session,
         test_driver,
+        driver_headers,
         test_assignment,
     ):
         mock_dash.delay = MagicMock()
@@ -332,6 +359,7 @@ class TestDriverInitiate:
         resp = client.post(
             "/driver/incidents/initiate",
             json={"vehicle_strategy": "last_assigned"},
+            headers=driver_headers,
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -342,9 +370,11 @@ class TestDriverInitiate:
         assert incident is not None
         assert incident.adc_vehicle_id == "veh-100"
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = {event.event_type for event in events}
         assert "incident_protocol_initiated" in event_types
         assert "evidence_lockdown_started" in event_types
@@ -360,6 +390,7 @@ class TestDriverInitiate:
         client,
         db_session,
         test_driver,
+        driver_headers,
         active_qr_token,
     ):
         mock_dash.delay = MagicMock()
@@ -369,6 +400,7 @@ class TestDriverInitiate:
         resp = client.post(
             "/driver/incidents/initiate",
             json={"vehicle_strategy": "qr", "qr_token": "test-token-abc123"},
+            headers=driver_headers,
         )
         assert resp.status_code == 200
         incident = db_session.query(Incident).first()
@@ -397,35 +429,35 @@ def seed_instruction_set(db_session, org_id, scope, require_ack=False):
 
 class TestDriverInstructions:
     def test_active_instructions_prefers_company(
-        self, client, db_session, test_org, test_driver
+        self, client, db_session, test_org, test_driver, driver_headers
     ):
         seed_instruction_set(db_session, test_org.id, "default")
         company_set = seed_instruction_set(db_session, test_org.id, "company")
 
-        resp = client.get("/driver/instructions/active")
+        resp = client.get("/driver/instructions/active", headers=driver_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["instruction_set_id"] == str(company_set.instruction_set_id)
         assert data["scope"] == "company"
 
     def test_active_instructions_prefers_insurer_over_default(
-        self, client, db_session, test_org, test_driver
+        self, client, db_session, test_org, test_driver, driver_headers
     ):
         seed_instruction_set(db_session, test_org.id, "default")
         insurer_set = seed_instruction_set(db_session, test_org.id, "insurer")
 
-        resp = client.get("/driver/instructions/active")
+        resp = client.get("/driver/instructions/active", headers=driver_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["instruction_set_id"] == str(insurer_set.instruction_set_id)
         assert data["scope"] == "insurer"
 
     def test_active_instructions_falls_back_to_default(
-        self, client, db_session, test_org, test_driver
+        self, client, db_session, test_org, test_driver, driver_headers
     ):
         default_set = seed_instruction_set(db_session, test_org.id, "default")
 
-        resp = client.get("/driver/instructions/active")
+        resp = client.get("/driver/instructions/active", headers=driver_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["instruction_set_id"] == str(default_set.instruction_set_id)
@@ -437,7 +469,7 @@ class TestDriverInstructions:
 
 class TestDriverInstructionAck:
     def test_ack_writes_event(
-        self, client, db_session, test_org, test_driver
+        self, client, db_session, test_org, test_driver, driver_headers
     ):
         instruction_set = seed_instruction_set(
             db_session, test_org.id, "default", require_ack=True
@@ -446,16 +478,18 @@ class TestDriverInstructionAck:
         resp = client.post(
             "/driver/instructions/ack",
             json={"instruction_set_id": str(instruction_set.instruction_set_id)},
+            headers=driver_headers,
         )
         assert resp.status_code == 200
 
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_instruction_acknowledged"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_instruction_acknowledged")
+            .all()
+        )
         assert len(events) == 1
-        assert (
-            events[0].payload["instruction_set_id"]
-            == str(instruction_set.instruction_set_id)
+        assert events[0].payload["instruction_set_id"] == str(
+            instruction_set.instruction_set_id
         )
 
 

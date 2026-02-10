@@ -18,10 +18,8 @@ from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.models import OtpChallenge
 from app.db.repo.drivers import (
-    OTP_EXPIRY_SECONDS,
     create_otp_challenge,
     get_driver_by_phone,
-    get_otp_challenge,
     increment_otp_attempts,
     mark_otp_verified,
 )
@@ -67,7 +65,9 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
 
         twilio_sid = twilio_verify.start_verification(phone_e164)
     except Exception:
-        logger.warning("Twilio verify start failed for phone hash=%s", _phone_hash(phone_e164))
+        logger.warning(
+            "Twilio verify start failed for phone hash=%s", _phone_hash(phone_e164)
+        )
 
     challenge = create_otp_challenge(db, phone_e164, twilio_sid=twilio_sid)
 
@@ -169,11 +169,13 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         )
     mark_otp_verified(db, challenge)
 
-    token = create_access_token({
-        "sub": str(driver.driver_id),
-        "scope": "driver",
-        "phone": driver.phone_e164,
-    })
+    token = create_access_token(
+        {
+            "sub": str(driver.driver_id),
+            "scope": "driver",
+            "phone": driver.phone_e164,
+        }
+    )
 
     logger.info(
         "DRIVER_OTP_VERIFIED phone_hash=%s driver=%s",

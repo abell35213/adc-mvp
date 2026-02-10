@@ -15,13 +15,14 @@ from app.db.models import Base, Org, Incident, Event, Artifact, Export
 def db():
     """Create an in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
+
     # Enable foreign key constraints in SQLite
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
-    
+
     Base.metadata.create_all(engine)
     session = Session(engine)
     yield session
@@ -43,7 +44,7 @@ class TestForeignKeyConstraints:
             actor_id="test",
         )
         db.add(event)
-        
+
         with pytest.raises(IntegrityError):
             db.commit()
 
@@ -58,7 +59,7 @@ class TestForeignKeyConstraints:
             status="pending",
         )
         db.add(artifact)
-        
+
         with pytest.raises(IntegrityError):
             db.commit()
 
@@ -72,7 +73,7 @@ class TestForeignKeyConstraints:
             status="requested",
         )
         db.add(export)
-        
+
         with pytest.raises(IntegrityError):
             db.commit()
 
@@ -101,7 +102,7 @@ class TestForeignKeyConstraints:
         )
         db.add_all([event, artifact, export])
         db.commit()
-        
+
         assert event.incident_id == incident.incident_id
         assert artifact.incident_id == incident.incident_id
         assert export.incident_id == incident.incident_id
@@ -246,7 +247,7 @@ class TestDefaultValues:
         org = Org(name="Test Org")
         db.add(org)
         db.commit()
-        
+
         incident = Incident(org_id=org.id)
         db.add(incident)
         db.commit()

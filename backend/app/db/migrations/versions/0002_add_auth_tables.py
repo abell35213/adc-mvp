@@ -40,7 +40,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
 
@@ -64,7 +66,9 @@ def upgrade() -> None:
     # --- incidents.org_id ---
     op.add_column(
         "incidents",
-        sa.Column("org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True),
+        sa.Column(
+            "org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True
+        ),
     )
     op.create_index("ix_incidents_org_id", "incidents", ["org_id"])
 

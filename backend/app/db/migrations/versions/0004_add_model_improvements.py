@@ -21,28 +21,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Create enum types
-    op.execute("CREATE TYPE incident_status AS ENUM ('open', 'evidence_capturing', 'closed')")
-    op.execute("CREATE TYPE artifact_status AS ENUM ('pending', 'captured', 'unavailable')")
-    op.execute("CREATE TYPE export_status AS ENUM ('requested', 'processing', 'ready', 'failed')")
+    op.execute(
+        "CREATE TYPE incident_status AS ENUM ('open', 'evidence_capturing', 'closed')"
+    )
+    op.execute(
+        "CREATE TYPE artifact_status AS ENUM ('pending', 'captured', 'unavailable')"
+    )
+    op.execute(
+        "CREATE TYPE export_status AS ENUM ('requested', 'processing', 'ready', 'failed')"
+    )
 
     # --- Update Incident.status column to use enum ---
     # Store existing status values temporarily
-    op.execute("ALTER TABLE incidents ALTER COLUMN status TYPE incident_status USING status::incident_status")
+    op.execute(
+        "ALTER TABLE incidents ALTER COLUMN status TYPE incident_status USING status::incident_status"
+    )
 
     # --- Update Artifact.status column to use enum ---
-    op.execute("ALTER TABLE artifacts ALTER COLUMN status TYPE artifact_status USING status::artifact_status")
+    op.execute(
+        "ALTER TABLE artifacts ALTER COLUMN status TYPE artifact_status USING status::artifact_status"
+    )
 
     # --- Update Export.status column to use enum ---
-    op.execute("ALTER TABLE exports ALTER COLUMN status TYPE export_status USING status::export_status")
+    op.execute(
+        "ALTER TABLE exports ALTER COLUMN status TYPE export_status USING status::export_status"
+    )
 
     # --- Add foreign key constraints ---
     # Event.incident_id -> Incident.incident_id
     op.create_foreign_key(
-        "fk_events_incident_id",
-        "events",
-        "incidents",
-        ["incident_id"],
-        ["incident_id"]
+        "fk_events_incident_id", "events", "incidents", ["incident_id"], ["incident_id"]
     )
 
     # Artifact.incident_id -> Incident.incident_id
@@ -51,7 +59,7 @@ def upgrade() -> None:
         "artifacts",
         "incidents",
         ["incident_id"],
-        ["incident_id"]
+        ["incident_id"],
     )
 
     # Export.incident_id -> Incident.incident_id
@@ -60,28 +68,44 @@ def upgrade() -> None:
         "exports",
         "incidents",
         ["incident_id"],
-        ["incident_id"]
+        ["incident_id"],
     )
 
     # --- Add created_at_utc to Event and Artifact ---
     op.add_column(
         "events",
-        sa.Column("created_at_utc", TIMESTAMP(timezone=True), nullable=False, server_default=sa.func.now())
+        sa.Column(
+            "created_at_utc",
+            TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
     )
 
     op.add_column(
         "artifacts",
-        sa.Column("created_at_utc", TIMESTAMP(timezone=True), nullable=False, server_default=sa.func.now())
+        sa.Column(
+            "created_at_utc",
+            TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
     )
 
     # --- Add composite indexes ---
     # Event indexes
     op.create_index("ix_events_org_incident", "events", ["org_id", "incident_id"])
-    op.create_index("ix_events_org_type_occurred", "events", ["org_id", "event_type", "occurred_at_utc"])
+    op.create_index(
+        "ix_events_org_type_occurred",
+        "events",
+        ["org_id", "event_type", "occurred_at_utc"],
+    )
 
     # Artifact indexes
     op.create_index("ix_artifacts_org_incident", "artifacts", ["org_id", "incident_id"])
-    op.create_index("ix_artifacts_incident_type", "artifacts", ["incident_id", "artifact_type"])
+    op.create_index(
+        "ix_artifacts_incident_type", "artifacts", ["incident_id", "artifact_type"]
+    )
 
     # Export indexes
     op.create_index("ix_exports_org_incident", "exports", ["org_id", "incident_id"])

@@ -130,9 +130,14 @@ def build_export(self, incident_id: str, export_id: str):
             for e in existing_events
         )
         if not already_requested:
-            _emit(db, inc_uuid, SystemEventType.EXPORT_REQUESTED, {
-                "export_id": export_id,
-            })
+            _emit(
+                db,
+                inc_uuid,
+                SystemEventType.EXPORT_REQUESTED,
+                {
+                    "export_id": export_id,
+                },
+            )
 
         # 2. Read artifacts and events
         artifacts = get_artifacts_by_incident(db, inc_uuid)
@@ -155,15 +160,27 @@ def build_export(self, incident_id: str, export_id: str):
         # 3. Generate Evidence Inventory CSV
         inv_buf = io.StringIO()
         inv_writer = csv.writer(inv_buf)
-        inv_writer.writerow([
-            "artifact_id", "artifact_type", "status", "s3_key",
-            "sha256", "byte_size",
-        ])
+        inv_writer.writerow(
+            [
+                "artifact_id",
+                "artifact_type",
+                "status",
+                "s3_key",
+                "sha256",
+                "byte_size",
+            ]
+        )
         for a in artifacts:
-            inv_writer.writerow([
-                str(a.artifact_id), a.artifact_type, a.status,
-                a.s3_key or "", a.sha256 or "", a.byte_size or "",
-            ])
+            inv_writer.writerow(
+                [
+                    str(a.artifact_id),
+                    a.artifact_type,
+                    a.status,
+                    a.s3_key or "",
+                    a.sha256 or "",
+                    a.byte_size or "",
+                ]
+            )
         inventory_csv_bytes = inv_buf.getvalue().encode()
 
         # 4. Generate Chain-of-Custody CSV (derived from events timeline)
@@ -171,32 +188,49 @@ def build_export(self, incident_id: str, export_id: str):
 
         coc_buf = io.StringIO()
         coc_writer = csv.writer(coc_buf)
-        coc_writer.writerow([
-            "event_id", "event_type", "occurred_at_utc",
-            "actor_type", "actor_id",
-        ])
+        coc_writer.writerow(
+            [
+                "event_id",
+                "event_type",
+                "occurred_at_utc",
+                "actor_type",
+                "actor_id",
+            ]
+        )
         for ev in sorted_events:
-            coc_writer.writerow([
-                str(ev.id), ev.event_type,
-                str(ev.occurred_at_utc),
-                ev.actor_type, ev.actor_id,
-            ])
+            coc_writer.writerow(
+                [
+                    str(ev.id),
+                    ev.event_type,
+                    str(ev.occurred_at_utc),
+                    ev.actor_type,
+                    ev.actor_id,
+                ]
+            )
         coc_csv_bytes = coc_buf.getvalue().encode()
 
         # 5. Generate Integrity Appendix CSV + README
         appendix_buf = io.StringIO()
         appendix_writer = csv.writer(appendix_buf)
-        appendix_writer.writerow([
-            "artifact_id", "artifact_type", "file_name", "sha256", "byte_size",
-        ])
+        appendix_writer.writerow(
+            [
+                "artifact_id",
+                "artifact_type",
+                "file_name",
+                "sha256",
+                "byte_size",
+            ]
+        )
         for artifact, filename in exportable_artifacts:
-            appendix_writer.writerow([
-                str(artifact.artifact_id),
-                artifact.artifact_type,
-                filename,
-                artifact.sha256 or "",
-                artifact.byte_size or "",
-            ])
+            appendix_writer.writerow(
+                [
+                    str(artifact.artifact_id),
+                    artifact.artifact_type,
+                    filename,
+                    artifact.sha256 or "",
+                    artifact.byte_size or "",
+                ]
+            )
         appendix_csv_bytes = appendix_buf.getvalue().encode()
 
         capture_start = None
@@ -210,7 +244,9 @@ def build_export(self, incident_id: str, export_id: str):
                 capture_start = start_time
             if end_time is not None and (capture_end is None or end_time > capture_end):
                 capture_end = end_time
-        capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
+        capture_start_str = (
+            capture_start.isoformat() if capture_start else "Unavailable"
+        )
         capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
         readme_content = README_TEMPLATE.format(
             incident_id=incident_id,
@@ -243,10 +279,7 @@ def build_export(self, incident_id: str, export_id: str):
                     artifact_data = s3.download(artifact.s3_key)
                     safe_artifact_type = _safe_artifact_type(artifact.artifact_type)
                     zf.writestr(
-                        (
-                            f"{package_root}/artifacts/{safe_artifact_type}/"
-                            f"{filename}"
-                        ),
+                        (f"{package_root}/artifacts/{safe_artifact_type}/{filename}"),
                         artifact_data,
                     )
                 except Exception:
@@ -276,12 +309,17 @@ def build_export(self, incident_id: str, export_id: str):
         )
 
         # 9. Emit EXPORT_GENERATED
-        _emit(db, inc_uuid, SystemEventType.EXPORT_GENERATED, {
-            "export_id": export_id,
-            "s3_key": zip_key,
-            "sha256": _hash_bytes(zip_bytes),
-            "byte_size": len(zip_bytes),
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EXPORT_GENERATED,
+            {
+                "export_id": export_id,
+                "s3_key": zip_key,
+                "sha256": _hash_bytes(zip_bytes),
+                "byte_size": len(zip_bytes),
+            },
+        )
 
         return {
             "export_id": export_id,
@@ -291,9 +329,14 @@ def build_export(self, incident_id: str, export_id: str):
 
     except Exception:
         logger.exception("Export %s failed for incident %s", export_id, incident_id)
-        _emit(db, inc_uuid, SystemEventType.EXPORT_FAILED, {
-            "export_id": export_id,
-        })
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EXPORT_FAILED,
+            {
+                "export_id": export_id,
+            },
+        )
         raise
 
     finally:

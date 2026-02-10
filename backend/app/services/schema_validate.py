@@ -5,7 +5,9 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "contracts" / "schemas"
+SCHEMAS_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent / "contracts" / "schemas"
+)
 MAX_ERRORS_TO_DISPLAY = 10
 
 
@@ -19,8 +21,7 @@ def _error_sort_key(error):
         Tuple used to order errors consistently by path.
     """
     return tuple(
-        (0, part) if isinstance(part, int) else (1, str(part))
-        for part in error.path
+        (0, part) if isinstance(part, int) else (1, str(part)) for part in error.path
     )
 
 
@@ -33,10 +34,7 @@ def _format_error_path(path):
     Returns:
         JSONPath-like string starting at "$".
     """
-    parts = [
-        f"[{part}]" if isinstance(part, int) else f".{part}"
-        for part in path
-    ]
+    parts = [f"[{part}]" if isinstance(part, int) else f".{part}" for part in path]
     return "$" + "".join(parts)
 
 
@@ -50,9 +48,7 @@ def _resolve_schema_path(schema_name: str) -> Path:
         candidate = SCHEMAS_DIR / suffix
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(
-        f"Schema '{schema_name}' not found in {SCHEMAS_DIR}"
-    )
+    raise FileNotFoundError(f"Schema '{schema_name}' not found in {SCHEMAS_DIR}")
 
 
 def validate_payload(payload: dict, schema_name: str) -> bool:
