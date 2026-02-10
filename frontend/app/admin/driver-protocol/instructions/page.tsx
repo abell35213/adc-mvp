@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import {
@@ -49,7 +49,7 @@ export default function DriverProtocolInstructionsPage() {
     enabled: true,
   });
 
-  const loadInstructions = async () => {
+  const loadInstructions = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -63,11 +63,11 @@ export default function DriverProtocolInstructionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadInstructions();
-  }, []);
+  }, [loadInstructions]);
 
   const handleDragStart = (index: number) => (event: DragEvent) => {
     event.dataTransfer.effectAllowed = "move";

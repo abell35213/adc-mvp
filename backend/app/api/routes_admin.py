@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import secrets
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -94,7 +95,7 @@ def _normalize_instruction_scope(scope: str) -> str:
 
 
 def _get_or_create_instruction_set(
-    db: Session, org_id, scope: str
+    db: Session, org_id: uuid.UUID, scope: str
 ) -> DriverInstructionSet:
     instruction_set = (
         db.query(DriverInstructionSet)
