@@ -1,34 +1,243 @@
-"""Driver API routes — driver profile and QR vehicle resolution."""
+"""Driver API routes — driver auth, profile, and QR vehicle resolution."""
 
 import hashlib
+import hmac
 import logging
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.api.schemas import DriverMeResponse, ResolveQrRequest, ResolveQrResponse, VehicleInfo
-from app.db.models import Driver, DriverVehicleAssignment, Event, VehicleQrToken
+from app.api.schemas import (
+    DriverMeResponse,
+    DriverOtpRequest,
+    DriverOtpRequestResponse,
+    DriverOtpVerifyRequest,
+    DriverOtpVerifyResponse,
+    ResolveQrRequest,
+    ResolveQrResponse,
+    VehicleInfo,
+)
+from app.core.config import settings
+from app.core.security import create_access_token, decode_access_token
+from app.db.models import Driver, DriverVehicleAssignment, Event, Org, OtpChallenge, VehicleQrToken
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_bearer = HTTPBearer(auto_error=False)
+OTP_EXPIRATION_MINUTES = 10
+MAX_OTP_ATTEMPTS = 5
 
 
-def _get_current_driver(db: Session = Depends(get_db)):
-    """Placeholder dependency — returns the first active driver.
+def _generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
 
-    In production this would extract the authenticated driver identity
-    (e.g. from a JWT issued after OTP verification).
-    """
-    driver = db.query(Driver).filter(Driver.is_active.is_(True)).first()
-    if driver is None:
+
+def _hash_otp_code(code: str) -> str:
+    return hmac.new(
+        settings.OTP_HASH_PEPPER.encode(),
+        code.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _get_current_driver(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+):
+    """Decode driver JWT and return active driver."""
+    if creds is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Driver not authenticated",
         )
+
+    payload = decode_access_token(creds.credentials)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    driver_id = payload.get("sub")
+    if driver_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing subject",
+        )
+    try:
+        driver_uuid = uuid.UUID(driver_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token subject",
+        ) from exc
+
+    driver = (
+        db.query(Driver)
+        .filter(
+            Driver.driver_id == driver_uuid,
+            Driver.is_active.is_(True),
+        )
+        .first()
+    )
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Driver not found or inactive",
+        )
     return driver
+
+
+def _get_or_create_default_org(db: Session) -> Org:
+    org = db.query(Org).order_by(Org.name).first()
+    if org is None:
+        org = Org(name="Default")
+        db.add(org)
+        db.commit()
+        db.refresh(org)
+    return org
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+@router.post("/auth/request-otp", response_model=DriverOtpRequestResponse)
+def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
+    phone_e164 = body.phone_e164.strip()
+    if not phone_e164:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone number is required",
+        )
+
+    now = datetime.now(timezone.utc)
+    org = _get_or_create_default_org(db)
+    driver = db.query(Driver).filter(Driver.phone_e164 == phone_e164).first()
+    if driver is None:
+        driver = Driver(
+            org_id=org.id,
+            phone_e164=phone_e164,
+            display_name=phone_e164,
+        )
+        db.add(driver)
+        db.commit()
+        db.refresh(driver)
+
+    pending_query = db.query(OtpChallenge).filter(
+        OtpChallenge.phone_e164 == phone_e164,
+        OtpChallenge.status == "pending",
+    )
+    latest_pending = pending_query.order_by(OtpChallenge.created_at_utc.desc()).first()
+    if latest_pending is not None:
+        if _as_utc(latest_pending.expires_at_utc) < now:
+            latest_pending.status = "expired"
+            db.commit()
+        elif latest_pending.last_sent_at_utc is not None:
+            last_sent = _as_utc(latest_pending.last_sent_at_utc)
+            elapsed = (now - last_sent).total_seconds()
+            if elapsed < settings.OTP_RESEND_COOLDOWN_SECONDS:
+                retry_after = max(
+                    1,
+                    int(settings.OTP_RESEND_COOLDOWN_SECONDS - elapsed),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="OTP recently sent",
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+    pending = pending_query.all()
+    for challenge in pending:
+        challenge.status = "expired"
+
+    otp_code = _generate_otp_code()
+    otp = OtpChallenge(
+        phone_e164=phone_e164,
+        otp_code_hash=_hash_otp_code(otp_code),
+        expires_at_utc=now + timedelta(minutes=OTP_EXPIRATION_MINUTES),
+        last_sent_at_utc=now,
+    )
+    db.add(otp)
+    db.commit()
+
+    logger.info("OTP challenge requested for driver=%s", phone_e164)
+    return DriverOtpRequestResponse()
+
+
+@router.post("/auth/verify-otp", response_model=DriverOtpVerifyResponse)
+def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
+    phone_e164 = body.phone_e164.strip()
+    otp_code = body.otp_code.strip()
+    if not phone_e164 or not otp_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone number and OTP code are required",
+        )
+
+    challenge = (
+        db.query(OtpChallenge)
+        .filter(
+            OtpChallenge.phone_e164 == phone_e164,
+            OtpChallenge.status == "pending",
+        )
+        .order_by(OtpChallenge.created_at_utc.desc())
+        .first()
+    )
+    if challenge is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OTP challenge not found",
+        )
+
+    now = datetime.now(timezone.utc)
+    if _as_utc(challenge.expires_at_utc) < now:
+        challenge.status = "expired"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OTP has expired",
+        )
+
+    if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
+        challenge.status = "locked"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OTP is locked",
+        )
+
+    challenge.attempt_count += 1
+    if _hash_otp_code(otp_code) != challenge.otp_code_hash:
+        if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
+            challenge.status = "locked"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid OTP code",
+        )
+
+    challenge.status = "verified"
+    db.commit()
+
+    driver = db.query(Driver).filter(Driver.phone_e164 == phone_e164).first()
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver not found",
+        )
+
+    token = create_access_token({"sub": str(driver.driver_id), "role": "driver"})
+    return DriverOtpVerifyResponse(access_token=token)
 
 
 @router.get("/me", response_model=DriverMeResponse)
@@ -65,6 +274,7 @@ def driver_me(
 @router.post("/vehicle/resolve-qr", response_model=ResolveQrResponse)
 def resolve_qr(
     body: ResolveQrRequest,
+    driver: Driver = Depends(_get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Resolve a QR token to a vehicle. Only active tokens are accepted."""
@@ -91,7 +301,7 @@ def resolve_qr(
         incident_id=None,
         event_type=SystemEventType.DRIVER_VEHICLE_RESOLVED.value,
         actor_type="driver_app",
-        actor_id="anonymous",
+        actor_id=str(driver.driver_id),
         payload={
             "adc_vehicle_id": token_row.adc_vehicle_id,
             "token_sha256": token_hash,

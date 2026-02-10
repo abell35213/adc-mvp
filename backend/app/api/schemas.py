@@ -143,6 +143,24 @@ class DriverMeResponse(BaseModel):
     vehicle: Optional[VehicleInfo] = None
 
 
+class DriverOtpRequest(BaseModel):
+    phone_e164: str
+
+
+class DriverOtpRequestResponse(BaseModel):
+    detail: str = "OTP sent"
+
+
+class DriverOtpVerifyRequest(BaseModel):
+    phone_e164: str
+    otp_code: str
+
+
+class DriverOtpVerifyResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class ResolveQrRequest(BaseModel):
     qr_token: str
 
