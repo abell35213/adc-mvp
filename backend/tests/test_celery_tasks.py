@@ -468,6 +468,7 @@ class TestBuildExport:
         s3_inst = MagicMock()
         s3_inst.put_bytes.return_value = "s3://b/k"
         s3_inst.get_bytes.return_value = b"file-content"
+        s3_inst.download.return_value = b"file-content"
         MockS3.return_value = s3_inst
 
         # Add a captured artifact for the incident
@@ -503,7 +504,7 @@ class TestBuildExport:
         assert updated_export.status == "ready"
         assert updated_export.s3_key is not None
 
-        zip_bytes = s3_inst.upload.call_args[0][1]
+        zip_bytes = s3_inst.put_bytes.call_args[0][1]
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             names = set(zf.namelist())
             expected = {
