@@ -57,6 +57,8 @@ def _safe_artifact_type(artifact_type):
     if not artifact_type:
         return "unknown"
     sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type)
+    if "/" in sanitized or "\\" in sanitized:
+        sanitized = sanitized.replace("/", "_").replace("\\", "_")
     sanitized = sanitized.replace("..", "_").strip("._-")
     return sanitized or "unknown"
 
