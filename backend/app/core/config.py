@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     TWILIO_SMS_FROM: str = ""
     TWILIO_VOICE_FROM: str = ""
 
+    # Driver OTP
+    OTP_HASH_PEPPER: str = "change-me-in-production"
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+
     # Auth / JWT
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"

@@ -181,3 +181,85 @@ export function downloadExport(exportId: string) {
     `/exports/${exportId}/download`
   );
 }
+
+/* ── Admin driver protocol ─────────────────────────────────────── */
+
+export interface DriverProtocolSettings {
+  instruction_source: string;
+  require_ack: boolean;
+  sms_enabled: boolean;
+  voice_enabled: boolean;
+  safety_manager_phone: string | null;
+}
+
+export function getDriverProtocolSettings() {
+  return request<DriverProtocolSettings>("/admin/driver-protocol/settings");
+}
+
+export function updateDriverProtocolSettings(data: DriverProtocolSettings) {
+  return request<DriverProtocolSettings>("/admin/driver-protocol/settings", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export interface DriverInstructionStep {
+  step_id?: string;
+  order: number;
+  title: string;
+  body: string;
+  enabled: boolean;
+}
+
+export interface DriverInstructionSet {
+  instruction_set_id: string;
+  scope: string;
+  steps: DriverInstructionStep[];
+}
+
+export function getDriverProtocolInstructions(scope?: string) {
+  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+  return request<DriverInstructionSet>(
+    `/admin/driver-protocol/instructions${query}`
+  );
+}
+
+export function updateDriverProtocolInstructions(data: {
+  scope: string;
+  steps: DriverInstructionStep[];
+}) {
+  return request<DriverInstructionSet>("/admin/driver-protocol/instructions", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function resetDriverProtocolInstructions(scope?: string) {
+  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+  return request<DriverInstructionSet>(
+    `/admin/driver-protocol/instructions/reset${query}`,
+    { method: "POST" }
+  );
+}
+
+/* ── Admin vehicles ─────────────────────────────────────────────── */
+
+export interface AdminVehicle {
+  adc_vehicle_id: string;
+  display_label: string;
+}
+
+export function listAdminVehicles() {
+  return request<AdminVehicle[]>("/admin/vehicles");
+}
+
+export function rotateVehicleQr(vehicleId: string) {
+  return request<{ qr_token: string }>(
+    `/admin/vehicles/${vehicleId}/qr/rotate`,
+    { method: "POST" }
+  );
+}
+
+export function getVehicleQrPayload(vehicleId: string) {
+  return request<{ deep_link: string }>(`/admin/vehicles/${vehicleId}/qr`);
+}

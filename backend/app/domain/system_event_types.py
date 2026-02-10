@@ -33,7 +33,12 @@ class SystemEventType(str, Enum):
     EXPORT_FAILED = "export_failed"
     EXPORT_DOWNLOADED = "export_downloaded"
 
-    # ── Driver OTP ─────────────────────────────────────────────────
-    DRIVER_OTP_REQUESTED = "driver_otp_requested"
-    DRIVER_OTP_VERIFIED = "driver_otp_verified"
-    DRIVER_OTP_FAILED = "driver_otp_failed"
+    # ── Driver / Vehicle QR ────────────────────────────────────────
+    DRIVER_VEHICLE_RESOLVED = "driver_vehicle_resolved"
+    VEHICLE_QR_ROTATED = "vehicle_qr_rotated"
+
+    # ── Notifications ───────────────────────────────────────────────
+    SAFETY_MANAGER_SMS_SENT = "safety_manager_sms_sent"
+    SAFETY_MANAGER_SMS_FAILED = "safety_manager_sms_failed"
+    SAFETY_MANAGER_CALL_PLACED = "safety_manager_call_placed"
+    SAFETY_MANAGER_CALL_FAILED = "safety_manager_call_failed"

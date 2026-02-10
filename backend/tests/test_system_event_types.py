@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 18 system event types."""
-        assert len(SystemEventType) == 18
+        """There must be exactly 21 system event types."""
+        assert len(SystemEventType) == 21
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -69,6 +69,20 @@ class TestSystemEventType:
     def test_export_downloaded(self):
         assert SystemEventType.EXPORT_DOWNLOADED == "export_downloaded"
 
+    # ── Notifications ───────────────────────────────────────────────
+
+    def test_safety_manager_sms_sent(self):
+        assert SystemEventType.SAFETY_MANAGER_SMS_SENT == "safety_manager_sms_sent"
+
+    def test_safety_manager_sms_failed(self):
+        assert SystemEventType.SAFETY_MANAGER_SMS_FAILED == "safety_manager_sms_failed"
+
+    def test_safety_manager_call_placed(self):
+        assert SystemEventType.SAFETY_MANAGER_CALL_PLACED == "safety_manager_call_placed"
+
+    def test_safety_manager_call_failed(self):
+        assert SystemEventType.SAFETY_MANAGER_CALL_FAILED == "safety_manager_call_failed"
+
     # ── Grouping helpers ────────────────────────────────────────────
 
     def test_incident_lifecycle_types_exist(self):
@@ -110,6 +124,17 @@ class TestSystemEventType:
             "export_generated",
             "export_failed",
             "export_downloaded",
+        }
+        values = {m.value for m in SystemEventType}
+        assert expected.issubset(values)
+
+    def test_notification_types_exist(self):
+        """All notification types must be present."""
+        expected = {
+            "safety_manager_sms_sent",
+            "safety_manager_sms_failed",
+            "safety_manager_call_placed",
+            "safety_manager_call_failed",
         }
         values = {m.value for m in SystemEventType}
         assert expected.issubset(values)

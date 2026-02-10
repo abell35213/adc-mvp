@@ -34,6 +34,7 @@ class Org(Base):
     sms_enabled = Column(Boolean, nullable=False, default=False)
     voice_enabled = Column(Boolean, nullable=False, default=False)
     safety_manager_phone = Column(Text, nullable=True)
+    instruction_source = Column(Text, nullable=False, default="default")
 
 
 class User(Base):
@@ -78,7 +79,7 @@ class Event(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True)
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
@@ -180,6 +181,7 @@ class OtpChallenge(Base):
 
     challenge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     phone_e164 = Column(Text, nullable=False, index=True)
+    otp_code_hash = Column(Text, nullable=False)
     created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
     attempt_count = Column(Integer, nullable=False, default=0)

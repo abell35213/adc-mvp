@@ -35,6 +35,7 @@ export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     if (!user) return;
@@ -51,12 +52,22 @@ export default function IncidentsPage() {
         <h1 className="text-lg font-bold text-gray-900 dark:text-white">
           ADC Incidents
         </h1>
-        <button
-          onClick={logout}
-          className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-4 text-sm">
+          {isAdmin && (
+            <Link
+              href="/admin/driver-protocol"
+              className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              Admin
+            </Link>
+          )}
+          <button
+            onClick={logout}
+            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       {/* Content */}
