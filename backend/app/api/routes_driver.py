@@ -238,7 +238,7 @@ def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db
         )
 
     challenge.attempt_count += 1
-    if _hash_otp_code(otp_code) != challenge.otp_code_hash:
+    if not hmac.compare_digest(_hash_otp_code(otp_code), challenge.otp_code_hash):
         if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
             challenge.status = "locked"
         db.commit()
@@ -363,6 +363,7 @@ def _resolve_vehicle_for_driver(
             .filter(
                 VehicleQrToken.qr_token == body.qr_token,
                 VehicleQrToken.status == "active",
+                VehicleQrToken.org_id == driver.org_id,
             )
             .first()
         )
