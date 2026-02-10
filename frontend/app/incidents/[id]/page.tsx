@@ -26,6 +26,8 @@ function formatTime(iso?: string | null): string {
   });
 }
 
+const REFRESH_INTERVAL_MS = 4000;
+
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, loading: authLoading } = useAuth();
@@ -69,13 +71,13 @@ export default function IncidentDetailPage() {
     return getIncident(id)
       .then(setIncident)
       .catch((err) => console.warn("Incident refresh failed", err));
-  }, [id, setIncident]);
+  }, [id]);
 
   useEffect(() => {
     if (!user || !isCapturing) return;
     const interval = window.setInterval(() => {
       refreshIncident();
-    }, 4000);
+    }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [isCapturing, refreshIncident, user]);
 
