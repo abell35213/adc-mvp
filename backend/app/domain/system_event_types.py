@@ -32,3 +32,8 @@ class SystemEventType(str, Enum):
     EXPORT_GENERATED = "export_generated"
     EXPORT_FAILED = "export_failed"
     EXPORT_DOWNLOADED = "export_downloaded"
+
+    # ── Driver OTP ─────────────────────────────────────────────────
+    DRIVER_OTP_REQUESTED = "driver_otp_requested"
+    DRIVER_OTP_VERIFIED = "driver_otp_verified"
+    DRIVER_OTP_FAILED = "driver_otp_failed"

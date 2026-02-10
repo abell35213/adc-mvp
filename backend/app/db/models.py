@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, Enum, ForeignKey, Index, Text, func
+from sqlalchemy import BigInteger, Boolean, Column, Enum, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 
@@ -139,4 +139,38 @@ class Export(Base):
 
     __table_args__ = (
         Index('ix_exports_org_incident', 'org_id', 'incident_id'),
+    )
+
+
+# ── Driver auth models ────────────────────────────────────────────
+
+
+class Driver(Base):
+    """Driver authenticated via phone OTP."""
+
+    __tablename__ = "drivers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_e164 = Column(Text, nullable=False, unique=True, index=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class OtpChallenge(Base):
+    """OTP challenge for driver phone verification."""
+
+    __tablename__ = "otp_challenges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_e164 = Column(Text, nullable=False, index=True)
+    twilio_sid = Column(Text, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    is_verified = Column(Boolean, nullable=False, default=False)
+    is_locked = Column(Boolean, nullable=False, default=False)
+    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
