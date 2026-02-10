@@ -233,6 +233,7 @@ class VehicleQrToken(Base):
             "adc_vehicle_id",
             unique=True,
             postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
         ),
     )
 
