@@ -42,7 +42,11 @@ def db_session(db_engine):
 
 @pytest.fixture()
 def incident(db_session):
-    inc = Incident(status="evidence_capturing", adc_vehicle_id="v1")
+    inc = Incident(
+        status="evidence_capturing",
+        adc_vehicle_id="v1",
+        org_id=uuid.uuid4(),
+    )
     db_session.add(inc)
     db_session.commit()
     db_session.refresh(inc)
@@ -104,7 +108,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://bucket/key"
+        s3_inst.put_bytes.return_value = "s3://bucket/key"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -119,7 +123,7 @@ class TestCaptureDashcam:
         assert result["type"] == "dashcam"
 
         # Two streams → two uploads
-        assert s3_inst.upload.call_count == 2
+        assert s3_inst.put_bytes.call_count == 2
 
         # Check artifacts were inserted
         artifacts = db_session.query(Artifact).filter(
@@ -149,7 +153,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://bucket/key"
+        s3_inst.put_bytes.return_value = "s3://bucket/key"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -210,7 +214,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -243,7 +247,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -285,7 +289,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -320,7 +324,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -357,7 +361,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -407,8 +411,8 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b"file-content"
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b"file-content"
         MockS3.return_value = s3_inst
 
         # Add a captured artifact for the incident
@@ -433,7 +437,7 @@ class TestBuildExport:
         assert result["status"] == "ready"
 
         # ZIP was uploaded to S3
-        assert s3_inst.upload.call_count >= 1
+        assert s3_inst.put_bytes.call_count >= 1
 
         # Export row was updated
         updated_export = db_session.query(Export).filter(
@@ -448,8 +452,8 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -473,8 +477,8 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -512,8 +516,8 @@ class TestBuildExport:
         )
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -537,8 +541,8 @@ class TestBuildExport:
 
         # Make S3 upload explode
         s3_inst = MagicMock()
-        s3_inst.upload.side_effect = RuntimeError("S3 down")
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.side_effect = RuntimeError("S3 down")
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export

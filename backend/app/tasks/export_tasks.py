@@ -24,6 +24,16 @@ def _get_db():
     return SessionLocal()
 
 
+def _get_org_id(db, incident_id):
+    """Return the org_id string for an incident."""
+    from app.db.repo.incidents import get_incident
+
+    incident = get_incident(db, incident_id)
+    if incident is None or incident.org_id is None:
+        raise ValueError(f"Incident {incident_id} missing org_id")
+    return str(incident.org_id)
+
+
 def _emit(db, incident_id, event_type, payload=None):
     """Append an event to the append-only log."""
     from app.db.repo.events import create_event
@@ -72,6 +82,7 @@ def build_export(self, incident_id: str, export_id: str):
     db = _get_db()
 
     try:
+        org_id = _get_org_id(db, inc_uuid)
         # 1. Emit EXPORT_REQUESTED if not already recorded
         existing_events = get_events_by_incident(db, inc_uuid)
         already_requested = any(
@@ -162,7 +173,7 @@ def build_export(self, incident_id: str, export_id: str):
             for a in artifacts:
                 if a.status == "captured" and a.s3_key:
                     try:
-                        artifact_data = s3.download(a.s3_key)
+                        artifact_data = s3.get_bytes(a.s3_key)
                         filename = a.s3_key.rsplit("/", 1)[-1]
                         zf.writestr(f"artifacts/{filename}", artifact_data)
                     except Exception:
@@ -176,10 +187,11 @@ def build_export(self, incident_id: str, export_id: str):
 
         # 6. Upload ZIP to S3
         zip_key = s3_key_builder.export_key(
+            org_id=org_id,
             incident_id=incident_id,
             export_id=export_id,
         )
-        s3.upload(zip_key, zip_bytes)
+        s3.put_bytes(zip_key, zip_bytes)
 
         # 7. Update export row to ready
         update_export(

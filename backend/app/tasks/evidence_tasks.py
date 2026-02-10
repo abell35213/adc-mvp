@@ -36,6 +36,16 @@ def _get_db():
     return SessionLocal()
 
 
+def _get_org_id(db, incident_id):
+    """Return the org_id string for an incident."""
+    from app.db.repo.incidents import get_incident
+
+    incident = get_incident(db, incident_id)
+    if incident is None or incident.org_id is None:
+        raise ValueError(f"Incident {incident_id} missing org_id")
+    return str(incident.org_id)
+
+
 def _emit(db, incident_id, event_type, payload=None):
     """Append an event to the append-only log."""
     from app.db.repo.events import create_event
@@ -84,6 +94,7 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
     db = _get_db()
 
     try:
+        org_id = _get_org_id(db, inc_uuid)
         # 1. Emit EVIDENCE_CAPTURE_REQUESTED
         _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_REQUESTED, {
             "type": "dashcam",
@@ -114,11 +125,12 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
                 # 3a. Upload to S3
                 art_id = _uuid.uuid4()
                 s3_key = s3_key_builder.dashcam_key(
+                    org_id=org_id,
                     incident_id=incident_id,
                     camera_view=stream_label,
                     artifact_id=str(art_id),
                 )
-                s3.upload(s3_key, video_bytes)
+                s3.put_bytes(s3_key, video_bytes)
 
                 # 3b. Compute SHA-256
                 sha = _hash_bytes(video_bytes)
@@ -237,6 +249,7 @@ def capture_telematics_bundle(
     db = _get_db()
 
     try:
+        org_id = _get_org_id(db, inc_uuid)
         _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_REQUESTED, {
             "type": "telematics",
             "window_start": window_start,
@@ -299,12 +312,13 @@ def capture_telematics_bundle(
                 json_bytes = json.dumps(normalized, default=str).encode()
                 json_art_id = _uuid.uuid4()
                 json_key = s3_key_builder.telematics_key(
+                    org_id=org_id,
                     incident_id=incident_id,
                     artifact_type=spec["artifact_type"],
                     artifact_id=str(json_art_id),
                     extension="json",
                 )
-                s3.upload(json_key, json_bytes)
+                s3.put_bytes(json_key, json_bytes)
                 json_sha = _hash_bytes(json_bytes)
 
                 _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
@@ -345,12 +359,13 @@ def capture_telematics_bundle(
 
                 csv_art_id = _uuid.uuid4()
                 csv_key = s3_key_builder.telematics_key(
+                    org_id=org_id,
                     incident_id=incident_id,
                     artifact_type=spec["artifact_type"],
                     artifact_id=str(csv_art_id),
                     extension="csv",
                 )
-                s3.upload(csv_key, csv_bytes)
+                s3.put_bytes(csv_key, csv_bytes)
                 csv_sha = _hash_bytes(csv_bytes)
 
                 _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
@@ -386,12 +401,13 @@ def capture_telematics_bundle(
                 )
                 pdf_art_id = _uuid.uuid4()
                 pdf_key = s3_key_builder.telematics_key(
+                    org_id=org_id,
                     incident_id=incident_id,
                     artifact_type=spec["artifact_type"],
                     artifact_id=str(pdf_art_id),
                     extension="pdf",
                 )
-                s3.upload(pdf_key, pdf_bytes)
+                s3.put_bytes(pdf_key, pdf_bytes)
                 pdf_sha = _hash_bytes(pdf_bytes)
 
                 _emit(db, inc_uuid, SystemEventType.ARTIFACT_RECORDED, {
