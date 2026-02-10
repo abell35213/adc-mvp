@@ -48,6 +48,10 @@ def _validate_twilio_request(request: Request, params: dict[str, str]) -> None:
 
 
 def _flatten_twilio_params(raw_params: dict[str, list[str]]) -> dict[str, str]:
+    """Flatten Twilio params to string values for signature validation.
+
+    If Twilio sends multiple values for a key, they are joined with commas.
+    """
     params = {}
     for key, values in raw_params.items():
         if not values:

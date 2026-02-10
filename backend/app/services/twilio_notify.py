@@ -70,14 +70,14 @@ def send_sms(to: str, message: str) -> str:
     return sid
 
 
-def place_call(to: str, twiml_url_or_twiml: str) -> str:
+def place_call(to: str, twiml_content: str) -> str:
     """Place a voice call and return the Twilio call SID."""
     from_number = _require_setting("TWILIO_VOICE_FROM", settings.TWILIO_VOICE_FROM)
     data = {
         "To": to,
         "From": from_number,
     }
-    stripped_value = twiml_url_or_twiml.strip()
+    stripped_value = twiml_content.strip()
     if stripped_value.startswith(("http://", "https://")):
         data["Url"] = stripped_value
     else:
