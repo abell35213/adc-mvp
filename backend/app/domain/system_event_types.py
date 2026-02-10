@@ -32,3 +32,7 @@ class SystemEventType(str, Enum):
     EXPORT_GENERATED = "export_generated"
     EXPORT_FAILED = "export_failed"
     EXPORT_DOWNLOADED = "export_downloaded"
+
+    # ── Driver / Vehicle QR ────────────────────────────────────────
+    DRIVER_VEHICLE_RESOLVED = "driver_vehicle_resolved"
+    VEHICLE_QR_ROTATED = "vehicle_qr_rotated"

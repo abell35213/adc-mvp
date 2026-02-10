@@ -78,7 +78,7 @@ class Event(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True)
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()

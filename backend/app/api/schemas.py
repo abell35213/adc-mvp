@@ -119,3 +119,37 @@ class DownloadExportResponse(BaseModel):
     export_id: uuid.UUID
     url: str
     status: str
+
+
+# ── Driver ──────────────────────────────────────────────────────────
+
+class VehicleInfo(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
+
+
+class DriverMeResponse(BaseModel):
+    driver_id: uuid.UUID
+    org_id: uuid.UUID
+    phone_e164: str
+    display_name: str
+    vehicle: Optional[VehicleInfo] = None
+
+
+class ResolveQrRequest(BaseModel):
+    qr_token: str
+
+
+class ResolveQrResponse(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
+
+
+# ── Admin vehicles / QR ────────────────────────────────────────────
+
+class RotateQrResponse(BaseModel):
+    qr_token: str
+
+
+class QrPayloadResponse(BaseModel):
+    deep_link: str
