@@ -94,8 +94,8 @@ def notify_safety_manager(self, incident_id: str):
         phone = org.safety_manager_phone
         if not phone:
             reason = (
-                "Safety manager phone number not configured for organization "
-                f"{incident.org_id}. Please configure a phone number in organization settings."
+                "Safety manager phone number not configured. Please configure a phone number in "
+                "organization settings."
             )
             if org.sms_enabled:
                 _emit(
@@ -175,7 +175,7 @@ def notify_safety_manager(self, incident_id: str):
                 errors.append(f"Call failed: {exc}")
 
         if errors:
-            raise RuntimeError(" | ".join(errors))
+            raise RuntimeError(f"Notification failures: {'; '.join(errors)}")
 
         return result
 

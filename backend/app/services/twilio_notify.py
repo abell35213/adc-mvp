@@ -76,7 +76,7 @@ def place_call(to: str, twiml_url_or_twiml: str) -> str:
         "To": to,
         "From": from_number,
     }
-    stripped_value = twiml_url_or_twiml.lstrip()
+    stripped_value = twiml_url_or_twiml.strip()
     if stripped_value.startswith(("http://", "https://")):
         data["Url"] = stripped_value
     else:
