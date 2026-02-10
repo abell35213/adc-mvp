@@ -67,6 +67,10 @@ adc-mvp/
 │   │   ├── auth.ts
 │   │   └── useAuth.ts
 │   └── package.json
+├── driver-app/                        # Expo driver app
+│   ├── App.tsx                        # Navigation entry point
+│   ├── src/                           # Driver app screens + API
+│   └── package.json
 ├── contracts/
 │   └── schemas/                       # JSON schemas (single source of truth)
 ├── infra/
@@ -117,6 +121,14 @@ celery -A backend.app.tasks.celery_app worker -l info
 
 # 4. Start the Next.js frontend
 cd frontend && npm run dev
+```
+
+### Driver App (Expo)
+
+```bash
+cd driver-app
+npm install
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8000 npm run start
 ```
 
 - API: `http://localhost:8000`

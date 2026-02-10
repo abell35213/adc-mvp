@@ -38,3 +38,9 @@ class SystemEventType(str, Enum):
     DRIVER_VEHICLE_RESOLVED = "driver_vehicle_resolved"
     DRIVER_INSTRUCTION_ACKNOWLEDGED = "driver_instruction_acknowledged"
     VEHICLE_QR_ROTATED = "vehicle_qr_rotated"
+
+    # ── Notifications ───────────────────────────────────────────────
+    SAFETY_MANAGER_SMS_SENT = "safety_manager_sms_sent"
+    SAFETY_MANAGER_SMS_FAILED = "safety_manager_sms_failed"
+    SAFETY_MANAGER_CALL_PLACED = "safety_manager_call_placed"
+    SAFETY_MANAGER_CALL_FAILED = "safety_manager_call_failed"

@@ -3,7 +3,7 @@
 import uuid
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Auth ────────────────────────────────────────────────────────────
@@ -11,6 +11,13 @@ from pydantic import BaseModel
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class RequestOtpRequest(BaseModel):
+    phone_e164: str = Field(
+        pattern=r"^\+[1-9]\d{1,14}$",
+        description="Phone number in E.164 format, e.g. +15551234567.",
+    )
 
 
 class LoginResponse(BaseModel):
@@ -136,6 +143,24 @@ class DriverMeResponse(BaseModel):
     vehicle: Optional[VehicleInfo] = None
 
 
+class DriverOtpRequest(BaseModel):
+    phone_e164: str
+
+
+class DriverOtpRequestResponse(BaseModel):
+    detail: str = "OTP sent"
+
+
+class DriverOtpVerifyRequest(BaseModel):
+    phone_e164: str
+    otp_code: str
+
+
+class DriverOtpVerifyResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class ResolveQrRequest(BaseModel):
     qr_token: str
 
@@ -145,54 +170,45 @@ class ResolveQrResponse(BaseModel):
     display_label: str
 
 
-# ── Driver incidents / instructions ─────────────────────────────────
-
-class DriverIncidentInitiateRequest(BaseModel):
-    vehicle_strategy: Literal["last_assigned", "qr"]
-    device_location: Optional[dict] = None
-    device: Optional[dict] = None
-    qr_token: Optional[str] = None
-    window_start: Optional[str] = None
-    window_end: Optional[str] = None
+# ── Admin driver protocol ─────────────────────────────────────────
 
 
-class DriverIncidentInitiateResponse(BaseModel):
-    incident_id: uuid.UUID
-    safety_notified: bool
-    capture_started: bool
+class DriverProtocolSettingsRequest(BaseModel):
+    instruction_source: str
+    require_ack: bool
+    sms_enabled: bool
+    voice_enabled: bool
+    safety_manager_phone: Optional[str] = None
 
 
-class DriverInstructionStepResponse(BaseModel):
-    step_id: uuid.UUID
-    step_order: int
+class DriverProtocolSettingsResponse(DriverProtocolSettingsRequest):
+    pass
+
+
+class DriverInstructionStep(BaseModel):
+    step_id: Optional[uuid.UUID] = None
+    order: int
     title: str
     body: str
+    enabled: bool = True
 
 
-class DriverInstructionSetResponse(BaseModel):
-    instruction_set_id: uuid.UUID
+class DriverInstructionSetRequest(BaseModel):
     scope: str
-    require_ack: bool
-    steps: list[DriverInstructionStepResponse] = []
+    steps: list[DriverInstructionStep]
 
 
-class DriverInstructionAckRequest(BaseModel):
+class DriverInstructionSetResponse(DriverInstructionSetRequest):
     instruction_set_id: uuid.UUID
-
-
-class DriverInstructionAckResponse(BaseModel):
-    acknowledged: bool
-
-
-class DriverIncidentStatusResponse(BaseModel):
-    incident_id: uuid.UUID
-    status: str
-    safety_notified: bool
-    capture_state: str
-    last_evidence_update_utc: Optional[str] = None
 
 
 # ── Admin vehicles / QR ────────────────────────────────────────────
+
+
+class AdminVehicleSummary(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
+
 
 class RotateQrResponse(BaseModel):
     qr_token: str
