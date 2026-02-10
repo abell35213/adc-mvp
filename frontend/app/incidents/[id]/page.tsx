@@ -66,14 +66,14 @@ export default function IncidentDetailPage() {
   }, [id, user]);
 
   useEffect(() => {
-    if (!user || !incident || !isCapturing) return;
+    if (!user || !isCapturing) return;
     const interval = window.setInterval(() => {
       getIncident(id)
         .then(setIncident)
         .catch((err) => console.warn("Incident refresh failed", err));
     }, 4000);
     return () => window.clearInterval(interval);
-  }, [id, incident, isCapturing, user]);
+  }, [id, isCapturing, user]);
 
   async function handleExport() {
     setExporting(true);
