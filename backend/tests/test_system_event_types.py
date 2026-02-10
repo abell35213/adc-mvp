@@ -18,6 +18,12 @@ class TestSystemEventType:
 
     # ── Incident lifecycle ──────────────────────────────────────────
 
+    def test_incident_protocol_initiated(self):
+        assert (
+            SystemEventType.INCIDENT_PROTOCOL_INITIATED
+            == "incident_protocol_initiated"
+        )
+
     def test_incident_started(self):
         assert SystemEventType.INCIDENT_STARTED == "incident_started"
 
@@ -88,6 +94,7 @@ class TestSystemEventType:
     def test_incident_lifecycle_types_exist(self):
         """All incident lifecycle types must be present."""
         expected = {
+            "incident_protocol_initiated",
             "incident_started",
             "incident_updated",
             "evidence_lockdown_started",
