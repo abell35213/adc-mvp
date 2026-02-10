@@ -34,6 +34,7 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
         schema = json.load(f)
 
     validator = Draft202012Validator(schema)
+    # Sort numeric indices before string keys for consistent error ordering.
     errors = sorted(
         validator.iter_errors(payload),
         key=lambda err: tuple(
