@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DriverMeResponse, ResolveQrRequest, ResolveQrResponse, VehicleInfo
-from app.db.models import Driver, DriverVehicleAssignment, VehicleQrToken
+from app.db.models import Driver, DriverVehicleAssignment, Event, VehicleQrToken
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 
@@ -85,7 +85,6 @@ def resolve_qr(
 
     # Emit DRIVER_VEHICLE_RESOLVED event — store sha256(token), not raw
     token_hash = hashlib.sha256(body.qr_token.encode()).hexdigest()
-    from app.db.models import Event
 
     event = Event(
         org_id=token_row.org_id,

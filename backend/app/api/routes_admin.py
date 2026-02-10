@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.models import Event, User, VehicleQrToken
 from app.db.session import get_db
+from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,6 @@ def rotate_qr(
     new_token = secrets.token_urlsafe(32)
 
     # Determine org_id from the admin's org membership
-    from app.db.repo.users import get_user_org_ids
-
     org_ids = get_user_org_ids(db, admin.id)
     org_id = org_ids[0] if org_ids else None
 
