@@ -18,14 +18,14 @@ SAMSARA_FIXTURES_DIR = (
 class FakeSamsaraAdapter:
     """Drop-in replacement for :class:`SamsaraClient` that serves fixture data."""
 
-    def __init__(self, examples_dir: Path | None = None):
-        self.examples_dir = examples_dir or SAMSARA_FIXTURES_DIR
+    def __init__(self, fixtures_dir: Path | None = None):
+        self.fixtures_dir = fixtures_dir or SAMSARA_FIXTURES_DIR
 
     # ── helpers ────────────────────────────────────────────────────────
 
     def _load_json(self, filename: str) -> list:
         """Load a JSON file from the fixtures directory and return its data list."""
-        path = self.examples_dir / filename
+        path = self.fixtures_dir / filename
         if not path.exists():
             logger.warning("Fixture file not found: %s", path)
             return []
@@ -65,7 +65,7 @@ class FakeSamsaraAdapter:
         end: str | None = None,
     ) -> bytes | None:
         """Return example dashcam bytes from the fixtures directory."""
-        path = self.examples_dir / "dashcam_stream.bin"
+        path = self.fixtures_dir / "dashcam_stream.bin"
         if not path.exists():
             return None
         return path.read_bytes()

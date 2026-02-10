@@ -75,12 +75,12 @@ class TestFakeSamsaraAdapter:
         assert isinstance(data, bytes)
 
     def test_missing_fixtures_dir_returns_empty(self, tmp_path):
-        adapter = FakeSamsaraAdapter(examples_dir=tmp_path / "nonexistent")
+        adapter = FakeSamsaraAdapter(fixtures_dir=tmp_path / "nonexistent")
         data = adapter.get_vehicle_locations()
         assert data == []
 
     def test_missing_dashcam_file_returns_none(self, tmp_path):
-        adapter = FakeSamsaraAdapter(examples_dir=tmp_path)
+        adapter = FakeSamsaraAdapter(fixtures_dir=tmp_path)
         data = adapter.fetch_dashcam_stream()
         assert data is None
 
