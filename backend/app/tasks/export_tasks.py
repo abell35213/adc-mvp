@@ -57,7 +57,6 @@ def _safe_artifact_type(artifact_type):
     if not artifact_type:
         return "unknown"
     sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type)
-    sanitized = sanitized.replace("/", "_").replace("\\", "_")
     sanitized = sanitized.replace("..", "_").strip("._-")
     return sanitized or "unknown"
 
@@ -174,16 +173,13 @@ def build_export(self, incident_id: str, export_id: str):
             ])
         appendix_csv_bytes = appendix_buf.getvalue().encode()
 
-        capture_starts = [
-            artifact.capture_window_start_utc
-            for artifact, _ in exportable_artifacts
-            if artifact.capture_window_start_utc is not None
-        ]
-        capture_ends = [
-            artifact.capture_window_end_utc
-            for artifact, _ in exportable_artifacts
-            if artifact.capture_window_end_utc is not None
-        ]
+        capture_starts = []
+        capture_ends = []
+        for artifact, _ in exportable_artifacts:
+            if artifact.capture_window_start_utc is not None:
+                capture_starts.append(artifact.capture_window_start_utc)
+            if artifact.capture_window_end_utc is not None:
+                capture_ends.append(artifact.capture_window_end_utc)
         capture_start = min(capture_starts) if capture_starts else None
         capture_end = max(capture_ends) if capture_ends else None
         capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
