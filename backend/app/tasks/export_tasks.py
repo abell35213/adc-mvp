@@ -10,6 +10,7 @@ import zipfile
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+ALLOWED_ARTIFACT_EXTENSIONS = {"json", "csv", "mp4"}
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -38,6 +39,18 @@ def _emit(db, incident_id, event_type, payload=None):
     )
 
 
+def _artifact_filename(s3_key):
+    if not s3_key:
+        return ""
+    return s3_key.rsplit("/", 1)[-1]
+
+
+def _artifact_extension(filename):
+    if "." not in filename:
+        return ""
+    return filename.rsplit(".", 1)[-1].lower()
+
+
 @celery_app.task(
     bind=True,
     acks_late=True,
@@ -51,12 +64,13 @@ def build_export(self, incident_id: str, export_id: str):
     Steps:
     1. Emit EXPORT_REQUESTED (if not already emitted)
     2. Read artifacts and events for the incident
-    3. Generate Evidence Inventory CSV/PDF
-    4. Generate Chain-of-Custody CSV/PDF (derived from events)
-    5. Bundle artifact files into a ZIP
-    6. Upload ZIP to S3
-    7. Update export row to ready
-    8. Emit EXPORT_GENERATED
+    3. Generate Evidence Inventory CSV
+    4. Generate Chain-of-Custody CSV (derived from events)
+    5. Generate Integrity Appendix CSV and README
+    6. Bundle artifact files into a ZIP
+    7. Upload ZIP to S3
+    8. Update export row to ready
+    9. Emit EXPORT_GENERATED
     """
     from app.core.config import settings
     from app.db.repo.artifacts import get_artifacts_by_incident
@@ -65,7 +79,6 @@ def build_export(self, incident_id: str, export_id: str):
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.vault_s3 import VaultS3
-    from app.services.pdf_render import render_pdf
 
     inc_uuid = _uuid.UUID(incident_id)
     exp_uuid = _uuid.UUID(export_id)
@@ -91,6 +104,25 @@ def build_export(self, incident_id: str, export_id: str):
 
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
 
+        exportable_artifacts = []
+        inventory_artifacts = []
+        capture_starts = []
+        capture_ends = []
+        for artifact in artifacts:
+            filename = _artifact_filename(artifact.s3_key)
+            extension = _artifact_extension(filename)
+            if artifact.capture_window_start_utc:
+                capture_starts.append(artifact.capture_window_start_utc)
+            if artifact.capture_window_end_utc:
+                capture_ends.append(artifact.capture_window_end_utc)
+
+            if artifact.status == "captured" and artifact.s3_key:
+                if extension in ALLOWED_ARTIFACT_EXTENSIONS:
+                    exportable_artifacts.append((artifact, filename))
+                    inventory_artifacts.append(artifact)
+                continue
+            inventory_artifacts.append(artifact)
+
         # 3. Generate Evidence Inventory CSV
         inv_buf = io.StringIO()
         inv_writer = csv.writer(inv_buf)
@@ -98,26 +130,12 @@ def build_export(self, incident_id: str, export_id: str):
             "artifact_id", "artifact_type", "status", "s3_key",
             "sha256", "byte_size",
         ])
-        for a in artifacts:
+        for a in inventory_artifacts:
             inv_writer.writerow([
                 str(a.artifact_id), a.artifact_type, a.status,
                 a.s3_key or "", a.sha256 or "", a.byte_size or "",
             ])
         inventory_csv_bytes = inv_buf.getvalue().encode()
-
-        # Evidence Inventory PDF
-        inventory_pdf_bytes = render_pdf("evidence_inventory", {
-            "incident_id": incident_id,
-            "artifacts": [
-                {
-                    "artifact_id": str(a.artifact_id),
-                    "artifact_type": a.artifact_type,
-                    "status": a.status,
-                    "sha256": a.sha256,
-                }
-                for a in artifacts
-            ],
-        })
 
         # 4. Generate Chain-of-Custody CSV (derived from events timeline)
         sorted_events = sorted(events, key=lambda e: str(e.occurred_at_utc))
@@ -136,52 +154,92 @@ def build_export(self, incident_id: str, export_id: str):
             ])
         coc_csv_bytes = coc_buf.getvalue().encode()
 
-        # Chain-of-Custody PDF
-        coc_pdf_bytes = render_pdf("chain_of_custody", {
-            "incident_id": incident_id,
-            "events": [
-                {
-                    "event_type": ev.event_type,
-                    "occurred_at_utc": str(ev.occurred_at_utc),
-                    "actor_type": ev.actor_type,
-                    "actor_id": ev.actor_id,
-                }
-                for ev in sorted_events
-            ],
-        })
+        # 5. Generate Integrity Appendix CSV + README
+        appendix_buf = io.StringIO()
+        appendix_writer = csv.writer(appendix_buf)
+        appendix_writer.writerow([
+            "artifact_id", "artifact_type", "file_name", "sha256", "byte_size",
+        ])
+        for artifact, filename in exportable_artifacts:
+            appendix_writer.writerow([
+                str(artifact.artifact_id),
+                artifact.artifact_type,
+                filename,
+                artifact.sha256 or "",
+                artifact.byte_size or "",
+            ])
+        appendix_csv_bytes = appendix_buf.getvalue().encode()
 
-        # 5. Create ZIP
+        capture_start = min(capture_starts) if capture_starts else None
+        capture_end = max(capture_ends) if capture_ends else None
+        capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
+        capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
+        readme_content = "\n".join([
+            "ADC Court Evidence Package",
+            "",
+            f"Incident ID: {incident_id}",
+            f"Export ID: {export_id}",
+            f"Capture window (UTC): {capture_start_str} to {capture_end_str}",
+            "",
+            "Hashes:",
+            "SHA-256 hashes are computed from the raw bytes of each artifact",
+            "at capture time and recorded in integrity_appendix.csv.",
+            "",
+            "Verification:",
+            "1. Compute the SHA-256 hash of a file (e.g., `sha256sum <file>`).",
+            "2. Compare the result with integrity_appendix.csv.",
+            "3. Matching hashes confirm the file integrity.",
+        ])
+
+        # 6. Create ZIP
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("evidence_inventory.csv", inventory_csv_bytes)
-            zf.writestr("evidence_inventory.pdf", inventory_pdf_bytes)
-            zf.writestr("chain_of_custody.csv", coc_csv_bytes)
-            zf.writestr("chain_of_custody.pdf", coc_pdf_bytes)
+            package_root = "ADC_Court_Package"
+            zf.writestr(f"{package_root}/00_README.txt", readme_content)
+            zf.writestr(
+                f"{package_root}/02_Evidence_Inventory.csv",
+                inventory_csv_bytes,
+            )
+            zf.writestr(
+                f"{package_root}/03_Chain_of_Custody.csv",
+                coc_csv_bytes,
+            )
+            zf.writestr(
+                f"{package_root}/integrity_appendix.csv",
+                appendix_csv_bytes,
+            )
 
             # Include stored artifact files
-            for a in artifacts:
-                if a.status == "captured" and a.s3_key:
+            for artifact, filename in exportable_artifacts:
+                if artifact.status == "captured" and artifact.s3_key:
                     try:
-                        artifact_data = s3.download(a.s3_key)
-                        filename = a.s3_key.rsplit("/", 1)[-1]
-                        zf.writestr(f"artifacts/{filename}", artifact_data)
+                        artifact_data = s3.download(artifact.s3_key)
+                        artifact_type = artifact.artifact_type or "unknown"
+                        safe_artifact_type = artifact_type.replace("/", "_")
+                        zf.writestr(
+                            (
+                                f"{package_root}/artifacts/{safe_artifact_type}/"
+                                f"{filename}"
+                            ),
+                            artifact_data,
+                        )
                     except Exception:
                         logger.warning(
                             "Could not include artifact %s in export",
-                            a.s3_key,
+                            artifact.s3_key,
                             exc_info=True,
                         )
 
         zip_bytes = zip_buffer.getvalue()
 
-        # 6. Upload ZIP to S3
+        # 7. Upload ZIP to S3
         zip_key = s3_key_builder.export_key(
             incident_id=incident_id,
             export_id=export_id,
         )
         s3.upload(zip_key, zip_bytes)
 
-        # 7. Update export row to ready
+        # 8. Update export row to ready
         update_export(
             db,
             export_id=exp_uuid,
@@ -190,7 +248,7 @@ def build_export(self, incident_id: str, export_id: str):
             s3_key=zip_key,
         )
 
-        # 8. Emit EXPORT_GENERATED
+        # 9. Emit EXPORT_GENERATED
         _emit(db, inc_uuid, SystemEventType.EXPORT_GENERATED, {
             "export_id": export_id,
             "s3_key": zip_key,
