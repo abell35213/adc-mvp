@@ -13,7 +13,7 @@ app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
 # CORS — allow the Next.js dev server and any configured origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[settings.FRONTEND_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
