@@ -1,6 +1,7 @@
 /** Thin wrapper around fetch for talking to the FastAPI backend. */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function request<T>(
   path: string,
@@ -16,7 +17,11 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers,
+  });
 
   if (res.status === 401) {
     if (typeof window !== "undefined") {
@@ -79,6 +84,7 @@ export function logout() {
     // Fire-and-forget; clear local state regardless
     fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,

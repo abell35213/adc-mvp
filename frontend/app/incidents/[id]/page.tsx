@@ -34,6 +34,30 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
+  const artifactStatuses = incident
+    ? (() => {
+        const artifactMap = new Map(
+          incident.evidence_inventory.map((artifact) => [
+            artifact.artifact_type,
+            artifact,
+          ])
+        );
+        return EVIDENCE_TYPES.map(
+          ({ type }) => artifactMap.get(type)?.status ?? "pending"
+        );
+      })()
+    : [];
+
+  const captured = artifactStatuses.filter((status) => status === "captured")
+    .length;
+  const unavailable = artifactStatuses.filter(
+    (status) => status === "unavailable"
+  ).length;
+  const pending = artifactStatuses.filter((status) => status === "pending")
+    .length;
+  const total = artifactStatuses.length || EVIDENCE_TYPES.length;
+  const isCapturing = pending > 0;
+
   useEffect(() => {
     if (!user) return;
     getIncident(id)
@@ -41,6 +65,14 @@ export default function IncidentDetailPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id, user]);
+
+  useEffect(() => {
+    if (!user || !incident || !isCapturing) return;
+    const interval = window.setInterval(() => {
+      getIncident(id).then(setIncident).catch(() => {});
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [id, incident, isCapturing, user]);
 
   async function handleExport() {
     setExporting(true);
@@ -80,10 +112,13 @@ export default function IncidentDetailPage() {
     );
   }
 
-  const captured = incident.evidence_inventory.filter(
-    (a) => a.status === "captured"
-  ).length;
-  const total = incident.evidence_inventory.length || EVIDENCE_TYPES.length;
+  const captureSummary = isCapturing
+    ? "Capture in progress (auto-refreshing every 4 seconds)."
+    : unavailable > 0
+      ? `Capture finished with ${unavailable} unavailable artifact${
+          unavailable === 1 ? "" : "s"
+        }.`
+      : "Capture complete.";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -103,9 +138,21 @@ export default function IncidentDetailPage() {
             {formatTime(incident.created_at_utc)}
           </span>
         </div>
-        <span className="text-sm text-gray-500">
-          Evidence: {captured}/{total} captured
-        </span>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800">
+            Captured {captured}/{total}
+          </span>
+          {pending > 0 && (
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 font-medium text-yellow-800">
+              Pending {pending}
+            </span>
+          )}
+          {unavailable > 0 && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-800">
+              Unavailable {unavailable}
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -114,6 +161,7 @@ export default function IncidentDetailPage() {
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
             A) Evidence Inventory
           </h2>
+          <p className="mb-4 text-xs text-gray-500">{captureSummary}</p>
           <EvidenceTable artifacts={incident.evidence_inventory} />
         </div>
 

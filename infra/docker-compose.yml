@@ -38,7 +38,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://app:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://app:8000
     depends_on:
       - app
 
