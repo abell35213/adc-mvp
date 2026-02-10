@@ -1,7 +1,6 @@
 """Tests for driver and admin endpoints."""
 
 import hashlib
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest

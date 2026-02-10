@@ -1,8 +1,7 @@
 """Tests for driver OTP authentication helpers and JWT guard."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,8 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.security import create_access_token
-from app.db.models import Base, Driver, Org, OtpChallenge
-from app.db.session import get_db
+from app.db.models import Base, Driver, Org
 from app.services.phone_normalize import normalize_phone
 
 

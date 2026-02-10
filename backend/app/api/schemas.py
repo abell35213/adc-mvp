@@ -1,7 +1,7 @@
 """Pydantic request / response schemas for the API."""
 
 import uuid
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -198,8 +198,51 @@ class DriverInstructionSetRequest(BaseModel):
     steps: list[DriverInstructionStep]
 
 
+class DriverInstructionStepResponse(BaseModel):
+    step_id: uuid.UUID
+    step_order: int
+    title: str
+    body: str
+
+
 class DriverInstructionSetResponse(DriverInstructionSetRequest):
     instruction_set_id: uuid.UUID
+    require_ack: Optional[bool] = None
+    steps: list[DriverInstructionStep | DriverInstructionStepResponse] = []  # type: ignore[assignment]
+
+
+# ── Driver incident / instruction responses ────────────────────────
+
+
+class DriverIncidentInitiateRequest(BaseModel):
+    vehicle_strategy: str
+    qr_token: Optional[str] = None
+    device_location: Optional[dict] = None
+    device: Optional[dict] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+
+
+class DriverIncidentInitiateResponse(BaseModel):
+    incident_id: uuid.UUID
+    safety_notified: bool
+    capture_started: bool
+
+
+class DriverInstructionAckRequest(BaseModel):
+    instruction_set_id: uuid.UUID
+
+
+class DriverInstructionAckResponse(BaseModel):
+    acknowledged: bool
+
+
+class DriverIncidentStatusResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: str
+    safety_notified: bool
+    capture_state: str
+    last_evidence_update_utc: Optional[str] = None
 
 
 # ── Admin vehicles / QR ────────────────────────────────────────────

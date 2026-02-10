@@ -18,10 +18,8 @@ from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.models import OtpChallenge
 from app.db.repo.drivers import (
-    OTP_EXPIRY_SECONDS,
     create_otp_challenge,
     get_driver_by_phone,
-    get_otp_challenge,
     increment_otp_attempts,
     mark_otp_verified,
 )
