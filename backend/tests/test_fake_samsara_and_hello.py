@@ -2,14 +2,17 @@
 
 
 
-from app.services.fake_samsara_adapter import FakeSamsaraAdapter, EXAMPLES_DIR
+from app.services.fake_samsara_adapter import FakeSamsaraAdapter, SAMSARA_FIXTURES_DIR
 
 
 class TestFakeSamsaraAdapter:
-    """Validate that the fake adapter loads example JSON correctly."""
+    """Validate that the fake adapter loads fixture JSON correctly."""
 
-    def test_examples_dir_exists(self):
-        assert EXAMPLES_DIR.is_dir(), f"examples/ directory missing at {EXAMPLES_DIR}"
+    def test_fixtures_dir_exists(self):
+        assert SAMSARA_FIXTURES_DIR.is_dir(), (
+            "provider_fixtures/samsara directory missing at "
+            f"{SAMSARA_FIXTURES_DIR}"
+        )
 
     def test_get_vehicle_locations_returns_list(self):
         adapter = FakeSamsaraAdapter()
@@ -71,13 +74,13 @@ class TestFakeSamsaraAdapter:
         data = adapter.fetch_dashcam_stream(stream="driver_facing")
         assert isinstance(data, bytes)
 
-    def test_missing_examples_dir_returns_empty(self, tmp_path):
-        adapter = FakeSamsaraAdapter(examples_dir=tmp_path / "nonexistent")
+    def test_missing_fixtures_dir_returns_empty(self, tmp_path):
+        adapter = FakeSamsaraAdapter(fixtures_dir=tmp_path / "nonexistent")
         data = adapter.get_vehicle_locations()
         assert data == []
 
     def test_missing_dashcam_file_returns_none(self, tmp_path):
-        adapter = FakeSamsaraAdapter(examples_dir=tmp_path)
+        adapter = FakeSamsaraAdapter(fixtures_dir=tmp_path)
         data = adapter.fetch_dashcam_stream()
         assert data is None
 
