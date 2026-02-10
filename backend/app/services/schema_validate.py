@@ -25,13 +25,19 @@ def _error_sort_key(error):
 
 
 def _format_error_path(path):
-    location = "$"
-    for part in path:
-        if isinstance(part, int):
-            location += f"[{part}]"
-        else:
-            location += f".{part}"
-    return location
+    """Format a validation error path using JSONPath-style notation.
+
+    Args:
+        path: ValidationError path iterable.
+
+    Returns:
+        JSONPath-like string starting at "$".
+    """
+    parts = [
+        f"[{part}]" if isinstance(part, int) else f".{part}"
+        for part in path
+    ]
+    return "$" + "".join(parts)
 
 
 def _resolve_schema_path(schema_name: str) -> Path:
