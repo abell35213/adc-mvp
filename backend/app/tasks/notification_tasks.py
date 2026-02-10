@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
-from xml.etree.ElementTree import Element, SubElement, tostring
 
 from app.tasks.celery_app import celery_app
 
@@ -61,13 +60,6 @@ def _compose_voice(incident) -> str:
     )
 
 
-def _build_twiml(message: str) -> str:
-    response = Element("Response")
-    say = SubElement(response, "Say")
-    say.text = message
-    return f'<?xml version="1.0" encoding="UTF-8"?>{tostring(response, encoding="unicode")}'
-
-
 @celery_app.task(
     bind=True,
     acks_late=True,
@@ -80,7 +72,7 @@ def notify_safety_manager(self, incident_id: str):
     from app.db.models import Org
     from app.db.repo.incidents import get_incident
     from app.domain.system_event_types import SystemEventType
-    from app.services.twilio_notify import place_call, send_sms
+    from app.services.twilio_notify import build_voice_twiml, place_call, send_sms
 
     inc_uuid = _uuid.UUID(incident_id)
     db = _get_db()
@@ -122,7 +114,7 @@ def notify_safety_manager(self, incident_id: str):
             raise ValueError(reason)
 
         message = _compose_sms(incident)
-        twiml = _build_twiml(_compose_voice(incident))
+        twiml = build_voice_twiml(_compose_voice(incident))
         errors = []
         result = {"incident_id": incident_id}
 
@@ -149,7 +141,7 @@ def notify_safety_manager(self, incident_id: str):
                         "reason": str(exc),
                     },
                 )
-                errors.append(exc)
+                errors.append(f"SMS failed: {exc}")
 
         if org.voice_enabled:
             try:
@@ -174,13 +166,13 @@ def notify_safety_manager(self, incident_id: str):
                         "reason": str(exc),
                     },
                 )
-                errors.append(exc)
+                errors.append(f"Call failed: {exc}")
 
         if not org.sms_enabled and not org.voice_enabled:
             result["status"] = "skipped"
 
         if errors:
-            raise errors[0]
+            raise RuntimeError(" | ".join(errors))
 
         return result
 

@@ -6,11 +6,11 @@ import base64
 import hashlib
 import hmac
 from urllib.parse import parse_qs
-from xml.etree.ElementTree import Element, SubElement, tostring
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.core.config import settings
+from app.services.twilio_notify import build_voice_twiml
 
 router = APIRouter()
 
@@ -47,19 +47,12 @@ def _validate_twilio_request(request: Request, params: dict[str, str]) -> None:
         )
 
 
-def _build_twiml(message: str) -> str:
-    response = Element("Response")
-    say = SubElement(response, "Say")
-    say.text = message
-    return f'<?xml version="1.0" encoding="UTF-8"?>{tostring(response, encoding="unicode")}'
-
-
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request):
     body = await request.body()
     params = {key: values[0] for key, values in parse_qs(body.decode()).items()}
     _validate_twilio_request(request, params)
     return Response(
-        content=_build_twiml(VOICE_MESSAGE),
+        content=build_voice_twiml(VOICE_MESSAGE),
         media_type="application/xml",
     )

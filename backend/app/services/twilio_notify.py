@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 import httpx
 
@@ -72,12 +73,21 @@ def place_call(to: str, twiml_url_or_twiml: str) -> str:
         "To": to,
         "From": from_number,
     }
-    if twiml_url_or_twiml.lstrip().startswith("<"):
-        data["Twiml"] = twiml_url_or_twiml
+    trimmed_value = twiml_url_or_twiml.lstrip()
+    if trimmed_value.startswith(("http://", "https://")):
+        data["Url"] = trimmed_value
     else:
-        data["Url"] = twiml_url_or_twiml
+        data["Twiml"] = twiml_url_or_twiml
     payload = _post_twilio("Calls.json", data)
     sid = payload.get("sid")
     if not sid:
         raise ValueError("Twilio call response missing SID")
     return sid
+
+
+def build_voice_twiml(message: str) -> str:
+    """Build a TwiML payload that speaks a single message."""
+    response = Element("Response")
+    say = SubElement(response, "Say")
+    say.text = message
+    return f'<?xml version="1.0" encoding="UTF-8"?>{tostring(response, encoding="unicode")}'
