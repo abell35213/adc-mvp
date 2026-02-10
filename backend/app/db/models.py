@@ -2,10 +2,10 @@
 
 import uuid
 
+from sqlalchemy import Column, Text, Boolean, ForeignKey, func, Enum, Index, BigInteger
 from sqlalchemy import Column, Text, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import BigInteger
 
 Base = declarative_base()
 
@@ -64,7 +64,7 @@ class Event(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
@@ -72,6 +72,12 @@ class Event(Base):
     actor_type = Column(Text, nullable=False)
     actor_id = Column(Text, nullable=False)
     payload = Column(JSONB, nullable=True)
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_events_org_incident', 'org_id', 'incident_id'),
+        Index('ix_events_org_type_occurred', 'org_id', 'event_type', 'occurred_at_utc'),
+    )
 
 
 class Incident(Base):
@@ -84,7 +90,7 @@ class Incident(Base):
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    status = Column(Text, nullable=False, default="open")
+    status = Column(Enum('open', 'evidence_capturing', 'closed', name='incident_status'), nullable=False, default='open')
     adc_vehicle_id = Column(Text, nullable=True)
     samsara_vehicle_id = Column(Text, nullable=True)
     adc_driver_id = Column(Text, nullable=True)
@@ -98,9 +104,9 @@ class Artifact(Base):
 
     artifact_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
     artifact_type = Column(Text, nullable=False)
-    status = Column(Text, nullable=False, default="pending")
+    status = Column(Enum('pending', 'captured', 'unavailable', name='artifact_status'), nullable=False, default='pending')
     capture_window_start_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     capture_window_end_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     s3_bucket = Column(Text, nullable=True)
@@ -109,6 +115,12 @@ class Artifact(Base):
     byte_size = Column(BigInteger, nullable=True)
     unavailable_reason_code = Column(Text, nullable=True)
     unavailable_reason_detail = Column(Text, nullable=True)
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_artifacts_org_incident', 'org_id', 'incident_id'),
+        Index('ix_artifacts_incident_type', 'incident_id', 'artifact_type'),
+    )
 
 
 class Export(Base):
@@ -118,10 +130,14 @@ class Export(Base):
 
     export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    status = Column(Text, nullable=False, default="requested")
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
+    status = Column(Enum('requested', 'processing', 'ready', 'failed', name='export_status'), nullable=False, default='requested')
     s3_bucket = Column(Text, nullable=True)
     s3_key = Column(Text, nullable=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index('ix_exports_org_incident', 'org_id', 'incident_id'),
     )
