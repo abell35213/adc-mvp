@@ -67,6 +67,8 @@ def _create_driver(db_session, phone_e164: str) -> Driver:
 def test_driver_otp_flow(client, db_session):
     raw_phone = "(555) 123-4567"
     phone_e164 = normalize_phone(raw_phone)
+    verify_phone = "5551234567"
+    assert normalize_phone(verify_phone) == phone_e164
     _create_driver(db_session, phone_e164)
 
     with (
@@ -88,7 +90,7 @@ def test_driver_otp_flow(client, db_session):
 
         verify_resp = client.post(
             "/driver/auth/verify-otp",
-            json={"phone_e164": "5551234567", "otp_code": "123456"},
+            json={"phone_e164": verify_phone, "otp_code": "123456"},
         )
         assert verify_resp.status_code == 200
         token = verify_resp.json()["access_token"]
