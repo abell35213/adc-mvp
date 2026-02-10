@@ -327,3 +327,109 @@ class TestGetQrPayload:
     def test_no_auth_returns_401(self, client):
         resp = client.get("/admin/vehicles/veh-900/qr")
         assert resp.status_code in (401, 403)
+
+
+# ── /admin/driver-protocol/settings ───────────────────────────────
+
+
+class TestDriverProtocolSettings:
+    def test_get_settings_defaults(self, client, admin_headers):
+        resp = client.get("/admin/driver-protocol/settings", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["instruction_source"] == "default"
+        assert data["require_ack"] is False
+        assert data["sms_enabled"] is False
+        assert data["voice_enabled"] is False
+        assert data["safety_manager_phone"] is None
+
+    def test_update_settings(self, client, admin_headers, db_session, test_org):
+        payload = {
+            "instruction_source": "company",
+            "require_ack": True,
+            "sms_enabled": True,
+            "voice_enabled": False,
+            "safety_manager_phone": "+15551230000",
+        }
+        resp = client.put(
+            "/admin/driver-protocol/settings",
+            headers=admin_headers,
+            json=payload,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["instruction_source"] == "company"
+        db_session.refresh(test_org)
+        assert test_org.instruction_source == "company"
+        assert test_org.require_driver_ack is True
+
+
+# ── /admin/driver-protocol/instructions ────────────────────────────
+
+
+class TestDriverProtocolInstructions:
+    def test_get_instructions_seeds_defaults(self, client, admin_headers):
+        resp = client.get("/admin/driver-protocol/instructions", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["scope"] == "default"
+        assert len(data["steps"]) == 3
+        assert data["steps"][0]["order"] == 1
+
+    def test_update_instructions_replaces_steps(self, client, admin_headers):
+        payload = {
+            "scope": "default",
+            "steps": [
+                {
+                    "order": 1,
+                    "title": "Stay calm",
+                    "body": "Take a deep breath and follow instructions.",
+                    "enabled": True,
+                }
+            ],
+        }
+        resp = client.put(
+            "/admin/driver-protocol/instructions",
+            headers=admin_headers,
+            json=payload,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["steps"]) == 1
+        assert data["steps"][0]["title"] == "Stay calm"
+
+    def test_reset_instructions_restores_defaults(self, client, admin_headers):
+        client.put(
+            "/admin/driver-protocol/instructions",
+            headers=admin_headers,
+            json={
+                "scope": "default",
+                "steps": [
+                    {
+                        "order": 1,
+                        "title": "Custom",
+                        "body": "Custom",
+                        "enabled": True,
+                    }
+                ],
+            },
+        )
+        resp = client.post(
+            "/admin/driver-protocol/instructions/reset",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["steps"]) == 3
+        assert data["steps"][0]["title"] == "Get to safety"
+
+
+# ── /admin/vehicles ────────────────────────────────────────────────
+
+
+class TestAdminVehiclesList:
+    def test_list_admin_vehicles(self, client, admin_headers):
+        resp = client.get("/admin/vehicles", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any(vehicle["adc_vehicle_id"] == "veh-101" for vehicle in data)

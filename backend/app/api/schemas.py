@@ -145,7 +145,45 @@ class ResolveQrResponse(BaseModel):
     display_label: str
 
 
+# ── Admin driver protocol ─────────────────────────────────────────
+
+
+class DriverProtocolSettingsRequest(BaseModel):
+    instruction_source: str
+    require_ack: bool
+    sms_enabled: bool
+    voice_enabled: bool
+    safety_manager_phone: Optional[str] = None
+
+
+class DriverProtocolSettingsResponse(DriverProtocolSettingsRequest):
+    pass
+
+
+class DriverInstructionStep(BaseModel):
+    step_id: Optional[uuid.UUID] = None
+    order: int
+    title: str
+    body: str
+    enabled: bool = True
+
+
+class DriverInstructionSetRequest(BaseModel):
+    scope: str
+    steps: list[DriverInstructionStep]
+
+
+class DriverInstructionSetResponse(DriverInstructionSetRequest):
+    instruction_set_id: uuid.UUID
+
+
 # ── Admin vehicles / QR ────────────────────────────────────────────
+
+
+class AdminVehicleSummary(BaseModel):
+    adc_vehicle_id: str
+    display_label: str
+
 
 class RotateQrResponse(BaseModel):
     qr_token: str
