@@ -80,6 +80,7 @@ class TestJWT:
         token = create_access_token({"sub": "u1"})
         payload = decode_access_token(token)
         assert "exp" in payload
+        assert "iat" in payload
 
 
 # ── POST /auth/register ────────────────────────────────────────────
