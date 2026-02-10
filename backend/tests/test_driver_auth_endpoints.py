@@ -142,11 +142,13 @@ def test_driver_otp_expires(client, db_session):
     challenge.expires_at_utc = datetime.now(timezone.utc) - timedelta(minutes=1)
     db_session.commit()
 
-    verify_resp = client.post(
-        "/driver/auth/verify-otp",
-        json={"phone_e164": phone_e164, "otp_code": "123456"},
-    )
-    assert verify_resp.status_code == 410
+    with patch("app.services.twilio_verify.check_verification") as check_verification:
+        verify_resp = client.post(
+            "/driver/auth/verify-otp",
+            json={"phone_e164": phone_e164, "otp_code": "123456"},
+        )
+        assert verify_resp.status_code == 410
+        check_verification.assert_not_called()
 
 
 def test_driver_otp_request_handles_twilio_failure(client, db_session):
@@ -160,6 +162,7 @@ def test_driver_otp_request_handles_twilio_failure(client, db_session):
             json={"phone_e164": phone_e164},
         )
         assert request_resp.status_code == 200
+        assert request_resp.json()["detail"] == "OTP sent"
 
     challenge = db_session.query(OtpChallenge).filter_by(phone_e164=phone_e164).first()
     assert challenge is not None
