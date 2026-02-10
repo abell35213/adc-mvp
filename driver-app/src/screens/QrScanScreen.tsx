@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,19 +17,30 @@ export default function QrScanScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const isHandlingRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       setIsScanning(true);
       setStatusMessage(null);
+      isHandlingRef.current = false;
+
+      return () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+      };
     }, []),
   );
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    if (!isScanning) {
+    if (!isScanning || isHandlingRef.current) {
       return;
     }
 
+    isHandlingRef.current = true;
     setIsScanning(false);
     if (!data.startsWith(QR_PREFIX)) {
       setStatusMessage('Invalid QR code. Please scan an ADC vehicle code.');
@@ -45,7 +56,10 @@ export default function QrScanScreen({ navigation }: Props) {
     try {
       const response = await resolveQr(qrToken);
       setStatusMessage(`Resolved vehicle ${response.display_label}.`);
-      setTimeout(() => navigation.goBack(), SUCCESS_MESSAGE_DURATION_MILLISECONDS);
+      timeoutRef.current = setTimeout(
+        () => navigation.goBack(),
+        SUCCESS_MESSAGE_DURATION_MILLISECONDS,
+      );
     } catch (err) {
       setStatusMessage(
         err instanceof Error ? err.message : 'Failed to resolve vehicle.',
@@ -89,6 +103,7 @@ export default function QrScanScreen({ navigation }: Props) {
             <Button
               mode="outlined"
               onPress={() => {
+                isHandlingRef.current = false;
                 setStatusMessage(null);
                 setIsScanning(true);
               }}

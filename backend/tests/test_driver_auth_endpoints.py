@@ -123,3 +123,20 @@ def test_driver_otp_expires(client, db_session):
 def test_generate_otp_code_format():
     with patch("app.api.routes_driver.secrets.randbelow", return_value=42):
         assert _generate_otp_code() == "000042"
+
+
+def test_driver_otp_resend_cooldown(client):
+    phone_e164 = "+15559990000"
+    with patch("app.api.routes_driver._generate_otp_code", return_value="123456"):
+        first_resp = client.post(
+            "/driver/auth/request-otp",
+            json={"phone_e164": phone_e164},
+        )
+        assert first_resp.status_code == 200
+
+        second_resp = client.post(
+            "/driver/auth/request-otp",
+            json={"phone_e164": phone_e164},
+        )
+        assert second_resp.status_code == 429
+        assert "Retry-After" in second_resp.headers

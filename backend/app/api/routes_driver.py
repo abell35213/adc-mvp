@@ -1,6 +1,7 @@
 """Driver API routes — driver auth, profile, and QR vehicle resolution."""
 
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -20,6 +21,7 @@ from app.api.schemas import (
     ResolveQrResponse,
     VehicleInfo,
 )
+from app.core.config import settings
 from app.core.security import create_access_token, decode_access_token
 from app.db.models import Driver, DriverVehicleAssignment, Event, Org, OtpChallenge, VehicleQrToken
 from app.db.session import get_db
@@ -38,7 +40,11 @@ def _generate_otp_code() -> str:
 
 
 def _hash_otp_code(code: str) -> str:
-    return hashlib.sha256(code.encode()).hexdigest()
+    return hmac.new(
+        settings.OTP_HASH_PEPPER.encode(),
+        code.encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _get_current_driver(
@@ -114,6 +120,7 @@ def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
             detail="Phone number is required",
         )
 
+    now = datetime.now(timezone.utc)
     org = _get_or_create_default_org(db)
     driver = db.query(Driver).filter(Driver.phone_e164 == phone_e164).first()
     if driver is None:
@@ -126,19 +133,34 @@ def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(driver)
 
-    pending = (
-        db.query(OtpChallenge)
-        .filter(
-            OtpChallenge.phone_e164 == phone_e164,
-            OtpChallenge.status == "pending",
-        )
-        .all()
+    pending_query = db.query(OtpChallenge).filter(
+        OtpChallenge.phone_e164 == phone_e164,
+        OtpChallenge.status == "pending",
     )
+    latest_pending = pending_query.order_by(OtpChallenge.created_at_utc.desc()).first()
+    if latest_pending is not None:
+        if _as_utc(latest_pending.expires_at_utc) < now:
+            latest_pending.status = "expired"
+            db.commit()
+        elif latest_pending.last_sent_at_utc is not None:
+            last_sent = _as_utc(latest_pending.last_sent_at_utc)
+            elapsed = (now - last_sent).total_seconds()
+            if elapsed < settings.OTP_RESEND_COOLDOWN_SECONDS:
+                retry_after = max(
+                    1,
+                    int(settings.OTP_RESEND_COOLDOWN_SECONDS - elapsed),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="OTP recently sent",
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+    pending = pending_query.all()
     for challenge in pending:
         challenge.status = "expired"
 
     otp_code = _generate_otp_code()
-    now = datetime.now(timezone.utc)
     otp = OtpChallenge(
         phone_e164=phone_e164,
         otp_code_hash=_hash_otp_code(otp_code),
@@ -252,7 +274,7 @@ def driver_me(
 @router.post("/vehicle/resolve-qr", response_model=ResolveQrResponse)
 def resolve_qr(
     body: ResolveQrRequest,
-    _driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(_get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Resolve a QR token to a vehicle. Only active tokens are accepted."""
@@ -279,7 +301,7 @@ def resolve_qr(
         incident_id=None,
         event_type=SystemEventType.DRIVER_VEHICLE_RESOLVED.value,
         actor_type="driver_app",
-        actor_id="anonymous",
+        actor_id=str(driver.driver_id),
         payload={
             "adc_vehicle_id": token_row.adc_vehicle_id,
             "token_sha256": token_hash,
