@@ -227,9 +227,35 @@ class TestCaptureDashcam:
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
         assert "evidence_capture_succeeded" in event_types
         assert "artifact_recorded" in event_types
         assert "artifact_hashed" in event_types
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+        mock_get_db.return_value = db_session
+        MockSamsara.side_effect = RuntimeError("Samsara down")
+
+        from app.tasks.evidence_tasks import capture_dashcam
+
+        with pytest.raises(RuntimeError, match="Samsara down"):
+            capture_dashcam(
+                str(incident.incident_id),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            )
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident.incident_id
+        ).all()
+        event_types = [e.event_type for e in events]
+
+        assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
+        assert "evidence_capture_failed" in event_types
+        assert "evidence_capture_succeeded" not in event_types
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
@@ -374,7 +400,33 @@ class TestCaptureTelematicsBundle:
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
         assert "evidence_capture_succeeded" in event_types
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+        mock_get_db.return_value = db_session
+        MockSamsara.side_effect = RuntimeError("Samsara down")
+
+        from app.tasks.evidence_tasks import capture_telematics_bundle
+
+        with pytest.raises(RuntimeError, match="Samsara down"):
+            capture_telematics_bundle(
+                str(incident.incident_id),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            )
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident.incident_id
+        ).all()
+        event_types = [e.event_type for e in events]
+
+        assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
+        assert "evidence_capture_failed" in event_types
+        assert "evidence_capture_succeeded" not in event_types
 
 
 # ── Backward-compatible alias ───────────────────────────────────────
