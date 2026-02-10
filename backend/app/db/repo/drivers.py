@@ -58,10 +58,15 @@ def get_otp_challenge(db: Session, challenge_id: _uuid.UUID) -> OtpChallenge | N
 
 
 def increment_otp_attempts(db: Session, challenge: OtpChallenge) -> OtpChallenge:
-    """Increment attempt count and lock if too many attempts."""
-    challenge.attempt_count += 1
-    if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
-        challenge.is_locked = True
+    """Increment attempt count and lock or expire the challenge when appropriate."""
+    # If the challenge has already expired, mark it as expired instead of incrementing attempts.
+    now_utc = datetime.now(timezone.utc)
+    if challenge.expires_at_utc is not None and challenge.expires_at_utc <= now_utc:
+        challenge.status = "expired"
+    else:
+        challenge.attempt_count += 1
+        if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
+            challenge.status = "locked"
     db.commit()
     db.refresh(challenge)
     return challenge
