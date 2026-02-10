@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -34,19 +34,18 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
-  const artifactStatuses = incident
-    ? (() => {
-        const artifactMap = new Map(
-          incident.evidence_inventory.map((artifact) => [
-            artifact.artifact_type,
-            artifact,
-          ])
-        );
-        return EVIDENCE_TYPES.map(
-          ({ type }) => artifactMap.get(type)?.status ?? "pending"
-        );
-      })()
-    : [];
+  const artifactStatuses = useMemo(() => {
+    if (!incident) return [];
+    const artifactMap = new Map(
+      incident.evidence_inventory.map((artifact) => [
+        artifact.artifact_type,
+        artifact,
+      ])
+    );
+    return EVIDENCE_TYPES.map(
+      ({ type }) => artifactMap.get(type)?.status ?? "pending"
+    );
+  }, [incident]);
 
   const captured = artifactStatuses.filter((status) => status === "captured")
     .length;
@@ -69,7 +68,9 @@ export default function IncidentDetailPage() {
   useEffect(() => {
     if (!user || !incident || !isCapturing) return;
     const interval = window.setInterval(() => {
-      getIncident(id).then(setIncident).catch(() => {});
+      getIncident(id)
+        .then(setIncident)
+        .catch((err) => console.warn("Incident refresh failed", err));
     }, 4000);
     return () => window.clearInterval(interval);
   }, [id, incident, isCapturing, user]);
