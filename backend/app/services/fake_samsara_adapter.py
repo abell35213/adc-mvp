@@ -1,6 +1,6 @@
 """Fake Samsara adapter for local development and testing.
 
-Returns canned JSON data from the ``examples/`` folder instead of
+Returns canned JSON data from the ``provider_fixtures/samsara/`` folder instead of
 calling the real Samsara API.
 """
 
@@ -10,22 +10,24 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent / "examples"
+SAMSARA_FIXTURES_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "provider_fixtures" / "samsara"
+)
 
 
 class FakeSamsaraAdapter:
     """Drop-in replacement for :class:`SamsaraClient` that serves fixture data."""
 
     def __init__(self, examples_dir: Path | None = None):
-        self.examples_dir = examples_dir or EXAMPLES_DIR
+        self.examples_dir = examples_dir or SAMSARA_FIXTURES_DIR
 
     # ── helpers ────────────────────────────────────────────────────────
 
     def _load_json(self, filename: str) -> list:
-        """Load a JSON file from the examples directory and return its data list."""
+        """Load a JSON file from the fixtures directory and return its data list."""
         path = self.examples_dir / filename
         if not path.exists():
-            logger.warning("Example file not found: %s", path)
+            logger.warning("Fixture file not found: %s", path)
             return []
         with open(path) as f:
             return json.load(f).get("data", [])
@@ -62,7 +64,7 @@ class FakeSamsaraAdapter:
         start: str | None = None,
         end: str | None = None,
     ) -> bytes | None:
-        """Return example dashcam bytes from the examples directory."""
+        """Return example dashcam bytes from the fixtures directory."""
         path = self.examples_dir / "dashcam_stream.bin"
         if not path.exists():
             return None

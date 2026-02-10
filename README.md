@@ -46,7 +46,8 @@ adc-mvp/
 │   │       ├── evidence_types.py      # Evidence type definitions
 │   │       └── system_event_types.py  # System event type definitions
 │   ├── tests/                         # Backend test suite (pytest)
-│   ├── examples/                      # Sample API payloads
+│   ├── provider_fixtures/
+│   │   └── samsara/                   # Sample provider payloads
 │   ├── alembic.ini                    # Alembic configuration
 │   └── requirements.txt
 ├── frontend/                          # Next.js UI
