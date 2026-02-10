@@ -18,8 +18,7 @@ README_TEMPLATE = "\n".join([
     "",
     "Incident ID: {incident_id}",
     "Export ID: {export_id}",
-    "Capture window (UTC, earliest start to latest end): "
-    "{capture_start} to {capture_end}",
+    "Capture window (UTC, earliest start to latest end): {capture_start} to {capture_end}",
     "",
     "Hashes:",
     "SHA-256 hashes are computed from the raw bytes of each artifact",
@@ -74,6 +73,7 @@ def _safe_artifact_type(artifact_type):
     if not artifact_type:
         return "unknown"
     sanitized = SAFE_ARTIFACT_TYPE_RE.sub("_", artifact_type).strip("_-")
+    # Fall back to a stable label if sanitization leaves an empty string.
     return sanitized or "unknown"
 
 
@@ -189,15 +189,17 @@ def build_export(self, incident_id: str, export_id: str):
             ])
         appendix_csv_bytes = appendix_buf.getvalue().encode()
 
-        capture_starts = []
-        capture_ends = []
+        capture_start = None
+        capture_end = None
         for artifact, _ in exportable_artifacts:
-            if artifact.capture_window_start_utc is not None:
-                capture_starts.append(artifact.capture_window_start_utc)
-            if artifact.capture_window_end_utc is not None:
-                capture_ends.append(artifact.capture_window_end_utc)
-        capture_start = min(capture_starts) if capture_starts else None
-        capture_end = max(capture_ends) if capture_ends else None
+            start_time = artifact.capture_window_start_utc
+            end_time = artifact.capture_window_end_utc
+            if start_time is not None and (
+                capture_start is None or start_time < capture_start
+            ):
+                capture_start = start_time
+            if end_time is not None and (capture_end is None or end_time > capture_end):
+                capture_end = end_time
         capture_start_str = capture_start.isoformat() if capture_start else "Unavailable"
         capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
         readme_content = README_TEMPLATE.format(
