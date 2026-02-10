@@ -90,6 +90,11 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
             "window_start": window_start,
             "window_end": window_end,
         })
+        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED, {
+            "type": "dashcam",
+            "window_start": window_start,
+            "window_end": window_end,
+        })
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
@@ -185,6 +190,14 @@ def capture_dashcam(self, incident_id: str, window_start: str, window_end: str):
 
         return {"incident_id": incident_id, "type": "dashcam", "status": "captured"}
 
+    except Exception as exc:
+        logger.exception("Dashcam capture failed for incident %s", incident_id)
+        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_FAILED, {
+            "type": "dashcam",
+            "reason": str(exc),
+        })
+        raise
+
     finally:
         db.close()
 
@@ -238,6 +251,11 @@ def capture_telematics_bundle(
 
     try:
         _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_REQUESTED, {
+            "type": "telematics",
+            "window_start": window_start,
+            "window_end": window_end,
+        })
+        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED, {
             "type": "telematics",
             "window_start": window_start,
             "window_end": window_end,
@@ -449,6 +467,14 @@ def capture_telematics_bundle(
         })
 
         return {"incident_id": incident_id, "type": "telematics", "status": "captured"}
+
+    except Exception as exc:
+        logger.exception("Telematics capture failed for incident %s", incident_id)
+        _emit(db, inc_uuid, SystemEventType.EVIDENCE_CAPTURE_FAILED, {
+            "type": "telematics",
+            "reason": str(exc),
+        })
+        raise
 
     finally:
         db.close()
