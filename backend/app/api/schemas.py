@@ -3,7 +3,7 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Auth ────────────────────────────────────────────────────────────
@@ -11,6 +11,13 @@ from pydantic import BaseModel
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class RequestOtpRequest(BaseModel):
+    phone_e164: str = Field(
+        pattern=r"^\+[1-9]\d{1,14}$",
+        description="Phone number in E.164 format, e.g. +15551234567.",
+    )
 
 
 class LoginResponse(BaseModel):
