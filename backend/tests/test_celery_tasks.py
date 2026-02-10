@@ -5,7 +5,10 @@ all external dependencies mocked so they run in-memory with SQLite.
 """
 
 import hashlib
+import io
 import uuid
+import zipfile
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -42,7 +45,11 @@ def db_session(db_engine):
 
 @pytest.fixture()
 def incident(db_session):
-    inc = Incident(status="evidence_capturing", adc_vehicle_id="v1")
+    inc = Incident(
+        status="evidence_capturing",
+        adc_vehicle_id="v1",
+        org_id=uuid.uuid4(),
+    )
     db_session.add(inc)
     db_session.commit()
     db_session.refresh(inc)
@@ -104,7 +111,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://bucket/key"
+        s3_inst.put_bytes.return_value = "s3://bucket/key"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -119,7 +126,7 @@ class TestCaptureDashcam:
         assert result["type"] == "dashcam"
 
         # Two streams → two uploads
-        assert s3_inst.upload.call_count == 2
+        assert s3_inst.put_bytes.call_count == 2
 
         # Check artifacts were inserted
         artifacts = db_session.query(Artifact).filter(
@@ -149,7 +156,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://bucket/key"
+        s3_inst.put_bytes.return_value = "s3://bucket/key"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -210,7 +217,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -227,9 +234,35 @@ class TestCaptureDashcam:
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
         assert "evidence_capture_succeeded" in event_types
         assert "artifact_recorded" in event_types
         assert "artifact_hashed" in event_types
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+        mock_get_db.return_value = db_session
+        MockSamsara.side_effect = RuntimeError("Samsara down")
+
+        from app.tasks.evidence_tasks import capture_dashcam
+
+        with pytest.raises(RuntimeError, match="Samsara down"):
+            capture_dashcam(
+                str(incident.incident_id),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            )
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident.incident_id
+        ).all()
+        event_types = [e.event_type for e in events]
+
+        assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
+        assert "evidence_capture_failed" in event_types
+        assert "evidence_capture_succeeded" not in event_types
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
@@ -243,7 +276,7 @@ class TestCaptureDashcam:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_dashcam
@@ -285,7 +318,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -320,7 +353,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -357,7 +390,7 @@ class TestCaptureTelematicsBundle:
         MockSamsara.return_value = samsara_inst
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
+        s3_inst.put_bytes.return_value = "s3://b/k"
         MockS3.return_value = s3_inst
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
@@ -374,7 +407,33 @@ class TestCaptureTelematicsBundle:
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
         assert "evidence_capture_succeeded" in event_types
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+        mock_get_db.return_value = db_session
+        MockSamsara.side_effect = RuntimeError("Samsara down")
+
+        from app.tasks.evidence_tasks import capture_telematics_bundle
+
+        with pytest.raises(RuntimeError, match="Samsara down"):
+            capture_telematics_bundle(
+                str(incident.incident_id),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            )
+
+        events = db_session.query(Event).filter(
+            Event.incident_id == incident.incident_id
+        ).all()
+        event_types = [e.event_type for e in events]
+
+        assert "evidence_capture_requested" in event_types
+        assert "evidence_capture_attempted" in event_types
+        assert "evidence_capture_failed" in event_types
+        assert "evidence_capture_succeeded" not in event_types
 
 
 # ── Backward-compatible alias ───────────────────────────────────────
@@ -407,8 +466,8 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b"file-content"
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b"file-content"
         MockS3.return_value = s3_inst
 
         # Add a captured artifact for the incident
@@ -419,6 +478,8 @@ class TestBuildExport:
             s3_key="incidents/x/telematics/eld.json",
             sha256="abc",
             byte_size=100,
+            capture_window_start_utc=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            capture_window_end_utc=datetime(2024, 1, 1, 1, tzinfo=timezone.utc),
         )
         db_session.add(art)
         db_session.commit()
@@ -433,7 +494,7 @@ class TestBuildExport:
         assert result["status"] == "ready"
 
         # ZIP was uploaded to S3
-        assert s3_inst.upload.call_count >= 1
+        assert s3_inst.put_bytes.call_count >= 1
 
         # Export row was updated
         updated_export = db_session.query(Export).filter(
@@ -442,14 +503,28 @@ class TestBuildExport:
         assert updated_export.status == "ready"
         assert updated_export.s3_key is not None
 
+        zip_bytes = s3_inst.upload.call_args[0][1]
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            names = set(zf.namelist())
+            expected = {
+                "ADC_Court_Package/00_README.txt",
+                "ADC_Court_Package/02_Evidence_Inventory.csv",
+                "ADC_Court_Package/03_Chain_of_Custody.csv",
+                "ADC_Court_Package/integrity_appendix.csv",
+                "ADC_Court_Package/artifacts/eld_log/eld.json",
+            }
+            assert expected.issubset(names)
+            readme = zf.read("ADC_Court_Package/00_README.txt").decode()
+            assert "Capture window (UTC" in readme
+
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     def test_export_emits_events(self, MockS3, mock_get_db, db_session, incident, export_row):
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -473,8 +548,8 @@ class TestBuildExport:
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -512,8 +587,8 @@ class TestBuildExport:
         )
 
         s3_inst = MagicMock()
-        s3_inst.upload.return_value = "s3://b/k"
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export
@@ -537,8 +612,8 @@ class TestBuildExport:
 
         # Make S3 upload explode
         s3_inst = MagicMock()
-        s3_inst.upload.side_effect = RuntimeError("S3 down")
-        s3_inst.download.return_value = b""
+        s3_inst.put_bytes.side_effect = RuntimeError("S3 down")
+        s3_inst.get_bytes.return_value = b""
         MockS3.return_value = s3_inst
 
         from app.tasks.export_tasks import build_export

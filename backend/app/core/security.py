@@ -27,10 +27,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a signed JWT access token."""
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    issued_at = datetime.now(timezone.utc)
+    expire = issued_at + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "iat": issued_at})
     return jwt.encode(
         to_encode,
         settings.JWT_SECRET_KEY,

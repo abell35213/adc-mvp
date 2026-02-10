@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     # Vault (filesystem)
     VAULT_ROOT: str = "/var/adc/vault"
 
+    # Public URL / Deep-link
+    PUBLIC_APP_BASE_URL: str = "http://localhost:3000"
+    DRIVER_APP_DEEPLINK_SCHEME: str = "adc"
+
+    # Twilio
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_VERIFY_SERVICE_SID: str = ""
+    TWILIO_SMS_FROM: str = ""
+    TWILIO_VOICE_FROM: str = ""
+
     # Auth / JWT
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
