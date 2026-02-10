@@ -110,9 +110,9 @@ def build_export(self, incident_id: str, export_id: str):
         for artifact in artifacts:
             filename = _artifact_filename(artifact.s3_key)
             extension = _artifact_extension(filename)
-            if artifact.capture_window_start_utc:
+            if artifact.capture_window_start_utc is not None:
                 capture_starts.append(artifact.capture_window_start_utc)
-            if artifact.capture_window_end_utc:
+            if artifact.capture_window_end_utc is not None:
                 capture_ends.append(artifact.capture_window_end_utc)
 
             if (
