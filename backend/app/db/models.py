@@ -2,7 +2,18 @@
 
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, Enum, ForeignKey, Index, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 
@@ -19,6 +30,10 @@ class Org(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(Text, nullable=False)
+    require_driver_ack = Column(Boolean, nullable=False, default=False)
+    sms_enabled = Column(Boolean, nullable=False, default=False)
+    voice_enabled = Column(Boolean, nullable=False, default=False)
+    safety_manager_phone = Column(Text, nullable=True)
 
 
 class User(Base):
@@ -140,3 +155,118 @@ class Export(Base):
     __table_args__ = (
         Index('ix_exports_org_incident', 'org_id', 'incident_id'),
     )
+
+
+# ── Driver protocol models ────────────────────────────────────────────
+
+
+class Driver(Base):
+    """Driver profile for communications and assignments."""
+
+    __tablename__ = "drivers"
+
+    driver_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    phone_e164 = Column(Text, nullable=False, unique=True, index=True)
+    display_name = Column(Text, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+
+class OtpChallenge(Base):
+    """One-time password challenge tracking."""
+
+    __tablename__ = "otp_challenges"
+
+    challenge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_e164 = Column(Text, nullable=False, index=True)
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    status = Column(
+        Enum("pending", "verified", "expired", "locked", name="otp_challenge_status"),
+        nullable=False,
+        default="pending",
+    )
+    twilio_sid = Column(Text, nullable=True)
+    last_sent_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class DriverVehicleAssignment(Base):
+    """Assignment of a driver to a vehicle."""
+
+    __tablename__ = "driver_vehicle_assignments"
+
+    assignment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    driver_id = Column(
+        UUID(as_uuid=True), ForeignKey("drivers.driver_id"), nullable=False, index=True
+    )
+    adc_vehicle_id = Column(Text, nullable=False, index=True)
+    assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    unassigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    source = Column(
+        Enum("tms", "eld", "manual", "driver_app", name="driver_assignment_source"),
+        nullable=False,
+    )
+
+
+class VehicleQrToken(Base):
+    """Vehicle QR tokens for driver app onboarding."""
+
+    __tablename__ = "vehicle_qr_tokens"
+
+    qr_token = Column(Text, primary_key=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    adc_vehicle_id = Column(Text, nullable=False, index=True)
+    status = Column(
+        Enum("active", "revoked", "rotated", name="vehicle_qr_token_status"),
+        nullable=False,
+        default="active",
+    )
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    rotated_from_token = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_vehicle_qr_tokens_active_vehicle",
+            "adc_vehicle_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
+
+
+class DriverInstructionSet(Base):
+    """Group of driver instructions by scope."""
+
+    __tablename__ = "driver_instruction_sets"
+
+    instruction_set_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    scope = Column(
+        Enum("default", "company", "insurer", name="driver_instruction_scope"),
+        nullable=False,
+        default="default",
+    )
+    require_ack = Column(Boolean, nullable=False, default=False)
+    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+
+class DriverInstructionStep(Base):
+    """Steps belonging to a driver instruction set."""
+
+    __tablename__ = "driver_instruction_steps"
+
+    step_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instruction_set_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_instruction_sets.instruction_set_id"),
+        nullable=False,
+        index=True,
+    )
+    step_order = Column("order", Integer, nullable=False, quote=True)
+    title = Column(Text, nullable=False)
+    body = Column(Text, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
