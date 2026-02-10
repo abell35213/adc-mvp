@@ -76,8 +76,13 @@ class TestValidatePayload:
         assert validate_payload(payload, "vehicle_state") is True
 
     def test_invalid_payload_raises_value_error(self):
-        with pytest.raises(ValueError, match="Schema validation failed"):
+        with pytest.raises(ValueError) as excinfo:
             validate_payload({"bad": "data"}, "vehicle_state")
+        message = str(excinfo.value)
+        assert "Schema validation failed for 'vehicle_state':" in message
+        error_lines = [line for line in message.splitlines() if line.startswith("- ")]
+        assert error_lines
+        assert len(error_lines) <= 10
 
     def test_missing_required_field_raises(self):
         payload = self._make_vehicle_state_payload()

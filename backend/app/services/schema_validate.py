@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-import jsonschema
+from jsonschema import Draft202012Validator
 
 SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "contracts" / "schemas"
 
@@ -33,11 +33,22 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
     with open(schema_path) as f:
         schema = json.load(f)
 
-    try:
-        jsonschema.validate(instance=payload, schema=schema)
-    except jsonschema.ValidationError as exc:
+    validator = Draft202012Validator(schema)
+    errors = sorted(
+        validator.iter_errors(payload),
+        key=lambda err: [str(part) for part in err.path],
+    )
+
+    if errors:
+        formatted_errors = []
+        for error in errors[:10]:
+            path = ".".join(str(part) for part in error.path)
+            location = f"$.{path}" if path else "$"
+            formatted_errors.append(f"{location}: {error.message}")
+
         raise ValueError(
-            f"Schema validation failed for '{schema_name}': {exc.message}"
-        ) from exc
+            "Schema validation failed for "
+            f"'{schema_name}':\n- " + "\n- ".join(formatted_errors)
+        )
 
     return True
