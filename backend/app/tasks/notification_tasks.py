@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 import uuid as _uuid
 
 import httpx
 
 from app.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
 
 SMS_TEMPLATE = (
     "ADC alert: Incident {incident_id} reported for vehicle {vehicle_id}. "
@@ -95,9 +93,7 @@ def notify_safety_manager(self, incident_id: str):
 
         phone = org.safety_manager_phone
         if not phone:
-            reason = (
-                "Safety manager phone number not configured. Please configure a phone number in organization settings."
-            )
+            reason = "Safety manager phone number not configured. Please configure a phone number in organization settings."
             if org.sms_enabled:
                 _emit(
                     db,
@@ -179,12 +175,6 @@ def notify_safety_manager(self, incident_id: str):
             raise RuntimeError(f"Notification failures: {'; '.join(errors)}")
 
         return result
-
-    except Exception:
-        logger.exception(
-            "Safety manager notification failed for incident %s", incident_id
-        )
-        raise
 
     finally:
         db.close()
