@@ -56,7 +56,8 @@ def create_otp_challenge(
         phone_e164=phone_e164,
         twilio_sid=twilio_sid,
         otp_code_hash=otp_code_hash,
-        expires_at_utc=datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS),
+        expires_at_utc=datetime.now(timezone.utc)
+        + timedelta(seconds=OTP_EXPIRY_SECONDS),
     )
     db.add(challenge)
     db.commit()
@@ -65,7 +66,9 @@ def create_otp_challenge(
 
 
 def get_otp_challenge(db: Session, challenge_id: _uuid.UUID) -> OtpChallenge | None:
-    return db.query(OtpChallenge).filter(OtpChallenge.challenge_id == challenge_id).first()
+    return (
+        db.query(OtpChallenge).filter(OtpChallenge.challenge_id == challenge_id).first()
+    )
 
 
 def increment_otp_attempts(db: Session, challenge: OtpChallenge) -> OtpChallenge:

@@ -17,9 +17,7 @@ VOICE_TEMPLATE = (
     "ADC alert. Incident {incident_id} reported for vehicle {vehicle_id}. "
     "Severity {severity}. Please check the ADC dashboard."
 )
-PHONE_MISSING_MESSAGE = (
-    "Safety manager phone number not configured. Please configure a phone number in organization settings."
-)
+PHONE_MISSING_MESSAGE = "Safety manager phone number not configured. Please configure a phone number in organization settings."
 
 
 def _get_db():

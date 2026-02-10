@@ -95,7 +95,9 @@ def non_admin_user(db_session, test_org):
 
 @pytest.fixture()
 def non_admin_headers(non_admin_user):
-    token = create_access_token({"sub": str(non_admin_user.id), "role": non_admin_user.role})
+    token = create_access_token(
+        {"sub": str(non_admin_user.id), "role": non_admin_user.role}
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -201,9 +203,11 @@ class TestResolveQr:
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "test-token-abc123"},
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_vehicle_resolved"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_vehicle_resolved")
+            .all()
+        )
         assert len(events) == 1
         payload = events[0].payload
         expected_hash = hashlib.sha256(b"test-token-abc123").hexdigest()
@@ -217,9 +221,11 @@ class TestResolveQr:
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "test-token-abc123"},
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_vehicle_resolved"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_vehicle_resolved")
+            .all()
+        )
         assert len(events) == 1
         payload = events[0].payload
         # Must NOT contain the raw token
@@ -288,9 +294,11 @@ class TestRotateQr:
             "/admin/vehicles/veh-700/qr/rotate",
             headers=admin_headers,
         )
-        events = db_session.query(Event).filter(
-            Event.event_type == "vehicle_qr_rotated"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "vehicle_qr_rotated")
+            .all()
+        )
         assert len(events) == 1
         assert events[0].payload["adc_vehicle_id"] == "veh-700"
         assert "new_token_sha256" in events[0].payload
@@ -341,9 +349,11 @@ class TestDriverInitiate:
         assert incident is not None
         assert incident.adc_vehicle_id == "veh-100"
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = {event.event_type for event in events}
         assert "incident_protocol_initiated" in event_types
         assert "evidence_lockdown_started" in event_types
@@ -435,9 +445,7 @@ class TestDriverInstructions:
 
 
 class TestDriverInstructionAck:
-    def test_ack_writes_event(
-        self, client, db_session, test_org, test_driver
-    ):
+    def test_ack_writes_event(self, client, db_session, test_org, test_driver):
         instruction_set = seed_instruction_set(
             db_session, test_org.id, "default", require_ack=True
         )
@@ -448,13 +456,14 @@ class TestDriverInstructionAck:
         )
         assert resp.status_code == 200
 
-        events = db_session.query(Event).filter(
-            Event.event_type == "driver_instruction_acknowledged"
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "driver_instruction_acknowledged")
+            .all()
+        )
         assert len(events) == 1
-        assert (
-            events[0].payload["instruction_set_id"]
-            == str(instruction_set.instruction_set_id)
+        assert events[0].payload["instruction_set_id"] == str(
+            instruction_set.instruction_set_id
         )
 
 

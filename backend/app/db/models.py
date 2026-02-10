@@ -78,8 +78,15 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=True,
+        index=True,
+    )
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
@@ -87,11 +94,13 @@ class Event(Base):
     actor_type = Column(Text, nullable=False)
     actor_id = Column(Text, nullable=False)
     payload = Column(JSONB, nullable=True)
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
 
     __table_args__ = (
-        Index('ix_events_org_incident', 'org_id', 'incident_id'),
-        Index('ix_events_org_type_occurred', 'org_id', 'event_type', 'occurred_at_utc'),
+        Index("ix_events_org_incident", "org_id", "incident_id"),
+        Index("ix_events_org_type_occurred", "org_id", "event_type", "occurred_at_utc"),
     )
 
 
@@ -101,11 +110,17 @@ class Incident(Base):
     __tablename__ = "incidents"
 
     incident_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    status = Column(Enum('open', 'evidence_capturing', 'closed', name='incident_status'), nullable=False, default='open')
+    status = Column(
+        Enum("open", "evidence_capturing", "closed", name="incident_status"),
+        nullable=False,
+        default="open",
+    )
     adc_vehicle_id = Column(Text, nullable=True)
     samsara_vehicle_id = Column(Text, nullable=True)
     adc_driver_id = Column(Text, nullable=True)
@@ -118,10 +133,21 @@ class Artifact(Base):
     __tablename__ = "artifacts"
 
     artifact_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=False,
+        index=True,
+    )
     artifact_type = Column(Text, nullable=False)
-    status = Column(Enum('pending', 'captured', 'unavailable', name='artifact_status'), nullable=False, default='pending')
+    status = Column(
+        Enum("pending", "captured", "unavailable", name="artifact_status"),
+        nullable=False,
+        default="pending",
+    )
     capture_window_start_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     capture_window_end_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     s3_bucket = Column(Text, nullable=True)
@@ -130,11 +156,13 @@ class Artifact(Base):
     byte_size = Column(BigInteger, nullable=True)
     unavailable_reason_code = Column(Text, nullable=True)
     unavailable_reason_detail = Column(Text, nullable=True)
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
 
     __table_args__ = (
-        Index('ix_artifacts_org_incident', 'org_id', 'incident_id'),
-        Index('ix_artifacts_incident_type', 'incident_id', 'artifact_type'),
+        Index("ix_artifacts_org_incident", "org_id", "incident_id"),
+        Index("ix_artifacts_incident_type", "incident_id", "artifact_type"),
     )
 
 
@@ -144,18 +172,27 @@ class Export(Base):
     __tablename__ = "exports"
 
     export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
-    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=False, index=True)
-    status = Column(Enum('requested', 'processing', 'ready', 'failed', name='export_status'), nullable=False, default='requested')
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(
+        Enum("requested", "processing", "ready", "failed", name="export_status"),
+        nullable=False,
+        default="requested",
+    )
     s3_bucket = Column(Text, nullable=True)
     s3_key = Column(Text, nullable=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (
-        Index('ix_exports_org_incident', 'org_id', 'incident_id'),
-    )
+    __table_args__ = (Index("ix_exports_org_incident", "org_id", "incident_id"),)
 
 
 # ── Driver protocol models ────────────────────────────────────────────
@@ -167,11 +204,15 @@ class Driver(Base):
     __tablename__ = "drivers"
 
     driver_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
     phone_e164 = Column(Text, nullable=False, unique=True, index=True)
     display_name = Column(Text, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class OtpChallenge(Base):
@@ -182,7 +223,9 @@ class OtpChallenge(Base):
     challenge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     phone_e164 = Column(Text, nullable=False, index=True)
     otp_code_hash = Column(Text, nullable=False)
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
     expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
     attempt_count = Column(Integer, nullable=False, default=0)
     status = Column(
@@ -200,12 +243,16 @@ class DriverVehicleAssignment(Base):
     __tablename__ = "driver_vehicle_assignments"
 
     assignment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
     driver_id = Column(
         UUID(as_uuid=True), ForeignKey("drivers.driver_id"), nullable=False, index=True
     )
     adc_vehicle_id = Column(Text, nullable=False, index=True)
-    assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    assigned_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
     unassigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     source = Column(
         Enum("tms", "eld", "manual", "driver_app", name="driver_assignment_source"),
@@ -219,14 +266,18 @@ class VehicleQrToken(Base):
     __tablename__ = "vehicle_qr_tokens"
 
     qr_token = Column(Text, primary_key=True)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
     adc_vehicle_id = Column(Text, nullable=False, index=True)
     status = Column(
         Enum("active", "revoked", "rotated", name="vehicle_qr_token_status"),
         nullable=False,
         default="active",
     )
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
     rotated_from_token = Column(Text, nullable=True)
 
     __table_args__ = (
@@ -245,15 +296,21 @@ class DriverInstructionSet(Base):
 
     __tablename__ = "driver_instruction_sets"
 
-    instruction_set_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    instruction_set_id = Column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
     scope = Column(
         Enum("default", "company", "insurer", name="driver_instruction_scope"),
         nullable=False,
         default="default",
     )
     require_ack = Column(Boolean, nullable=False, default=False)
-    created_at_utc = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class DriverInstructionStep(Base):

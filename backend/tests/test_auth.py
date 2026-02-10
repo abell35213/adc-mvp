@@ -1,6 +1,5 @@
 """Tests for auth endpoints and helpers."""
 
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,11 +7,17 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import Base
 from app.db.session import get_db
-from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+from app.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    decode_access_token,
+)
 from app.main import app
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
+
 
 @pytest.fixture()
 def db_session():
@@ -48,6 +53,7 @@ def client(db_session):
 
 # ── Password hashing ───────────────────────────────────────────────
 
+
 class TestPasswordHashing:
     def test_hash_and_verify(self):
         hashed = hash_password("mypassword")
@@ -64,6 +70,7 @@ class TestPasswordHashing:
 
 
 # ── JWT tokens ─────────────────────────────────────────────────────
+
 
 class TestJWT:
     def test_create_and_decode_token(self):
@@ -85,14 +92,18 @@ class TestJWT:
 
 # ── POST /auth/register ────────────────────────────────────────────
 
+
 class TestRegister:
     def test_register_returns_201(self, client):
-        resp = client.post("/auth/register", json={
-            "email": "new@example.com",
-            "password": "secret123",
-            "role": "safety_manager",
-            "org_name": "Acme Trucking",
-        })
+        resp = client.post(
+            "/auth/register",
+            json={
+                "email": "new@example.com",
+                "password": "secret123",
+                "role": "safety_manager",
+                "org_name": "Acme Trucking",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["email"] == "new@example.com"
@@ -102,62 +113,88 @@ class TestRegister:
         assert "org_id" in data
 
     def test_register_duplicate_email_returns_409(self, client):
-        client.post("/auth/register", json={
-            "email": "dup@example.com",
-            "password": "pass1",
-        })
-        resp = client.post("/auth/register", json={
-            "email": "dup@example.com",
-            "password": "pass2",
-        })
+        client.post(
+            "/auth/register",
+            json={
+                "email": "dup@example.com",
+                "password": "pass1",
+            },
+        )
+        resp = client.post(
+            "/auth/register",
+            json={
+                "email": "dup@example.com",
+                "password": "pass2",
+            },
+        )
         assert resp.status_code == 409
 
 
 # ── POST /auth/login ───────────────────────────────────────────────
 
+
 class TestLogin:
     def test_login_returns_token(self, client):
-        client.post("/auth/register", json={
-            "email": "login@example.com",
-            "password": "secret",
-        })
-        resp = client.post("/auth/login", json={
-            "email": "login@example.com",
-            "password": "secret",
-        })
+        client.post(
+            "/auth/register",
+            json={
+                "email": "login@example.com",
+                "password": "secret",
+            },
+        )
+        resp = client.post(
+            "/auth/login",
+            json={
+                "email": "login@example.com",
+                "password": "secret",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
 
     def test_login_wrong_password(self, client):
-        client.post("/auth/register", json={
-            "email": "login2@example.com",
-            "password": "correct",
-        })
-        resp = client.post("/auth/login", json={
-            "email": "login2@example.com",
-            "password": "wrong",
-        })
+        client.post(
+            "/auth/register",
+            json={
+                "email": "login2@example.com",
+                "password": "correct",
+            },
+        )
+        resp = client.post(
+            "/auth/login",
+            json={
+                "email": "login2@example.com",
+                "password": "wrong",
+            },
+        )
         assert resp.status_code == 401
 
     def test_login_unknown_email(self, client):
-        resp = client.post("/auth/login", json={
-            "email": "nobody@example.com",
-            "password": "whatever",
-        })
+        resp = client.post(
+            "/auth/login",
+            json={
+                "email": "nobody@example.com",
+                "password": "whatever",
+            },
+        )
         assert resp.status_code == 401
 
 
 # ── POST /auth/logout ──────────────────────────────────────────────
 
+
 class TestLogout:
     def test_logout_returns_200(self, client):
         # Register to get a token
-        reg = client.post("/auth/register", json={
-            "email": "logout@example.com",
-            "password": "secret",
-        })
+        reg = client.post(
+            "/auth/register",
+            json={
+                "email": "logout@example.com",
+                "password": "secret",
+            },
+        )
         token = reg.json()["access_token"]
 
         resp = client.post(
@@ -174,13 +211,17 @@ class TestLogout:
 
 # ── GET /auth/me ───────────────────────────────────────────────────
 
+
 class TestMe:
     def test_me_returns_user_info(self, client):
-        reg = client.post("/auth/register", json={
-            "email": "me@example.com",
-            "password": "secret",
-            "org_name": "My Org",
-        })
+        reg = client.post(
+            "/auth/register",
+            json={
+                "email": "me@example.com",
+                "password": "secret",
+                "org_name": "My Org",
+            },
+        )
         data = reg.json()
         token = data["access_token"]
 
@@ -203,16 +244,23 @@ class TestMe:
 
 # ── Login sets httpOnly cookie ─────────────────────────────────────
 
+
 class TestLoginCookie:
     def test_login_sets_httponly_cookie(self, client):
-        client.post("/auth/register", json={
-            "email": "cookie@example.com",
-            "password": "secret",
-        })
-        resp = client.post("/auth/login", json={
-            "email": "cookie@example.com",
-            "password": "secret",
-        })
+        client.post(
+            "/auth/register",
+            json={
+                "email": "cookie@example.com",
+                "password": "secret",
+            },
+        )
+        resp = client.post(
+            "/auth/login",
+            json={
+                "email": "cookie@example.com",
+                "password": "secret",
+            },
+        )
         assert resp.status_code == 200
         cookies = resp.cookies
         assert "access_token" in cookies

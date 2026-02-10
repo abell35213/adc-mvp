@@ -24,7 +24,10 @@ class VaultFilesystem:
         target = self.root.joinpath(*posix_key.parts)
         root_resolved = self.root.resolve(strict=False)
         target_resolved = target.resolve(strict=False)
-        if root_resolved != target_resolved and root_resolved not in target_resolved.parents:
+        if (
+            root_resolved != target_resolved
+            and root_resolved not in target_resolved.parents
+        ):
             raise ValueError("Resolved path escapes vault root")
         return target
 

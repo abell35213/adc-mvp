@@ -1,7 +1,5 @@
 """Tests for the FakeSamsaraAdapter."""
 
-
-
 from app.services.fake_samsara_adapter import FakeSamsaraAdapter, SAMSARA_FIXTURES_DIR
 
 
@@ -10,8 +8,7 @@ class TestFakeSamsaraAdapter:
 
     def test_fixtures_dir_exists(self):
         assert SAMSARA_FIXTURES_DIR.is_dir(), (
-            "provider_fixtures/samsara directory missing at "
-            f"{SAMSARA_FIXTURES_DIR}"
+            f"provider_fixtures/samsara directory missing at {SAMSARA_FIXTURES_DIR}"
         )
 
     def test_get_vehicle_locations_returns_list(self):

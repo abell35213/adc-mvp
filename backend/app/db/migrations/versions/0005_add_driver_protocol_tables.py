@@ -38,20 +38,25 @@ def upgrade() -> None:
     op.add_column(
         "orgs",
         sa.Column(
-            "require_driver_ack", sa.Boolean(), nullable=False, server_default=sa.false()
+            "require_driver_ack",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
         ),
     )
     op.add_column(
         "orgs",
-        sa.Column("sms_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "sms_enabled", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
     )
     op.add_column(
         "orgs",
-        sa.Column("voice_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "voice_enabled", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
     )
-    op.add_column(
-        "orgs", sa.Column("safety_manager_phone", sa.Text(), nullable=True)
-    )
+    op.add_column("orgs", sa.Column("safety_manager_phone", sa.Text(), nullable=True))
 
     # ── Driver protocol tables ─────────────────────────────────────
     op.create_table(
@@ -83,9 +88,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.Column("expires_at_utc", TIMESTAMP(timezone=True), nullable=False),
-        sa.Column(
-            "attempt_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column(
             "status",
             sa.Enum(
@@ -106,7 +109,9 @@ def upgrade() -> None:
 
     op.create_table(
         "driver_vehicle_assignments",
-        sa.Column("assignment_id", UUID(as_uuid=True), primary_key=True, nullable=False),
+        sa.Column(
+            "assignment_id", UUID(as_uuid=True), primary_key=True, nullable=False
+        ),
         sa.Column("org_id", UUID(as_uuid=True), nullable=False),
         sa.Column("driver_id", UUID(as_uuid=True), nullable=False),
         sa.Column("adc_vehicle_id", sa.Text(), nullable=False),
@@ -239,10 +244,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_driver_instruction_steps_set_id", table_name="driver_instruction_steps")
+    op.drop_index(
+        "ix_driver_instruction_steps_set_id", table_name="driver_instruction_steps"
+    )
     op.drop_table("driver_instruction_steps")
 
-    op.drop_index("ix_driver_instruction_sets_org_id", table_name="driver_instruction_sets")
+    op.drop_index(
+        "ix_driver_instruction_sets_org_id", table_name="driver_instruction_sets"
+    )
     op.drop_table("driver_instruction_sets")
 
     op.drop_index("ix_vehicle_qr_tokens_active_vehicle", table_name="vehicle_qr_tokens")

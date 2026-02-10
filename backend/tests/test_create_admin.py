@@ -47,10 +47,14 @@ class TestCreateAdmin:
         assert org is not None
         assert org.name == "ADC"
 
-        link = db_session.query(UserOrg).filter(
-            UserOrg.user_id == user.id,
-            UserOrg.org_id == org.id,
-        ).first()
+        link = (
+            db_session.query(UserOrg)
+            .filter(
+                UserOrg.user_id == user.id,
+                UserOrg.org_id == org.id,
+            )
+            .first()
+        )
         assert link is not None
 
     def test_skips_if_already_exists(self, db_session, capsys):

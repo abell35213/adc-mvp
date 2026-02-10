@@ -202,7 +202,10 @@ def get_driver_protocol_instructions(
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     steps = (
         db.query(DriverInstructionStepModel)
-        .filter(DriverInstructionStepModel.instruction_set_id == instruction_set.instruction_set_id)
+        .filter(
+            DriverInstructionStepModel.instruction_set_id
+            == instruction_set.instruction_set_id
+        )
         .order_by(DriverInstructionStepModel.step_order)
         .all()
     )
@@ -229,7 +232,8 @@ def update_driver_protocol_instructions(
     resolved_scope = _normalize_instruction_scope(body.scope)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
-        DriverInstructionStepModel.instruction_set_id == instruction_set.instruction_set_id
+        DriverInstructionStepModel.instruction_set_id
+        == instruction_set.instruction_set_id
     ).delete(synchronize_session=False)
     new_steps = []
     for step in body.steps:
@@ -263,7 +267,8 @@ def reset_driver_protocol_instructions(
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
-        DriverInstructionStepModel.instruction_set_id == instruction_set.instruction_set_id
+        DriverInstructionStepModel.instruction_set_id
+        == instruction_set.instruction_set_id
     ).delete(synchronize_session=False)
     steps = _seed_instruction_steps(db, instruction_set)
     db.commit()

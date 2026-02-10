@@ -46,9 +46,7 @@ class FakeSamsaraAdapter:
         """Return example safety events data."""
         return self._load_json("safety_events.json")
 
-    def get_eld_logs(
-        self, start: str | None = None, end: str | None = None
-    ) -> list:
+    def get_eld_logs(self, start: str | None = None, end: str | None = None) -> list:
         """Return example ELD log data."""
         return self._load_json("eld_logs.json")
 

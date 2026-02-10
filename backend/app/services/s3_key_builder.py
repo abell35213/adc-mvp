@@ -43,8 +43,7 @@ def dashcam_key(
     'org/org-1/incidents/inc-1/dashcam/road_facing/art-1.mp4'
     """
     return (
-        f"org/{org_id}/incidents/{incident_id}/dashcam/"
-        f"{camera_view}/{artifact_id}.mp4"
+        f"org/{org_id}/incidents/{incident_id}/dashcam/{camera_view}/{artifact_id}.mp4"
     )
 
 
@@ -58,6 +57,4 @@ def export_key(
     >>> export_key("org-1", "inc-1", "exp-1")
     'org/org-1/incidents/inc-1/exports/exp-1/ADC_Court_Package.zip'
     """
-    return (
-        f"org/{org_id}/incidents/{incident_id}/exports/{export_id}/ADC_Court_Package.zip"
-    )
+    return f"org/{org_id}/incidents/{incident_id}/exports/{export_id}/ADC_Court_Package.zip"

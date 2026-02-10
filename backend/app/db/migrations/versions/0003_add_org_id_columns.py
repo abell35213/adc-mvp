@@ -23,21 +23,27 @@ def upgrade() -> None:
     # --- events.org_id ---
     op.add_column(
         "events",
-        sa.Column("org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True),
+        sa.Column(
+            "org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True
+        ),
     )
     op.create_index("ix_events_org_id", "events", ["org_id"])
 
     # --- artifacts.org_id ---
     op.add_column(
         "artifacts",
-        sa.Column("org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True),
+        sa.Column(
+            "org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True
+        ),
     )
     op.create_index("ix_artifacts_org_id", "artifacts", ["org_id"])
 
     # --- exports.org_id ---
     op.add_column(
         "exports",
-        sa.Column("org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True),
+        sa.Column(
+            "org_id", UUID(as_uuid=True), sa.ForeignKey("orgs.id"), nullable=True
+        ),
     )
     op.create_index("ix_exports_org_id", "exports", ["org_id"])
 

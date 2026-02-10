@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 # ── Auth ────────────────────────────────────────────────────────────
 
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -54,6 +55,7 @@ class LogoutResponse(BaseModel):
 
 
 # ── Incidents ───────────────────────────────────────────────────────
+
 
 class CreateIncidentRequest(BaseModel):
     severity: str
@@ -117,6 +119,7 @@ class IncidentDetailResponse(BaseModel):
 
 # ── Exports ─────────────────────────────────────────────────────────
 
+
 class CreateExportResponse(BaseModel):
     export_id: uuid.UUID
     status: str
@@ -129,6 +132,7 @@ class DownloadExportResponse(BaseModel):
 
 
 # ── Driver ──────────────────────────────────────────────────────────
+
 
 class VehicleInfo(BaseModel):
     adc_vehicle_id: str

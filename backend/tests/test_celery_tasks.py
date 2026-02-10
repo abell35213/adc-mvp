@@ -132,7 +132,9 @@ class TestCaptureDashcam:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_both_streams_captured(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_both_streams_captured(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
         video_data = b"fake-video-data"
 
@@ -159,9 +161,11 @@ class TestCaptureDashcam:
         assert s3_inst.put_bytes.call_count == 2
 
         # Check artifacts were inserted
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         assert len(artifacts) == 2
         assert all(a.status == "captured" for a in artifacts)
         assert all(a.sha256 is not None for a in artifacts)
@@ -169,7 +173,9 @@ class TestCaptureDashcam:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_one_stream_unavailable(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_one_stream_unavailable(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         """When one stream is unavailable the task still succeeds."""
         mock_get_db.return_value = db_session
 
@@ -200,9 +206,11 @@ class TestCaptureDashcam:
         # Task itself succeeds
         assert result["status"] == "captured"
 
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         assert len(artifacts) == 2
         statuses = {a.status for a in artifacts}
         assert "captured" in statuses
@@ -211,7 +219,9 @@ class TestCaptureDashcam:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_both_streams_unavailable(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_both_streams_unavailable(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         """Even if both streams are unavailable the task succeeds."""
         mock_get_db.return_value = db_session
 
@@ -230,16 +240,20 @@ class TestCaptureDashcam:
 
         assert result["status"] == "captured"
 
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         assert len(artifacts) == 2
         assert all(a.status == "unavailable" for a in artifacts)
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_emits_capture_requested_and_succeeded(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_emits_capture_requested_and_succeeded(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
 
         samsara_inst = MagicMock()
@@ -258,9 +272,11 @@ class TestCaptureDashcam:
             "2024-01-01T01:00:00Z",
         )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
@@ -271,7 +287,9 @@ class TestCaptureDashcam:
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+    def test_emits_failed_event_on_exception(
+        self, MockSamsara, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
         MockSamsara.side_effect = RuntimeError("Samsara down")
 
@@ -284,9 +302,11 @@ class TestCaptureDashcam:
                 "2024-01-01T01:00:00Z",
             )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
@@ -297,7 +317,9 @@ class TestCaptureDashcam:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_sha256_is_correct(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_sha256_is_correct(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
         video_data = b"test-video-content"
 
@@ -318,9 +340,11 @@ class TestCaptureDashcam:
         )
 
         expected_sha = hashlib.sha256(video_data).hexdigest()
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         for a in artifacts:
             assert a.sha256 == expected_sha
 
@@ -335,7 +359,9 @@ class TestCaptureTelematicsBundle:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_all_datasets_captured(self, MockSamsara, MockS3, mock_get_db, mock_validate, db_session, incident):
+    def test_all_datasets_captured(
+        self, MockSamsara, MockS3, mock_get_db, mock_validate, db_session, incident
+    ):
         mock_get_db.return_value = db_session
 
         raw = [{"driverId": "d1", "eldStatus": "on", "time": "t", "vehicleId": "v1"}]
@@ -363,16 +389,20 @@ class TestCaptureTelematicsBundle:
         assert result["type"] == "telematics"
 
         # 4 datasets × 3 formats (JSON, CSV, PDF) = 12 artifacts
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         assert len(artifacts) == 12
         assert all(a.status == "captured" for a in artifacts)
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_dataset_unavailable_doesnt_crash(self, MockSamsara, MockS3, mock_get_db, db_session, incident):
+    def test_dataset_unavailable_doesnt_crash(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
 
         samsara_inst = MagicMock()
@@ -396,9 +426,11 @@ class TestCaptureTelematicsBundle:
 
         assert result["status"] == "captured"
 
-        artifacts = db_session.query(Artifact).filter(
-            Artifact.incident_id == incident.incident_id
-        ).all()
+        artifacts = (
+            db_session.query(Artifact)
+            .filter(Artifact.incident_id == incident.incident_id)
+            .all()
+        )
         # 1 unavailable dataset + 3 datasets × 3 formats each = 10 total
         unavailable = [a for a in artifacts if a.status == "unavailable"]
         captured = [a for a in artifacts if a.status == "captured"]
@@ -409,7 +441,9 @@ class TestCaptureTelematicsBundle:
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_emits_events_for_telematics(self, MockSamsara, MockS3, mock_get_db, mock_validate, db_session, incident):
+    def test_emits_events_for_telematics(
+        self, MockSamsara, MockS3, mock_get_db, mock_validate, db_session, incident
+    ):
         mock_get_db.return_value = db_session
 
         samsara_inst = MagicMock()
@@ -431,9 +465,11 @@ class TestCaptureTelematicsBundle:
             "2024-01-01T01:00:00Z",
         )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
@@ -442,7 +478,9 @@ class TestCaptureTelematicsBundle:
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.samsara_client.SamsaraClient")
-    def test_emits_failed_event_on_exception(self, MockSamsara, mock_get_db, db_session, incident):
+    def test_emits_failed_event_on_exception(
+        self, MockSamsara, mock_get_db, db_session, incident
+    ):
         mock_get_db.return_value = db_session
         MockSamsara.side_effect = RuntimeError("Samsara down")
 
@@ -455,9 +493,11 @@ class TestCaptureTelematicsBundle:
                 "2024-01-01T01:00:00Z",
             )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = [e.event_type for e in events]
 
         assert "evidence_capture_requested" in event_types
@@ -492,7 +532,9 @@ class TestBuildExport:
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
-    def test_export_generates_zip(self, MockS3, mock_get_db, db_session, incident, export_row):
+    def test_export_generates_zip(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
@@ -528,9 +570,11 @@ class TestBuildExport:
         assert s3_inst.put_bytes.call_count >= 1
 
         # Export row was updated
-        updated_export = db_session.query(Export).filter(
-            Export.export_id == export_row.export_id
-        ).first()
+        updated_export = (
+            db_session.query(Export)
+            .filter(Export.export_id == export_row.export_id)
+            .first()
+        )
         assert updated_export.status == "ready"
         assert updated_export.s3_key is not None
 
@@ -550,7 +594,9 @@ class TestBuildExport:
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
-    def test_export_emits_events(self, MockS3, mock_get_db, db_session, incident, export_row):
+    def test_export_emits_events(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
@@ -565,9 +611,11 @@ class TestBuildExport:
             str(export_row.export_id),
         )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .all()
+        )
         event_types = [e.event_type for e in events]
 
         assert "export_requested" in event_types
@@ -575,7 +623,9 @@ class TestBuildExport:
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
-    def test_export_contains_sha256(self, MockS3, mock_get_db, db_session, incident, export_row):
+    def test_export_contains_sha256(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
         mock_get_db.return_value = db_session
 
         s3_inst = MagicMock()
@@ -590,10 +640,14 @@ class TestBuildExport:
             str(export_row.export_id),
         )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id,
-            Event.event_type == "export_generated",
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == incident.incident_id,
+                Event.event_type == "export_generated",
+            )
+            .all()
+        )
         assert len(events) == 1
         payload = events[0].payload
         assert "sha256" in payload
@@ -601,7 +655,9 @@ class TestBuildExport:
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
-    def test_export_skips_duplicate_requested_event(self, MockS3, mock_get_db, db_session, incident, export_row):
+    def test_export_skips_duplicate_requested_event(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
         """If EXPORT_REQUESTED was already emitted (via API), don't duplicate."""
         mock_get_db.return_value = db_session
 
@@ -629,16 +685,22 @@ class TestBuildExport:
             str(export_row.export_id),
         )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id,
-            Event.event_type == "export_requested",
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == incident.incident_id,
+                Event.event_type == "export_requested",
+            )
+            .all()
+        )
         # Should be exactly 1 (the one from the API, not duplicated)
         assert len(events) == 1
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
-    def test_export_failure_emits_failed_event(self, MockS3, mock_get_db, db_session, incident, export_row):
+    def test_export_failure_emits_failed_event(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
         mock_get_db.return_value = db_session
 
         # Make S3 upload explode
@@ -655,10 +717,14 @@ class TestBuildExport:
                 str(export_row.export_id),
             )
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident.incident_id,
-            Event.event_type == "export_failed",
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == incident.incident_id,
+                Event.event_type == "export_failed",
+            )
+            .all()
+        )
         assert len(events) == 1
 
 
@@ -676,8 +742,10 @@ class TestUpdateExport:
         from app.db.repo.exports import update_export
 
         updated = update_export(
-            db_session, export_row.export_id,
-            s3_bucket="my-bucket", s3_key="exports/test.zip",
+            db_session,
+            export_row.export_id,
+            s3_bucket="my-bucket",
+            s3_key="exports/test.zip",
         )
         assert updated.s3_bucket == "my-bucket"
         assert updated.s3_key == "exports/test.zip"
@@ -714,7 +782,9 @@ class TestNotifySafetyManager:
     @patch("app.tasks.notification_tasks._get_db")
     @patch("app.tasks.notification_tasks.place_call")
     @patch("app.tasks.notification_tasks.send_sms")
-    def test_notify_safety_manager_sends(self, mock_send_sms, mock_place_call, mock_get_db, db_session, incident_with_org):
+    def test_notify_safety_manager_sends(
+        self, mock_send_sms, mock_place_call, mock_get_db, db_session, incident_with_org
+    ):
         mock_get_db.return_value = db_session
         mock_send_sms.return_value = "SM123"
         mock_place_call.return_value = "CA123"
@@ -726,9 +796,11 @@ class TestNotifySafetyManager:
         mock_send_sms.assert_called_once()
         mock_place_call.assert_called_once()
 
-        events = db_session.query(Event).filter(
-            Event.incident_id == incident_with_org.incident_id
-        ).all()
+        events = (
+            db_session.query(Event)
+            .filter(Event.incident_id == incident_with_org.incident_id)
+            .all()
+        )
         event_types = {event.event_type for event in events}
         assert SystemEventType.SAFETY_MANAGER_SMS_SENT in event_types
         assert SystemEventType.SAFETY_MANAGER_CALL_PLACED in event_types

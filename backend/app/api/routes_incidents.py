@@ -52,7 +52,9 @@ def list_incidents_endpoint(
                 adc_vehicle_id=inc.adc_vehicle_id,
                 samsara_vehicle_id=inc.samsara_vehicle_id,
                 adc_driver_id=inc.adc_driver_id,
-                created_at_utc=inc.created_at_utc.isoformat() if inc.created_at_utc else None,
+                created_at_utc=inc.created_at_utc.isoformat()
+                if inc.created_at_utc
+                else None,
                 evidence_captured=captured,
                 evidence_total=len(artifacts),
             )
@@ -142,7 +144,9 @@ def get_incident_endpoint(
         adc_vehicle_id=incident.adc_vehicle_id,
         samsara_vehicle_id=incident.samsara_vehicle_id,
         adc_driver_id=incident.adc_driver_id,
-        created_at_utc=incident.created_at_utc.isoformat() if incident.created_at_utc else None,
+        created_at_utc=incident.created_at_utc.isoformat()
+        if incident.created_at_utc
+        else None,
         evidence_inventory=[
             ArtifactSummary(
                 artifact_id=a.artifact_id,
@@ -161,14 +165,18 @@ def get_incident_endpoint(
             ExportSummary(
                 export_id=e.export_id,
                 status=e.status,
-                created_at_utc=e.created_at_utc.isoformat() if e.created_at_utc else None,
+                created_at_utc=e.created_at_utc.isoformat()
+                if e.created_at_utc
+                else None,
             )
             for e in exports
         ],
         timeline=[
             EventSummary(
                 event_type=ev.event_type,
-                occurred_at_utc=ev.occurred_at_utc.isoformat() if ev.occurred_at_utc else "",
+                occurred_at_utc=ev.occurred_at_utc.isoformat()
+                if ev.occurred_at_utc
+                else "",
                 actor_type=ev.actor_type,
                 payload=ev.payload,
             )

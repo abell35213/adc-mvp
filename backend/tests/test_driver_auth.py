@@ -147,11 +147,13 @@ class TestDriverJWTGuard:
         db_session.commit()
         db_session.refresh(driver)
 
-        token = create_access_token({
-            "sub": str(driver.driver_id),
-            "scope": "driver",
-            "phone": driver.phone_e164,
-        })
+        token = create_access_token(
+            {
+                "sub": str(driver.driver_id),
+                "scope": "driver",
+                "phone": driver.phone_e164,
+            }
+        )
         payload = decode_access_token(token)
         assert payload["scope"] == "driver"
         assert payload["sub"] == str(driver.driver_id)
@@ -214,11 +216,13 @@ class TestDriverJWTGuard:
         db_session.commit()
         db_session.refresh(driver)
 
-        token = create_access_token({
-            "sub": str(driver.driver_id),
-            "scope": "driver",
-            "phone": driver.phone_e164,
-        })
+        token = create_access_token(
+            {
+                "sub": str(driver.driver_id),
+                "scope": "driver",
+                "phone": driver.phone_e164,
+            }
+        )
 
         request = MagicMock()
         request.cookies.get.return_value = None

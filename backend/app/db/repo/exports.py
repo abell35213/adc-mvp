@@ -52,10 +52,10 @@ def update_export(
 ) -> Optional[Export]:
     """Update an existing export record."""
     export = _get_export_query(db, export_id).with_for_update().first()
-    
+
     if export is None:
         return None
-    
+
     # Only update fields that are provided
     if status is not None:
         export.status = status
@@ -63,7 +63,7 @@ def update_export(
         export.s3_bucket = s3_bucket
     if s3_key is not None:
         export.s3_key = s3_key
-    
+
     db.commit()
     db.refresh(export)
     return export

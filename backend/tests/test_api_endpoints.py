@@ -16,6 +16,7 @@ from app.main import app
 
 # ── Test DB fixtures ────────────────────────────────────────────────
 
+
 @pytest.fixture()
 def db_session():
     from sqlalchemy.pool import StaticPool
@@ -82,19 +83,26 @@ def client(db_session):
 
 # ── POST /incidents ─────────────────────────────────────────────────
 
+
 class TestCreateIncident:
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_create_incident_returns_201(self, mock_dash, mock_tele, client, auth_headers):
+    def test_create_incident_returns_201(
+        self, mock_dash, mock_tele, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-123",
-            "samsara_vehicle_id": "sm-veh-987",
-            "adc_driver_id": "drv-555",
-        }, headers=auth_headers)
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert "incident_id" in data
@@ -102,16 +110,22 @@ class TestCreateIncident:
 
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_create_incident_enqueues_tasks(self, mock_dash, mock_tele, client, auth_headers):
+    def test_create_incident_enqueues_tasks(
+        self, mock_dash, mock_tele, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        resp = client.post("/incidents/", json={
-            "severity": "minor",
-            "adc_vehicle_id": "v1",
-            "samsara_vehicle_id": "s1",
-            "adc_driver_id": "d1",
-        }, headers=auth_headers)
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         incident_id = resp.json()["incident_id"]
         mock_dash.delay.assert_called_once_with(incident_id, "", "")
@@ -119,55 +133,76 @@ class TestCreateIncident:
 
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_create_incident_writes_events(self, mock_dash, mock_tele, client, db_session, auth_headers):
+    def test_create_incident_writes_events(
+        self, mock_dash, mock_tele, client, db_session, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-1",
-            "samsara_vehicle_id": "sm-1",
-            "adc_driver_id": "drv-1",
-        }, headers=auth_headers)
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-1",
+                "samsara_vehicle_id": "sm-1",
+                "adc_driver_id": "drv-1",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
 
         from app.db.models import Event
+
         events = db_session.query(Event).all()
         event_types = [e.event_type for e in events]
         assert "incident_started" in event_types
         assert "evidence_lockdown_started" in event_types
 
     def test_create_incident_missing_field_returns_422(self, client, auth_headers):
-        resp = client.post("/incidents/", json={
-            "severity": "serious",
-        }, headers=auth_headers)
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 422
 
     def test_create_incident_no_auth_returns_401(self, client):
-        resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-123",
-            "samsara_vehicle_id": "sm-veh-987",
-            "adc_driver_id": "drv-555",
-        })
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+        )
         assert resp.status_code in (401, 403)
 
 
 # ── GET /incidents/{incident_id} ────────────────────────────────────
 
+
 class TestGetIncident:
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_get_incident_returns_detail(self, mock_dash, mock_tele, client, auth_headers):
+    def test_get_incident_returns_detail(
+        self, mock_dash, mock_tele, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-123",
-            "samsara_vehicle_id": "sm-veh-987",
-            "adc_driver_id": "drv-555",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
@@ -181,16 +216,22 @@ class TestGetIncident:
 
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_get_incident_returns_timeline(self, mock_dash, mock_tele, client, auth_headers):
+    def test_get_incident_returns_timeline(
+        self, mock_dash, mock_tele, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-123",
-            "samsara_vehicle_id": "sm-veh-987",
-            "adc_driver_id": "drv-555",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
@@ -206,16 +247,22 @@ class TestGetIncident:
 
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_get_incident_returns_created_at(self, mock_dash, mock_tele, client, auth_headers):
+    def test_get_incident_returns_created_at(
+        self, mock_dash, mock_tele, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "minor",
-            "adc_vehicle_id": "v1",
-            "samsara_vehicle_id": "s1",
-            "adc_driver_id": "d1",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
@@ -224,16 +271,22 @@ class TestGetIncident:
 
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_get_incident_artifact_has_extra_fields(self, mock_dash, mock_tele, client, db_session, auth_headers):
+    def test_get_incident_artifact_has_extra_fields(
+        self, mock_dash, mock_tele, client, db_session, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "serious",
-            "adc_vehicle_id": "veh-1",
-            "samsara_vehicle_id": "sm-1",
-            "adc_driver_id": "drv-1",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-1",
+                "samsara_vehicle_id": "sm-1",
+                "adc_driver_id": "drv-1",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         # Add an artifact with unavailable reason
@@ -248,7 +301,11 @@ class TestGetIncident:
 
         resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
         data = resp.json()
-        found = [a for a in data["evidence_inventory"] if a["artifact_type"] == "dashcam_road"]
+        found = [
+            a
+            for a in data["evidence_inventory"]
+            if a["artifact_type"] == "dashcam_road"
+        ]
         assert len(found) == 1
         assert found[0]["unavailable_reason"] == "camera_offline"
 
@@ -260,19 +317,26 @@ class TestGetIncident:
 
 # ── GET /incidents (list) ───────────────────────────────────────────
 
+
 class TestListIncidents:
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_list_incidents_returns_evidence_counts(self, mock_dash, mock_tele, client, db_session, auth_headers):
+    def test_list_incidents_returns_evidence_counts(
+        self, mock_dash, mock_tele, client, db_session, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "minor",
-            "adc_vehicle_id": "v1",
-            "samsara_vehicle_id": "s1",
-            "adc_driver_id": "d1",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         # Add some artifacts
@@ -301,21 +365,28 @@ class TestListIncidents:
 
 # ── POST /incidents/{incident_id}/exports ───────────────────────────
 
+
 class TestRequestExport:
     @patch("app.api.routes_incidents.build_export")
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_request_export_returns_201(self, mock_dash, mock_tele, mock_gen, client, auth_headers):
+    def test_request_export_returns_201(
+        self, mock_dash, mock_tele, mock_gen, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
         mock_gen.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "minor",
-            "adc_vehicle_id": "v1",
-            "samsara_vehicle_id": "s1",
-            "adc_driver_id": "d1",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
@@ -327,17 +398,23 @@ class TestRequestExport:
     @patch("app.api.routes_incidents.build_export")
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
-    def test_request_export_enqueues_task(self, mock_dash, mock_tele, mock_gen, client, auth_headers):
+    def test_request_export_enqueues_task(
+        self, mock_dash, mock_tele, mock_gen, client, auth_headers
+    ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
         mock_gen.delay = MagicMock()
 
-        create_resp = client.post("/incidents/", json={
-            "severity": "minor",
-            "adc_vehicle_id": "v1",
-            "samsara_vehicle_id": "s1",
-            "adc_driver_id": "d1",
-        }, headers=auth_headers)
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
         incident_id = create_resp.json()["incident_id"]
 
         resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
@@ -351,6 +428,7 @@ class TestRequestExport:
 
 
 # ── GET /exports/{export_id}/download ───────────────────────────────
+
 
 class TestDownloadExport:
     def test_download_export_not_found(self, client, auth_headers):
@@ -414,9 +492,10 @@ class TestDownloadExport:
         client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
 
         from app.db.models import Event
-        events = db_session.query(Event).filter(
-            Event.incident_id == inc.incident_id
-        ).all()
+
+        events = (
+            db_session.query(Event).filter(Event.incident_id == inc.incident_id).all()
+        )
         event_types = [e.event_type for e in events]
         assert "export_downloaded" in event_types
 
@@ -427,6 +506,7 @@ class TestDownloadExport:
 
 
 # ── GET /exports/{export_id} ───────────────────────────────────────
+
 
 class TestGetExport:
     def test_get_export_not_found(self, client, auth_headers):
@@ -457,6 +537,7 @@ class TestGetExport:
 
 
 # ── Health check ────────────────────────────────────────────────────
+
 
 class TestHealth:
     def test_health(self, client):
