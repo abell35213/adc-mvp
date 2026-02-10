@@ -17,6 +17,9 @@ VOICE_TEMPLATE = (
     "ADC alert. Incident {incident_id} reported for vehicle {vehicle_id}. "
     "Severity {severity}. Please check the ADC dashboard."
 )
+PHONE_MISSING_MESSAGE = (
+    "Safety manager phone number not configured. Please configure a phone number in organization settings."
+)
 
 
 def _get_db():
@@ -93,7 +96,7 @@ def notify_safety_manager(self, incident_id: str):
 
         phone = org.safety_manager_phone
         if not phone:
-            reason = "Safety manager phone number not configured. Please configure a phone number in organization settings."
+            reason = PHONE_MISSING_MESSAGE
             if org.sms_enabled:
                 _emit(
                     db,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.sax.saxutils import escape
 
 import httpx
 
@@ -92,5 +93,5 @@ def build_voice_twiml(message: str) -> str:
     """Build a TwiML payload that speaks a single message."""
     response = Element("Response")
     say = SubElement(response, "Say")
-    say.text = message
+    say.text = escape(message)
     return f'<?xml version="1.0" encoding="UTF-8"?>{tostring(response, encoding="unicode")}'
