@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -65,15 +65,19 @@ export default function IncidentDetailPage() {
       .finally(() => setLoading(false));
   }, [id, user]);
 
+  const refreshIncident = useCallback(() => {
+    return getIncident(id)
+      .then(setIncident)
+      .catch((err) => console.warn("Incident refresh failed", err));
+  }, [id, setIncident]);
+
   useEffect(() => {
     if (!user || !isCapturing) return;
     const interval = window.setInterval(() => {
-      getIncident(id)
-        .then(setIncident)
-        .catch((err) => console.warn("Incident refresh failed", err));
+      refreshIncident();
     }, 4000);
     return () => window.clearInterval(interval);
-  }, [id, isCapturing, user]);
+  }, [isCapturing, refreshIncident, user]);
 
   async function handleExport() {
     setExporting(true);
