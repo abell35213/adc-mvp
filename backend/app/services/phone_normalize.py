@@ -27,6 +27,6 @@ def normalize_phone(raw: str) -> str:
         # US number with country code
         pass
     else:
-        raise ValueError(f"Invalid phone number: {raw}")
+        raise ValueError("Invalid phone number")
 
     return f"+{digits}"

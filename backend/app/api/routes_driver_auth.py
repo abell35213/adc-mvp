@@ -130,12 +130,14 @@ def verify_otp(body: VerifyOtpRequest, db: Session = Depends(get_db)):
             challenge.attempt_count,
             challenge.is_locked,
         )
-        detail = "Invalid OTP"
         if challenge.is_locked:
-            detail = "Challenge locked due to too many attempts"
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail="Challenge locked due to too many attempts",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=detail,
+            detail="Invalid OTP",
         )
 
     # OTP verified — find/create driver and issue JWT
