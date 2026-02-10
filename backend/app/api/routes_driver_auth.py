@@ -67,12 +67,12 @@ def request_otp(body: RequestOtpRequest, db: Session = Depends(get_db)):
     logger.info(
         "DRIVER_OTP_REQUESTED phone_hash=%s challenge=%s",
         _phone_hash(phone_e164),
-        challenge.id,
+        challenge.challenge_id,
     )
 
     return RequestOtpResponse(
         ok=True,
-        challenge_id=challenge.id,
+        challenge_id=challenge.challenge_id,
         expires_in_seconds=OTP_EXPIRY_SECONDS,
     )
 
