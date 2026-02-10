@@ -36,7 +36,10 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
     validator = Draft202012Validator(schema)
     errors = sorted(
         validator.iter_errors(payload),
-        key=lambda err: tuple(str(part) for part in err.path),
+        key=lambda err: tuple(
+            (0, part) if isinstance(part, int) else (1, str(part))
+            for part in err.path
+        ),
     )
 
     if errors:

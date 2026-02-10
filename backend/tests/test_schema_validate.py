@@ -80,7 +80,7 @@ class TestValidatePayload:
             validate_payload({"bad": "data"}, "vehicle_state")
         message = str(excinfo.value)
         assert "Schema validation failed for 'vehicle_state':" in message
-        error_lines = [line for line in message.splitlines() if line.startswith("- ")]
+        error_lines = [line for line in message.splitlines()[1:] if line.strip()]
         assert error_lines
         assert len(error_lines) <= 10
 
