@@ -175,6 +175,7 @@ class Driver(Base):
 
     @hybrid_property
     def id(self):
+        """Alias for driver_id for compatibility."""
         return self.driver_id
 
 
@@ -198,6 +199,7 @@ class OtpChallenge(Base):
 
     @hybrid_property
     def id(self):
+        """Alias for challenge_id for compatibility."""
         return self.challenge_id
 
     @hybrid_property
@@ -206,6 +208,7 @@ class OtpChallenge(Base):
 
     @is_locked.setter  # type: ignore[no-redef]
     def is_locked(self, value):
+        """One-way transition: setting True changes status to locked."""
         if value:
             self.status = "locked"
 
@@ -215,6 +218,7 @@ class OtpChallenge(Base):
 
     @is_verified.setter  # type: ignore[no-redef]
     def is_verified(self, value):
+        """One-way transition: setting True changes status to verified."""
         if value:
             self.status = "verified"
 
