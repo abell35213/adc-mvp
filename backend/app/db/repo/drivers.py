@@ -74,7 +74,7 @@ def increment_otp_attempts(db: Session, challenge: OtpChallenge) -> OtpChallenge
 
 def mark_otp_verified(db: Session, challenge: OtpChallenge) -> OtpChallenge:
     """Mark an OTP challenge as verified."""
-    challenge.is_verified = True
+    challenge.status = "verified"
     db.commit()
     db.refresh(challenge)
     return challenge
