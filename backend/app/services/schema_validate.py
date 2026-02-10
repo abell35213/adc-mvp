@@ -10,11 +10,28 @@ MAX_ERRORS_TO_DISPLAY = 10
 
 
 def _error_sort_key(error):
-    """Sort numeric indices before string keys for consistent error ordering."""
+    """Return a sortable key for validation error paths.
+
+    Args:
+        error: ValidationError instance with a JSON path.
+
+    Returns:
+        Tuple used to order errors consistently by path.
+    """
     return tuple(
         (0, part) if isinstance(part, int) else (1, str(part))
         for part in error.path
     )
+
+
+def _format_error_path(path):
+    location = "$"
+    for part in path:
+        if isinstance(part, int):
+            location += f"[{part}]"
+        else:
+            location += f".{part}"
+    return location
 
 
 def _resolve_schema_path(schema_name: str) -> Path:
@@ -51,8 +68,7 @@ def validate_payload(payload: dict, schema_name: str) -> bool:
     if errors:
         formatted_errors = []
         for error in errors[:MAX_ERRORS_TO_DISPLAY]:
-            path = ".".join(str(part) for part in error.path)
-            location = f"$.{path}" if path else "$"
+            location = _format_error_path(error.path)
             formatted_errors.append(f"{location}: {error.message}")
 
         error_list = "\n- ".join(formatted_errors)
