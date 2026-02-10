@@ -22,11 +22,20 @@ def get_driver_by_id(db: Session, driver_id: _uuid.UUID) -> Driver | None:
     return db.query(Driver).filter(Driver.driver_id == driver_id).first()
 
 
-def find_or_create_driver(db: Session, phone_e164: str) -> Driver:
+def find_or_create_driver(
+    db: Session,
+    phone_e164: str,
+    org_id: _uuid.UUID | None = None,
+    display_name: str | None = None,
+) -> Driver:
     """Return existing driver or create a new one for the given phone."""
     driver = get_driver_by_phone(db, phone_e164)
     if driver is None:
-        driver = Driver(phone_e164=phone_e164)
+        driver = Driver(
+            phone_e164=phone_e164,
+            org_id=org_id,
+            display_name=display_name or phone_e164,
+        )
         db.add(driver)
         db.commit()
         db.refresh(driver)
@@ -40,11 +49,13 @@ def create_otp_challenge(
     db: Session,
     phone_e164: str,
     twilio_sid: str | None = None,
+    otp_code_hash: str = "",
 ) -> OtpChallenge:
     """Create a new OTP challenge row."""
     challenge = OtpChallenge(
         phone_e164=phone_e164,
         twilio_sid=twilio_sid,
+        otp_code_hash=otp_code_hash,
         expires_at_utc=datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS),
     )
     db.add(challenge)
@@ -54,19 +65,24 @@ def create_otp_challenge(
 
 
 def get_otp_challenge(db: Session, challenge_id: _uuid.UUID) -> OtpChallenge | None:
-    return db.query(OtpChallenge).filter(OtpChallenge.id == challenge_id).first()
+    return db.query(OtpChallenge).filter(OtpChallenge.challenge_id == challenge_id).first()
 
 
 def increment_otp_attempts(db: Session, challenge: OtpChallenge) -> OtpChallenge:
     """Increment attempt count and lock or expire the challenge when appropriate."""
-    # If the challenge has already expired, mark it as expired instead of incrementing attempts.
     now_utc = datetime.now(timezone.utc)
-    if challenge.expires_at_utc is not None and challenge.expires_at_utc <= now_utc:
-        challenge.status = "expired"
-    else:
-        challenge.attempt_count += 1
-        if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
-            challenge.status = "locked"
+    expires = challenge.expires_at_utc
+    if expires is not None:
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= now_utc:
+            challenge.status = "expired"
+            db.commit()
+            db.refresh(challenge)
+            return challenge
+    challenge.attempt_count += 1
+    if challenge.attempt_count >= MAX_OTP_ATTEMPTS:
+        challenge.status = "locked"
     db.commit()
     db.refresh(challenge)
     return challenge

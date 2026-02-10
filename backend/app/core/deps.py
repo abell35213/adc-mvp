@@ -97,7 +97,15 @@ def get_current_driver(
             detail="Token missing subject",
         )
 
-    driver = get_driver_by_id(db, uuid.UUID(driver_id))
+    try:
+        driver_uuid = uuid.UUID(driver_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid subject in token",
+        )
+
+    driver = get_driver_by_id(db, driver_uuid)
     if driver is None or not driver.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
