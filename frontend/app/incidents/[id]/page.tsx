@@ -58,6 +58,7 @@ export default function IncidentDetailPage() {
     .length;
   const total = artifactStatuses.length || EVIDENCE_TYPES.length;
   const isCapturing = pending > 0;
+  const refreshIntervalSeconds = REFRESH_INTERVAL_MS / 1000;
 
   useEffect(() => {
     if (!user) return;
@@ -120,7 +121,7 @@ export default function IncidentDetailPage() {
   }
 
   const captureSummary = isCapturing
-    ? "Capture in progress (auto-refreshing every 4 seconds)."
+    ? `Capture in progress (auto-refreshing every ${refreshIntervalSeconds} seconds).`
     : unavailable > 0
       ? `Capture finished with ${unavailable} unavailable artifact${
           unavailable === 1 ? "" : "s"
