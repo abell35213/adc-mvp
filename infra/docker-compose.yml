@@ -9,11 +9,18 @@ services:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=change-me-in-production
+      - STORAGE_BACKEND=fs
+      - VAULT_ROOT=/var/adc/vault
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_VERIFY_SERVICE_SID=${TWILIO_VERIFY_SERVICE_SID:-}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
       - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
+    volumes:
+      - vaultdata:/var/adc/vault
     depends_on:
       - db
       - redis
@@ -24,11 +31,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
       - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BACKEND=fs
+      - VAULT_ROOT=/var/adc/vault
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_VERIFY_SERVICE_SID=${TWILIO_VERIFY_SERVICE_SID:-}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
       - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
+    volumes:
+      - vaultdata:/var/adc/vault
     depends_on:
       - db
       - redis
@@ -38,7 +52,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://app:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - API_INTERNAL_BASE_URL=http://app:8000
     depends_on:
       - app
 
@@ -60,3 +75,4 @@ services:
 
 volumes:
   pgdata:
+  vaultdata:

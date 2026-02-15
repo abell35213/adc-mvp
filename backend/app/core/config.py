@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
 
     # Vault (filesystem)
+    STORAGE_BACKEND: str = "s3"
     VAULT_ROOT: str = "/var/adc/vault"
 
     # Public URL / Deep-link
