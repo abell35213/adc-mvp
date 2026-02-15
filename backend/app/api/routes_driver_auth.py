@@ -3,6 +3,8 @@
 import hashlib
 import hmac
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,6 +31,12 @@ from app.services.phone_normalize import normalize_phone
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_REQUEST_LIMIT = settings.OTP_REQUEST_RATE_LIMIT
+_VERIFY_LIMIT = settings.OTP_VERIFY_RATE_LIMIT
+_RATE_LIMIT_WINDOW_SECONDS = settings.OTP_RATE_LIMIT_WINDOW_SECONDS
+_rate_limit_lock = threading.Lock()
+_request_timestamps: dict[str, list[float]] = {}
+_verify_timestamps: dict[str, list[float]] = {}
 
 
 def _phone_hash(phone_e164: str) -> str:
@@ -38,6 +46,26 @@ def _phone_hash(phone_e164: str) -> str:
         phone_e164.encode(),
         hashlib.sha256,
     ).hexdigest()
+
+
+def _enforce_rate_limit(
+    bucket: dict[str, list[float]],
+    key: str,
+    max_calls: int,
+):
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
+    with _rate_limit_lock:
+        calls = [ts for ts in bucket.get(key, []) if ts >= window_start]
+        if len(calls) >= max_calls:
+            retry_after = max(1, int(calls[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many OTP attempts. Please retry later.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        calls.append(now)
+        bucket[key] = calls
 
 
 # ── POST /driver/auth/request-otp ──────────────────────────────────
@@ -57,6 +85,7 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid phone number",
         )
+    _enforce_rate_limit(_request_timestamps, _phone_hash(phone_e164), _REQUEST_LIMIT)
 
     # Try to start Twilio verification; fall back gracefully
     twilio_sid: str | None = None
@@ -86,7 +115,14 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
 @router.post("/verify-otp", response_model=DriverOtpVerifyResponse)
 def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     """Verify an OTP code and issue a driver-scoped JWT on success."""
-    phone_e164 = body.phone_e164.strip()
+    try:
+        phone_e164 = normalize_phone(body.phone_e164)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid phone number",
+        )
+    _enforce_rate_limit(_verify_timestamps, _phone_hash(phone_e164), _VERIFY_LIMIT)
 
     # Find the latest pending challenge for this phone
     challenge = (

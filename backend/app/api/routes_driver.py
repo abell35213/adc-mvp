@@ -132,7 +132,7 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-@router.post("/auth/request-otp", response_model=DriverOtpRequestResponse)
+@router.post("/legacy/auth/request-otp", response_model=DriverOtpRequestResponse)
 def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
     phone_e164 = body.phone_e164.strip()
     if not phone_e164:
@@ -195,7 +195,7 @@ def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
     return DriverOtpRequestResponse()
 
 
-@router.post("/auth/verify-otp", response_model=DriverOtpVerifyResponse)
+@router.post("/legacy/auth/verify-otp", response_model=DriverOtpVerifyResponse)
 def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     phone_e164 = body.phone_e164.strip()
     otp_code = body.otp_code.strip()
