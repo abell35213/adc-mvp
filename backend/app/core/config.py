@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Driver OTP
     OTP_HASH_PEPPER: str = "change-me-in-production"
     OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    OTP_REQUEST_RATE_LIMIT: int = 5
+    OTP_VERIFY_RATE_LIMIT: int = 10
+    OTP_RATE_LIMIT_WINDOW_SECONDS: int = 300
 
     # Auth / JWT
     JWT_SECRET_KEY: str = "change-me-in-production"

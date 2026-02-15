@@ -31,9 +31,9 @@ from app.services.phone_normalize import normalize_phone
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-_REQUEST_LIMIT = 5
-_VERIFY_LIMIT = 10
-_RATE_LIMIT_WINDOW_SECONDS = 300
+_REQUEST_LIMIT = settings.OTP_REQUEST_RATE_LIMIT
+_VERIFY_LIMIT = settings.OTP_VERIFY_RATE_LIMIT
+_RATE_LIMIT_WINDOW_SECONDS = settings.OTP_RATE_LIMIT_WINDOW_SECONDS
 _rate_limit_lock = threading.Lock()
 _request_timestamps: dict[str, list[float]] = {}
 _verify_timestamps: dict[str, list[float]] = {}

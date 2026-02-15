@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 def _verify_url(resource: str) -> str:
+    account_sid = settings.TWILIO_ACCOUNT_SID.strip()
+    auth_token = settings.TWILIO_AUTH_TOKEN.strip()
     service_sid = settings.TWILIO_VERIFY_SERVICE_SID.strip()
     if not (
-        settings.TWILIO_ACCOUNT_SID.strip()
-        and settings.TWILIO_AUTH_TOKEN.strip()
+        account_sid
+        and auth_token
         and service_sid
     ):
         raise RuntimeError("Twilio Verify is not configured")
@@ -36,7 +38,7 @@ def start_verification(phone_e164: str) -> str:
     payload = response.json()
     sid = payload.get("sid")
     if not isinstance(sid, str) or not sid:
-        raise RuntimeError("Twilio Verify response missing sid")
+        raise RuntimeError(f"Twilio Verify response missing sid: {payload!r}")
     logger.info("Twilio verification started sid=%s", sid)
     return sid
 

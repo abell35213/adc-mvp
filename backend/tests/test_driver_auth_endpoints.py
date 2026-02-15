@@ -61,6 +61,15 @@ def driver(db_session):
     return row
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    routes_driver_auth._request_timestamps.clear()
+    routes_driver_auth._verify_timestamps.clear()
+    yield
+    routes_driver_auth._request_timestamps.clear()
+    routes_driver_auth._verify_timestamps.clear()
+
+
 def test_driver_otp_flow(client, db_session, driver):
     with (
         patch(
@@ -120,7 +129,6 @@ def test_driver_otp_rejects_invalid_code(client, driver):
 
 
 def test_driver_request_otp_rate_limited(client, driver):
-    routes_driver_auth._request_timestamps.clear()
     with patch("app.services.twilio_verify.start_verification", return_value="VE123"):
         for _ in range(routes_driver_auth._REQUEST_LIMIT):
             response = client.post(
