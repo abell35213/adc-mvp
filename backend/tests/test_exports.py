@@ -86,6 +86,6 @@ def client(db_session) -> TestClient:
 
 def test_list_exports_empty(client: TestClient, auth_headers) -> None:
     """Ensure the list exports endpoint returns an empty list when no exports exist."""
-    response = client.get("/api/exports", headers=auth_headers)
+    response = client.get("/exports", headers=auth_headers)
     assert response.status_code == 200
     assert response.json() == []
