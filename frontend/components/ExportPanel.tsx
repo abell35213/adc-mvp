@@ -1,4 +1,11 @@
-/** Export actions panel component. */
+/** Export actions panel component.
+ *
+ * This client component provides controls for generating and managing
+ * export packages for a given incident.  It renders a button for
+ * generating a court evidence package and lists existing exports
+ * along with their status.  Ready exports expose a Download action
+ * which invokes the provided onDownload callback.
+ */
 
 "use client";
 
@@ -53,7 +60,9 @@ export default function ExportPanel({
                 <span className="font-mono text-xs text-gray-600 dark:text-gray-300">
                   {ex.export_id.slice(0, 8)}…
                 </span>
-                <span className="ml-2 text-xs text-gray-400">{formatTime(ex.created_at_utc)}</span>
+                <span className="ml-2 text-xs text-gray-400">
+                  {formatTime(ex.created_at_utc)}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span
@@ -61,8 +70,8 @@ export default function ExportPanel({
                     ex.status === "ready"
                       ? "bg-green-100 text-green-800"
                       : ex.status === "failed"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-yellow-100 text-yellow-800"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-yellow-100 text-yellow-800"
                   }`}
                 >
                   {ex.status}

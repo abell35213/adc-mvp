@@ -1,0 +1,136 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import MainLayout from "@/components/MainLayout";
+import {
+  listExports,
+  downloadExport,
+  type ExportListItem,
+} from "@/lib/api";
+
+/**
+ * Exports listing page.  Displays all exports available to the current
+ * organisation in a simple table.  Users can download ready exports
+ * directly from this page.  Each export links back to the incident
+ * from which it was generated.  Wrapped in MainLayout for
+ * navigation and styling consistency.
+ */
+export default function ExportsPage() {
+  const [exports, setExports] = useState<ExportListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listExports()
+      .then(setExports)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleDownload(exportId: string) {
+    try {
+      const result = await downloadExport(exportId);
+      window.open(result.url, "_blank");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    }
+  }
+
+  return (
+    <MainLayout title="Exports">
+      <div className="mb-4">
+        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+          Exports
+        </h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          View and download court‑ready evidence packages.  Each export
+          contains the evidence inventory, chain of custody and integrity
+          reports for a specific incident.
+        </p>
+      </div>
+      {loading && <p className="text-gray-500">Loading…</p>}
+      {error && <p className="text-red-600">{error}</p>}
+      {!loading && exports.length === 0 && (
+        <p className="text-gray-500">No exports found.</p>
+      )}
+      {!loading && exports.length > 0 && (
+        <div className="overflow-hidden rounded-lg border bg-white shadow dark:border-gray-700 dark:bg-gray-800">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                  Export ID
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                  Incident
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                  Created
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                  Status
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y dark:divide-gray-700">
+              {exports.map((ex) => {
+                return (
+                  <tr key={ex.export_id}>
+                    <td className="px-4 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">
+                      {ex.export_id.slice(0, 8)}…
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/incidents/${ex.incident_id}`}
+                        className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        {ex.incident_id.slice(0, 8)}…
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      {ex.created_at_utc
+                        ? new Date(ex.created_at_utc).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          ex.status === "ready"
+                            ? "bg-green-100 text-green-800"
+                            : ex.status === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {ex.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {ex.status === "ready" && (
+                        <button
+                          onClick={() => handleDownload(ex.export_id)}
+                          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                        >
+                          Download
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </MainLayout>
+  );
+}

@@ -1,11 +1,19 @@
-/** Timeline component for incident events. */
+/** Timeline component for incident events.
+ *
+ * This client component displays a chronological list of events for a
+ * given incident.  It accepts an array of EventSummary objects and
+ * formats each event with a human‑readable name and timestamp.  When
+ * no events are available the component renders a simple placeholder.
+ */
 
 "use client";
 
 import { type EventSummary } from "@/lib/api";
 
 function friendlyEventType(t: string): string {
-  return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return t
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatTime(iso?: string | null): string {
@@ -38,7 +46,9 @@ export default function Timeline({ events }: TimelineProps) {
       {displayed.map((ev, i) => (
         <li key={i} className="mb-4 ml-4">
           <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-blue-500 dark:border-gray-800" />
-          <time className="mb-1 text-xs text-gray-400">{formatTime(ev.occurred_at_utc)}</time>
+          <time className="mb-1 text-xs text-gray-400">
+            {formatTime(ev.occurred_at_utc)}
+          </time>
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
             {friendlyEventType(ev.event_type)}
           </p>

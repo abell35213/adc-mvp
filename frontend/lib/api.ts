@@ -138,6 +138,20 @@ export interface ExportSummary {
   created_at_utc?: string | null;
 }
 
+/**
+ * A summary of an export along with its originating incident.  When
+ * listing all exports across an organization, the backend returns the
+ * associated incident_id so that the UI can link back to the incident
+ * detail page.  This structure extends the base ExportSummary.
+ */
+export interface ExportListItem extends ExportSummary {
+  /**
+   * Identifier of the incident this export belongs to.  Useful for
+   * navigating back to the source incident after downloading a package.
+   */
+  incident_id: string;
+}
+
 export interface EventSummary {
   event_type: string;
   occurred_at_utc: string;
@@ -184,6 +198,19 @@ export function downloadExport(exportId: string) {
   return request<{ export_id: string; url: string; status: string }>(
     `/exports/${exportId}/download`
   );
+}
+
+/* ── Exports listing ──────────────────────────────────────────────── */
+
+/**
+ * Retrieve all exports visible to the current user.  The backend
+ * responds with a list of export summaries including the incident
+ * identifier for each export.  This allows the frontend to display
+ * exports in a standalone listing page and provide links back to the
+ * incident detail view.
+ */
+export function listExports() {
+  return request<ExportListItem[]>("/exports/");
 }
 
 /* ── Admin driver protocol ─────────────────────────────────────── */

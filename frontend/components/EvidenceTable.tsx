@@ -1,9 +1,21 @@
-/** Evidence inventory table component. */
+/** Evidence inventory table component.
+ *
+ * This client component renders a table summarising the evidence
+ * artifacts associated with an incident.  It accepts a list of
+ * ArtifactSummary objects returned from the backend and displays a
+ * consistent set of evidence types.  Any missing artifact is
+ * interpreted as pending.  Captured artifacts show their capture
+ * time and status, unavailable artifacts show a reason, and pending
+ * artifacts display placeholders.
+ */
 
 "use client";
 
 import { type ArtifactSummary } from "@/lib/api";
 
+// The canonical list of evidence types supported by the platform.  If
+// additional types are added server‑side they should be reflected here
+// for a complete inventory display.
 export const EVIDENCE_TYPES: { type: string; label: string }[] = [
   { type: "dashcam_road", label: "Dashcam Road" },
   { type: "dashcam_driver", label: "Dashcam Driver" },
@@ -56,10 +68,18 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
       <table className="w-full text-left text-sm">
         <thead className="border-b bg-gray-50 dark:bg-gray-700">
           <tr>
-            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">Evidence Type</th>
-            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">Status</th>
-            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">Captured Time</th>
-            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">Reason</th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Evidence Type
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Status
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Captured Time
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Reason
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y dark:divide-gray-700">
@@ -68,14 +88,24 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
             const status = art?.status ?? "pending";
             return (
               <tr key={type}>
-                <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">{label}</td>
+                <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">
+                  {label}
+                </td>
                 <td className="px-4 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(status)}`}>
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(
+                      status
+                    )}`}
+                  >
                     {statusLabel(status)}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatTime(art?.captured_at_utc)}</td>
-                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{art?.unavailable_reason ?? "—"}</td>
+                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                  {formatTime(art?.captured_at_utc)}
+                </td>
+                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                  {art?.unavailable_reason ?? "—"}
+                </td>
               </tr>
             );
           })}

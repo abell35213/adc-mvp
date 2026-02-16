@@ -4,6 +4,12 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/api";
 
+/**
+ * Login page.  Provides a simple email and password form for users to
+ * authenticate.  Upon successful login the user is redirected to the
+ * dashboard.  Any errors are displayed to the user.  Styling
+ * matches the overall dashboard aesthetic.
+ */
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -17,7 +23,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/incidents");
+      router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
