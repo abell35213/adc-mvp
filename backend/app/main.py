@@ -25,7 +25,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(incidents_router, prefix="/incidents", tags=["incidents"])
-app.include_router(exports_router, prefix="/api/exports", tags=["exports"])
+app.include_router(exports_router, prefix="/exports", tags=["exports"])
 app.include_router(driver_auth_router, prefix="/driver/auth", tags=["driver-auth"])
 app.include_router(driver_router, prefix="/driver", tags=["driver"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
