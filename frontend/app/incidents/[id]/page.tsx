@@ -1,6 +1,5 @@
 import IncidentDetailClient from "./IncidentDetailClient";
 
-<<<<<<< Updated upstream
 export async function generateStaticParams() {
   return [{ id: "placeholder" }];
 }
@@ -8,7 +7,7 @@ export async function generateStaticParams() {
 export default function IncidentDetailPage() {
   return <IncidentDetailClient />;
 }
-=======
+  
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -131,4 +130,3 @@ export default function IncidentDetailPage() {
     </MainLayout>
   );
 }
->>>>>>> Stashed changes
