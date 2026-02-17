@@ -1,13 +1,4 @@
 import IncidentDetailClient from "./IncidentDetailClient";
-
-export async function generateStaticParams() {
-  return [{ id: "placeholder" }];
-}
-
-export default function IncidentDetailPage() {
-  return <IncidentDetailClient />;
-}
-  
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -21,6 +12,10 @@ import {
   downloadExport,
   type IncidentDetail,
 } from "@/lib/api";
+
+export async function generateStaticParams() {
+  return [{ id: "placeholder" }];
+}
 
 /**
  * Incident detail page.  Fetches and displays detailed information
