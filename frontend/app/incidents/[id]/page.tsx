@@ -1,3 +1,4 @@
+"use client";
 import IncidentDetailClient from "./IncidentDetailClient";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
