@@ -1,5 +1,6 @@
 """Tests for driver auth OTP endpoints."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -143,3 +144,127 @@ def test_driver_request_otp_rate_limited(client, driver):
         )
         assert blocked.status_code == 429
         assert "Retry-After" in blocked.headers
+
+
+def _create_challenge(
+    db_session,
+    phone_e164: str,
+    *,
+    status: str = "pending",
+    attempt_count: int = 0,
+    created_at_utc: datetime | None = None,
+    expires_at_utc: datetime | None = None,
+):
+    challenge = OtpChallenge(
+        phone_e164=phone_e164,
+        otp_code_hash="",
+        status=status,
+        attempt_count=attempt_count,
+        created_at_utc=created_at_utc or datetime.now(timezone.utc),
+        expires_at_utc=expires_at_utc
+        or (datetime.now(timezone.utc) + timedelta(minutes=5)),
+    )
+    db_session.add(challenge)
+    db_session.commit()
+    db_session.refresh(challenge)
+    return challenge
+
+
+def test_verify_otp_latest_locked_challenge_returns_423(client, db_session, driver):
+    now = datetime.now(timezone.utc)
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="pending",
+        created_at_utc=now - timedelta(minutes=1),
+        expires_at_utc=now + timedelta(minutes=5),
+    )
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="locked",
+        created_at_utc=now,
+        expires_at_utc=now + timedelta(minutes=5),
+    )
+
+    verify_resp = client.post(
+        "/driver/auth/verify-otp",
+        json={"phone_e164": driver.phone_e164, "otp_code": "123456"},
+    )
+
+    assert verify_resp.status_code == 423
+    assert verify_resp.json()["detail"] == "Challenge locked due to too many attempts"
+
+
+def test_verify_otp_latest_verified_challenge_returns_400(client, db_session, driver):
+    now = datetime.now(timezone.utc)
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="pending",
+        created_at_utc=now - timedelta(minutes=1),
+        expires_at_utc=now + timedelta(minutes=5),
+    )
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="verified",
+        created_at_utc=now,
+        expires_at_utc=now + timedelta(minutes=5),
+    )
+
+    verify_resp = client.post(
+        "/driver/auth/verify-otp",
+        json={"phone_e164": driver.phone_e164, "otp_code": "123456"},
+    )
+
+    assert verify_resp.status_code == 400
+    assert verify_resp.json()["detail"] == "Challenge already verified"
+
+
+def test_verify_otp_latest_expired_challenge_returns_410(client, db_session, driver):
+    now = datetime.now(timezone.utc)
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="pending",
+        created_at_utc=now - timedelta(minutes=1),
+        expires_at_utc=now + timedelta(minutes=5),
+    )
+    _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="expired",
+        created_at_utc=now,
+        expires_at_utc=now - timedelta(minutes=1),
+    )
+
+    verify_resp = client.post(
+        "/driver/auth/verify-otp",
+        json={"phone_e164": driver.phone_e164, "otp_code": "123456"},
+    )
+
+    assert verify_resp.status_code == 410
+    assert verify_resp.json()["detail"] == "Challenge expired"
+
+
+def test_verify_otp_invalid_code_increments_attempts_and_locks(client, db_session, driver):
+    challenge = _create_challenge(
+        db_session,
+        driver.phone_e164,
+        status="pending",
+        attempt_count=4,
+        expires_at_utc=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+
+    with patch("app.services.twilio_verify.check_verification", return_value=False):
+        verify_resp = client.post(
+            "/driver/auth/verify-otp",
+            json={"phone_e164": driver.phone_e164, "otp_code": "000000"},
+        )
+
+    db_session.refresh(challenge)
+    assert verify_resp.status_code == 423
+    assert verify_resp.json()["detail"] == "Challenge locked due to too many attempts"
+    assert challenge.attempt_count == 5
+    assert challenge.status == "locked"

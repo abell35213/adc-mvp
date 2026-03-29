@@ -71,6 +71,18 @@ def get_otp_challenge(db: Session, challenge_id: _uuid.UUID) -> OtpChallenge | N
     )
 
 
+def get_latest_otp_challenge_by_phone(
+    db: Session, phone_e164: str
+) -> OtpChallenge | None:
+    """Return the most recent OTP challenge for a phone, regardless of status."""
+    return (
+        db.query(OtpChallenge)
+        .filter(OtpChallenge.phone_e164 == phone_e164)
+        .order_by(OtpChallenge.created_at_utc.desc())
+        .first()
+    )
+
+
 def increment_otp_attempts(db: Session, challenge: OtpChallenge) -> OtpChallenge:
     """Increment attempt count and lock or expire the challenge when appropriate."""
     now_utc = datetime.now(timezone.utc)
