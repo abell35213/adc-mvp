@@ -18,10 +18,10 @@ from app.api.schemas import (
 )
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.db.models import OtpChallenge
 from app.db.repo.drivers import (
     create_otp_challenge,
     get_driver_by_phone,
+    get_latest_otp_challenge_by_phone,
     increment_otp_attempts,
     mark_otp_verified,
 )
@@ -124,16 +124,8 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         )
     _enforce_rate_limit(_verify_timestamps, _phone_hash(phone_e164), _VERIFY_LIMIT)
 
-    # Find the latest pending challenge for this phone
-    challenge = (
-        db.query(OtpChallenge)
-        .filter(
-            OtpChallenge.phone_e164 == phone_e164,
-            OtpChallenge.status == "pending",
-        )
-        .order_by(OtpChallenge.created_at_utc.desc())
-        .first()
-    )
+    # Find the latest challenge for this phone, then branch by challenge status.
+    challenge = get_latest_otp_challenge_by_phone(db, phone_e164)
     if challenge is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
