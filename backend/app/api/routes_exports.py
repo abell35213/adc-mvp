@@ -12,6 +12,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import get_export
 from app.db.repo.events import create_event
+from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 
@@ -25,6 +26,7 @@ def list_exports_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ = get_user_org_ids(db, current_user.id)
     return []
 
 
@@ -34,9 +36,12 @@ def get_export_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    org_ids = get_user_org_ids(db, current_user.id)
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
+    if export.org_id is not None and export.org_id not in org_ids:
+        raise HTTPException(status_code=403, detail="Forbidden")
     return {
         "export_id": str(export.export_id),
         "incident_id": str(export.incident_id),
@@ -50,9 +55,12 @@ def download_export_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    org_ids = get_user_org_ids(db, current_user.id)
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
+    if export.org_id is not None and export.org_id not in org_ids:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     if export.status != "ready":
         raise HTTPException(status_code=409, detail="Export is not ready")
