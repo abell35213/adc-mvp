@@ -26,12 +26,14 @@ def get_export(db: Session, export_id: _uuid.UUID) -> Optional[Export]:
 def create_export(
     db: Session,
     incident_id: _uuid.UUID,
+    org_id: Optional[_uuid.UUID] = None,
     status: str = "requested",
     s3_bucket: Optional[str] = None,
     s3_key: Optional[str] = None,
 ) -> Export:
     """Create a new export record."""
     export = Export(
+        org_id=org_id,
         incident_id=incident_id,
         status=status,
         s3_bucket=s3_bucket,

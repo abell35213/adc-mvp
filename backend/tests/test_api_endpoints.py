@@ -68,6 +68,25 @@ def auth_headers(test_user):
 
 
 @pytest.fixture()
+def no_org_user(db_session):
+    user = User(
+        email="no-org@example.com",
+        password_hash=hash_password("testpass"),
+        role="safety_manager",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def no_org_auth_headers(no_org_user):
+    token = create_access_token({"sub": str(no_org_user.id), "role": no_org_user.role})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
 def client(db_session):
     def _override():
         try:
@@ -436,13 +455,15 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{fake_id}/download", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_download_export_not_ready(self, client, db_session, auth_headers):
-        inc = Incident(status="open")
+    def test_download_export_not_ready(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
         db_session.commit()
         db_session.refresh(inc)
 
-        exp = Export(incident_id=inc.incident_id, status="requested")
+        exp = Export(incident_id=inc.incident_id, org_id=test_org.id, status="requested")
         db_session.add(exp)
         db_session.commit()
         db_session.refresh(exp)
@@ -450,13 +471,14 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 409
 
-    def test_download_export_ready(self, client, db_session, auth_headers):
-        inc = Incident(status="open")
+    def test_download_export_ready(self, client, db_session, test_org, auth_headers):
+        inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
         db_session.commit()
         db_session.refresh(inc)
 
         exp = Export(
+            org_id=test_org.id,
             incident_id=inc.incident_id,
             status="ready",
             s3_bucket="my-bucket",
@@ -473,13 +495,16 @@ class TestDownloadExport:
         assert "url" in data
         assert "my-bucket" in data["url"]
 
-    def test_download_export_logs_event(self, client, db_session, auth_headers):
-        inc = Incident(status="open")
+    def test_download_export_logs_event(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
         db_session.commit()
         db_session.refresh(inc)
 
         exp = Export(
+            org_id=test_org.id,
             incident_id=inc.incident_id,
             status="ready",
             s3_bucket="b",
@@ -504,6 +529,33 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{fake_id}/download")
         assert resp.status_code in (401, 403)
 
+    def test_download_export_forbidden_for_other_org(
+        self, client, db_session, auth_headers, test_org
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=other_org.id,
+            status="ready",
+            s3_bucket="forbidden-bucket",
+            s3_key="exports/forbidden.zip",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 403
+
 
 # ── GET /exports/{export_id} ───────────────────────────────────────
 
@@ -514,13 +566,15 @@ class TestGetExport:
         resp = client.get(f"/exports/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_get_export_found(self, client, db_session, auth_headers):
-        inc = Incident(status="open")
+    def test_get_export_found(self, client, db_session, test_org, auth_headers):
+        inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
         db_session.commit()
         db_session.refresh(inc)
 
-        exp = Export(incident_id=inc.incident_id, status="requested")
+        exp = Export(
+            incident_id=inc.incident_id, org_id=test_org.id, status="requested"
+        )
         db_session.add(exp)
         db_session.commit()
         db_session.refresh(exp)
@@ -534,6 +588,54 @@ class TestGetExport:
         fake_id = str(uuid.uuid4())
         resp = client.get(f"/exports/{fake_id}")
         assert resp.status_code in (401, 403)
+
+    def test_get_export_forbidden_for_other_org(
+        self, client, db_session, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(incident_id=inc.incident_id, org_id=other_org.id, status="ready")
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
+        assert resp.status_code == 403
+
+
+class TestListExports:
+    def test_list_exports_no_org_links_returns_empty(self, client, no_org_auth_headers):
+        resp = client.get("/exports/", headers=no_org_auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_get_export_denied_for_user_with_no_org_links(
+        self, client, db_session, test_org, no_org_auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=test_org.id,
+            status="requested",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}", headers=no_org_auth_headers)
+        assert resp.status_code == 403
 
 
 # ── Health check ────────────────────────────────────────────────────
