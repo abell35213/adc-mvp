@@ -83,6 +83,11 @@ adc-mvp/
 └── README.md
 ```
 
+
+## Runtime package canonical path
+
+The canonical backend runtime package lives at `backend/app`. The top-level `app/` tree is reserved as a non-runtime placeholder to prevent accidental duplicate modules.
+
 ## Getting Started
 
 ### Prerequisites
@@ -121,10 +126,10 @@ Open four terminals and run each command:
 docker compose -f infra/docker-compose.yml up -d
 
 # 2. Start the FastAPI backend
-uvicorn backend.app.main:app --reload
+cd backend && uvicorn app.main:app --reload
 
 # 3. Start the Celery worker
-celery -A backend.app.tasks.celery_app worker -l info
+cd backend && celery -A app.tasks.celery_app worker -l info
 
 # 4. Start the Next.js frontend
 cd frontend && npm run dev

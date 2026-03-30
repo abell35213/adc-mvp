@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint
+.PHONY: dev test fmt lint guard-duplicates
 
 ## Start all services (infra + backend + worker + frontend) from repo root
 ## Uses docker compose (plugin-style command)
@@ -7,6 +7,7 @@ dev:
 
 ## Run backend tests and contract validation from repo root
 test:
+	python scripts/check_no_duplicate_modules.py
 	cd backend && pip install -q -r requirements.txt && pytest tests/ -v
 	python scripts/validate_schemas.py
 
@@ -18,3 +19,7 @@ fmt:
 ## Lint only (no auto-fix) from repo root
 lint:
 	cd backend && pip install -q ruff && ruff check app/ tests/
+
+## Ensure no stale duplicate runtime modules reappear
+guard-duplicates:
+	python scripts/check_no_duplicate_modules.py

@@ -31,6 +31,9 @@ jobs:
           pip install -r requirements.txt
           pip install ruff pytest
 
+      - name: Duplicate module guard
+        run: python ../scripts/check_no_duplicate_modules.py
+
       - name: Compile check
         run: python -m compileall app/
 
