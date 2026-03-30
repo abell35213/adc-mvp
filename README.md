@@ -92,20 +92,27 @@ adc-mvp/
 - Redis 7+
 - Node.js 18+ (for frontend)
 
-### Quick Start
+### Directory Context (important)
+
+- **From repo root (`adc-mvp/`)**: use commands with `backend.app...` import paths.
+- **From `backend/`**: use commands with `app...` import paths.
+
+All commands below call out which directory they assume.
+
+### Quick Start (from repo root)
 
 ```bash
 # Start everything (backend + worker + frontend + infra)
 make dev
 
-# Run tests
+# Run backend tests + schema validation
 make test
 
-# Format / lint
+# Lint and format backend code
 make fmt
 ```
 
-### Run Everything
+### Manual Development (from repo root)
 
 Open four terminals and run each command:
 
@@ -123,6 +130,21 @@ celery -A backend.app.tasks.celery_app worker -l info
 cd frontend && npm run dev
 ```
 
+### Backend-only Manual Development (from backend/)
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+### Run Tests Manually (from repo root)
+
+```bash
+cd backend && pytest tests/ -v
+python scripts/validate_schemas.py
+```
+
 ### Driver App (Expo)
 
 ```bash
@@ -134,15 +156,7 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:8000 npm run start
 - API: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
 
-### Local Development (manual)
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-### Docker
+### Docker (from repo root)
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build
