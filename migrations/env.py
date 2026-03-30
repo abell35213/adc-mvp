@@ -14,14 +14,21 @@ migrations: https://alembic.sqlalchemy.org/.
 from __future__ import annotations
 
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy import create_engine
 
 from alembic import context
 
-from app.db.models import Base  # Import your models here
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.db.models import Base  # Import canonical backend models via backend/ path
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
