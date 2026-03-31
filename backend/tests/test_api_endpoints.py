@@ -1,6 +1,7 @@
 """Tests for API endpoints."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -720,6 +721,53 @@ class TestListExports:
 
         resp = client.get(f"/exports/{exp.export_id}", headers=no_org_auth_headers)
         assert resp.status_code == 403
+
+    def test_list_exports_includes_direct_and_legacy_org_scoped_rows(
+        self, client, db_session, test_org, auth_headers
+    ):
+        visible_incident = Incident(status="open", org_id=test_org.id)
+        other_incident = Incident(status="open", org_id=uuid.uuid4())
+        db_session.add_all([visible_incident, other_incident])
+        db_session.commit()
+        db_session.refresh(visible_incident)
+        db_session.refresh(other_incident)
+
+        now = datetime.now(timezone.utc)
+        direct_export = Export(
+            incident_id=visible_incident.incident_id,
+            org_id=test_org.id,
+            status="ready",
+            created_at_utc=now - timedelta(minutes=10),
+        )
+        legacy_visible_export = Export(
+            incident_id=visible_incident.incident_id,
+            org_id=None,
+            status="processing",
+            created_at_utc=now - timedelta(minutes=5),
+        )
+        legacy_hidden_export = Export(
+            incident_id=other_incident.incident_id,
+            org_id=None,
+            status="failed",
+            created_at_utc=now,
+        )
+        db_session.add_all([direct_export, legacy_visible_export, legacy_hidden_export])
+        db_session.commit()
+        db_session.refresh(direct_export)
+        db_session.refresh(legacy_visible_export)
+
+        resp = client.get("/exports/", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert len(data) == 2
+        assert [row["export_id"] for row in data] == [
+            str(legacy_visible_export.export_id),
+            str(direct_export.export_id),
+        ]
+        assert data[0]["incident_id"] == str(visible_incident.incident_id)
+        assert data[0]["status"] == "processing"
+        assert "created_at_utc" in data[0]
 
 
 # ── Health check ────────────────────────────────────────────────────
