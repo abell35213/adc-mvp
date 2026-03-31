@@ -38,9 +38,12 @@ adc-mvp/
 │   │   │   ├── pdf_render.py          # PDF rendering service
 │   │   │   └── s3_key_builder.py      # S3 key construction helper
 │   │   ├── tasks/
-│   │   │   ├── celery_app.py          # Celery configuration
-│   │   │   ├── evidence_tasks.py      # Evidence collection tasks
-│   │   │   └── export_tasks.py        # Export generation tasks
+│   │   │   ├── __init__.py            # Tasks package marker
+│   │   │   ├── celery_app.py          # Celery app config + task routing/queues
+│   │   │   ├── evidence_tasks.py      # Dashcam + telematics evidence ingestion
+│   │   │   ├── export_tasks.py        # Export build + persistence/upload tasks
+│   │   │   ├── notification_tasks.py  # Safety manager SMS/voice alerts via Twilio
+│   │   │   └── notify_tasks.py        # Legacy shim alias for deprecated notify task
 │   │   └── domain/
 │   │       ├── event_types.py         # Event type definitions
 │   │       ├── evidence_types.py      # Evidence type definitions
