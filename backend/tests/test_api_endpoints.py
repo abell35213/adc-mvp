@@ -472,7 +472,10 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 409
 
-    def test_download_export_ready(self, client, db_session, test_org, auth_headers):
+    @patch("app.api.routes_exports.generate_presigned_download_url")
+    def test_download_export_ready(
+        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+    ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
         db_session.commit()
@@ -489,15 +492,21 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
+        mock_generate_presigned_download_url.return_value = (
+            "https://signed.example.com/exports/test.zip"
+        )
+
+
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
         assert "url" in data
-        assert "my-bucket" in data["url"]
+        assert "signed.example.com" in data["url"]
 
+    @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_logs_event(
-        self, client, db_session, test_org, auth_headers
+        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -514,6 +523,8 @@ class TestDownloadExport:
         db_session.add(exp)
         db_session.commit()
         db_session.refresh(exp)
+
+        mock_generate_presigned_download_url.return_value = "https://signed.example.com/k"
 
         client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
 
@@ -557,8 +568,9 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 403
 
+    @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_uses_incident_org_for_legacy_null_org_export(
-        self, client, db_session, auth_headers, test_org
+        self, mock_generate_presigned_download_url, client, db_session, auth_headers, test_org
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -576,8 +588,72 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
+        mock_generate_presigned_download_url.return_value = (
+            "https://signed.example.com/exports/legacy.zip"
+        )
+
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 200
+
+    @patch("app.api.routes_exports.generate_presigned_download_url")
+    def test_download_export_missing_bucket_or_key_returns_422(
+        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            org_id=test_org.id,
+            incident_id=inc.incident_id,
+            status="ready",
+            s3_bucket=None,
+            s3_key=None,
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        from app.services.vault_s3 import S3PresignConfigurationError
+
+        mock_generate_presigned_download_url.side_effect = S3PresignConfigurationError(
+            "Export download bucket is not configured"
+        )
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Export download bucket is not configured"
+
+    @patch("app.api.routes_exports.generate_presigned_download_url")
+    def test_download_export_presign_failure_returns_502(
+        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            org_id=test_org.id,
+            incident_id=inc.incident_id,
+            status="ready",
+            s3_bucket="my-bucket",
+            s3_key="exports/failure.zip",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        from app.services.vault_s3 import S3PresignGenerationError
+
+        mock_generate_presigned_download_url.side_effect = S3PresignGenerationError(
+            "Failed to generate download URL"
+        )
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 502
+        assert resp.json()["detail"] == "Unable to generate export download URL"
 
     def test_download_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
         self, client, db_session, auth_headers

@@ -16,6 +16,11 @@ from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
+from app.services.vault_s3 import (
+    S3PresignConfigurationError,
+    S3PresignGenerationError,
+    generate_presigned_download_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,13 +96,24 @@ def download_export_endpoint(
     if export.status != "ready":
         raise HTTPException(status_code=409, detail="Export is not ready")
 
-    # Build a presigned-style URL (placeholder — real impl uses boto3)
     bucket = export.s3_bucket or settings.S3_BUCKET
     key = export.s3_key or f"exports/{export.export_id}.zip"
-    presigned_url = (
-        f"https://{bucket}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
-        f"?X-Amz-Expires=3600"
-    )
+    expires_in_seconds = 3600
+
+    try:
+        presigned_url = generate_presigned_download_url(
+            bucket=bucket,
+            key=key,
+            region=settings.AWS_REGION,
+            expires_in=expires_in_seconds,
+        )
+    except S3PresignConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except S3PresignGenerationError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to generate export download URL",
+        ) from exc
 
     create_event(
         db,
