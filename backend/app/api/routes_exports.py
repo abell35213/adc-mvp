@@ -10,7 +10,7 @@ from app.api.schemas import DownloadExportResponse
 from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo.exports import get_export
+from app.db.repo.exports import get_export, list_exports_for_org_ids
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
@@ -38,8 +38,17 @@ def list_exports_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = get_user_org_ids(db, current_user.id)
-    return []
+    org_ids = get_user_org_ids(db, current_user.id)
+    exports = list_exports_for_org_ids(db, org_ids)
+    return [
+        {
+            "export_id": str(export.export_id),
+            "incident_id": str(export.incident_id),
+            "status": export.status,
+            "created_at_utc": export.created_at_utc,
+        }
+        for export in exports
+    ]
 
 
 @router.get("/{export_id}")

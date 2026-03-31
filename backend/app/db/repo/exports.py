@@ -3,9 +3,10 @@
 import uuid as _uuid
 from typing import Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.db.models import Export
+from app.db.models import Export, Incident
 
 
 def _get_export_query(db: Session, export_id: _uuid.UUID):
@@ -16,6 +17,25 @@ def _get_export_query(db: Session, export_id: _uuid.UUID):
 def get_exports_by_incident(db: Session, incident_id: _uuid.UUID) -> list[Export]:
     """Retrieve all exports for a specific incident."""
     return db.query(Export).filter(Export.incident_id == incident_id).all()
+
+
+def list_exports_for_org_ids(db: Session, org_ids: list[_uuid.UUID]) -> list[Export]:
+    """List exports visible to the caller's organizations, newest first."""
+    if not org_ids:
+        return []
+
+    return (
+        db.query(Export)
+        .outerjoin(Incident, Incident.incident_id == Export.incident_id)
+        .filter(
+            or_(
+                Export.org_id.in_(org_ids),
+                and_(Export.org_id.is_(None), Incident.org_id.in_(org_ids)),
+            )
+        )
+        .order_by(Export.created_at_utc.desc())
+        .all()
+    )
 
 
 def get_export(db: Session, export_id: _uuid.UUID) -> Optional[Export]:
