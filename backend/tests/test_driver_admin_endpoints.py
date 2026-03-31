@@ -338,14 +338,14 @@ class TestRotateQr:
 
 
 class TestDriverInitiate:
-    @patch("app.api.routes_driver.notify_safety")
+    @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
     def test_driver_initiate_creates_incident_and_events(
         self,
         mock_dash,
         mock_tele,
-        mock_notify,
+        mock_notify_manager,
         client,
         db_session,
         test_driver,
@@ -354,7 +354,7 @@ class TestDriverInitiate:
     ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
-        mock_notify.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
 
         resp = client.post(
             "/driver/incidents/initiate",
@@ -379,14 +379,14 @@ class TestDriverInitiate:
         assert "incident_protocol_initiated" in event_types
         assert "evidence_lockdown_started" in event_types
 
-    @patch("app.api.routes_driver.notify_safety")
+    @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
     def test_driver_initiate_resolves_vehicle_by_qr(
         self,
         mock_dash,
         mock_tele,
-        mock_notify,
+        mock_notify_manager,
         client,
         db_session,
         test_driver,
@@ -395,7 +395,7 @@ class TestDriverInitiate:
     ):
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
-        mock_notify.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
 
         resp = client.post(
             "/driver/incidents/initiate",

@@ -121,6 +121,7 @@ class TestCeleryAppConfig:
         assert "app.tasks.evidence_tasks.capture_dashcam" in routes
         assert "app.tasks.evidence_tasks.capture_telematics_bundle" in routes
         assert "app.tasks.export_tasks.build_export" in routes
+        assert "app.tasks.notification_tasks.notify_safety_manager" in routes
 
 
 # ── capture_dashcam ─────────────────────────────────────────────────
