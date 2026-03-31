@@ -369,6 +369,13 @@ class TestDriverInitiate:
         incident = db_session.query(Incident).first()
         assert incident is not None
         assert incident.adc_vehicle_id == "veh-100"
+        mock_dash.delay.assert_called_once_with(
+            str(incident.incident_id), None, None
+        )
+        mock_tele.delay.assert_called_once_with(
+            str(incident.incident_id), None, None
+        )
+        mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
         events = (
             db_session.query(Event)
@@ -405,6 +412,13 @@ class TestDriverInitiate:
         assert resp.status_code == 200
         incident = db_session.query(Incident).first()
         assert incident.adc_vehicle_id == "veh-200"
+        mock_dash.delay.assert_called_once_with(
+            str(incident.incident_id), None, None
+        )
+        mock_tele.delay.assert_called_once_with(
+            str(incident.incident_id), None, None
+        )
+        mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
 
 # ── GET /driver/instructions/active ─────────────────────────────────
