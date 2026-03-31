@@ -22,6 +22,9 @@ celery_app.conf.update(
         "app.tasks.evidence_tasks.capture_dashcam": {"queue": "evidence"},
         "app.tasks.evidence_tasks.capture_telematics_bundle": {"queue": "evidence"},
         "app.tasks.export_tasks.build_export": {"queue": "exports"},
+        "app.tasks.notification_tasks.notify_safety_manager": {
+            "queue": "notifications"
+        },
         "app.tasks.notify_tasks.notify_safety": {"queue": "notifications"},
     },
 )

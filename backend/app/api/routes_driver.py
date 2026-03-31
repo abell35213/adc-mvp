@@ -46,7 +46,7 @@ from app.db.repo.incidents import create_incident, get_incident
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
-from app.tasks.notify_tasks import notify_safety
+from app.tasks.notification_tasks import notify_safety_manager
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +502,7 @@ def initiate_incident(
     str_id = str(incident.incident_id)
     capture_dashcam.delay(str_id, body.window_start, body.window_end)
     capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
-    notify_safety.delay(str_id)
+    notify_safety_manager.delay(str_id)
 
     return DriverIncidentInitiateResponse(
         incident_id=incident.incident_id,
