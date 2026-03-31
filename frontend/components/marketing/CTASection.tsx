@@ -1,19 +1,28 @@
 import Link from "next/link";
-import { MarketingSection } from "@/components/marketing/LayoutPrimitives";
+import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
 
 export function CTASection() {
   return (
-    <MarketingSection id="contact" className="pt-0">
-      <div className={`${marketingTokens.surfaces.card} flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between`}>
-        <div>
-          <h2 className={marketingTokens.headingScale.h3}>Ready to modernize incident response?</h2>
-          <p className="mt-2 text-slate-700">Launch in days with migration support and guided onboarding.</p>
+    <section id="contact" className="bg-[#0a1628] py-14 sm:py-18 lg:py-24">
+      <MarketingContainer>
+        <div className="rounded-3xl border border-white/10 bg-[#0f2040] p-10 text-center sm:p-16">
+          <h2 className={`${marketingTokens.headingScale.h2Light} mx-auto max-w-2xl`}>
+            Ready to modernize fleet incident response?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-slate-300">
+            Launch in days with migration support and guided onboarding. Join 120+ fleets already protecting themselves with ADC.
+          </p>
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+            <Link href="/company/contact" className={marketingTokens.buttonVariants.primaryLight} aria-label="Book a product demo">
+              Book a demo
+            </Link>
+            <Link href="/pricing" className={marketingTokens.buttonVariants.secondaryLight} aria-label="View pricing plans">
+              View pricing
+            </Link>
+          </div>
         </div>
-        <Link href="/login" className={marketingTokens.buttonVariants.primary} aria-label="Book a product demo">
-          Book demo
-        </Link>
-      </div>
-    </MarketingSection>
+      </MarketingContainer>
+    </section>
   );
 }
