@@ -12,6 +12,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import get_export
 from app.db.repo.events import create_event
+from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
@@ -19,6 +20,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_export_owner_org_id(db: Session, export):
+    """Resolve org ownership for an export, including legacy null-org rows."""
+    if export.org_id is not None:
+        return export.org_id
+
+    incident = get_incident(db, export.incident_id)
+    if incident is None:
+        return None
+    return incident.org_id
 
 
 @router.get("/")
@@ -40,8 +52,11 @@ def get_export_endpoint(
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
-    if export.org_id is not None and export.org_id not in org_ids:
+
+    export_org_id = _get_export_owner_org_id(db, export)
+    if export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
+
     return {
         "export_id": str(export.export_id),
         "incident_id": str(export.incident_id),
@@ -59,7 +74,9 @@ def download_export_endpoint(
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
-    if export.org_id is not None and export.org_id not in org_ids:
+
+    export_org_id = _get_export_owner_org_id(db, export)
+    if export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if export.status != "ready":

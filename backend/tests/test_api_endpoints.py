@@ -556,6 +556,50 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 403
 
+    def test_download_export_uses_incident_org_for_legacy_null_org_export(
+        self, client, db_session, auth_headers, test_org
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=None,
+            status="ready",
+            s3_bucket="legacy-bucket",
+            s3_key="exports/legacy.zip",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 200
+
+    def test_download_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
+        self, client, db_session, auth_headers
+    ):
+        inc = Incident(status="open", org_id=None)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=None,
+            status="ready",
+            s3_bucket="legacy-bucket",
+            s3_key="exports/legacy.zip",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 403
+
 
 # ── GET /exports/{export_id} ───────────────────────────────────────
 
@@ -603,6 +647,46 @@ class TestGetExport:
         db_session.refresh(inc)
 
         exp = Export(incident_id=inc.incident_id, org_id=other_org.id, status="ready")
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
+        assert resp.status_code == 403
+
+    def test_get_export_uses_incident_org_for_legacy_null_org_export(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=None,
+            status="requested",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
+        assert resp.status_code == 200
+
+    def test_get_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
+        self, client, db_session, auth_headers
+    ):
+        inc = Incident(status="open", org_id=None)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=None,
+            status="requested",
+        )
         db_session.add(exp)
         db_session.commit()
         db_session.refresh(exp)
