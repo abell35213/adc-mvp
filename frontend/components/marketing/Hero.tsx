@@ -51,14 +51,16 @@ export function Hero() {
           </ul>
 
           <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-3 lg:flex">
             <Link href="/resources/docs" className={marketingTokens.buttonVariants.ghost}>
               Docs
             </Link>
             <Link href="/company/contact" className={marketingTokens.buttonVariants.ghost}>
               Contact
             </Link>
+            </div>
             <Link href="/company/contact" className={marketingTokens.buttonVariants.primary}>
-              Book a demo
+              Book demo
             </Link>
           </div>
         </nav>
