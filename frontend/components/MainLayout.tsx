@@ -23,6 +23,16 @@ interface NavGroup {
   items: NavItem[];
 }
 
+const SEGMENT_LABELS: Record<string, string> = {
+  admin: "Administration",
+  incidents: "Incidents",
+  exports: "Exports",
+  dashboard: "Dashboard",
+  vehicles: "Vehicles",
+  timeline: "Timeline",
+  "driver-protocol": "Driver Protocol",
+};
+
 function getDefaultLandingForRole(role: string): string {
   switch (role) {
     case "admin":
@@ -43,6 +53,8 @@ function routeIsActive(pathname: string, href: string, prefixes: string[] = []):
 }
 
 function toTitleCase(segment: string): string {
+  if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];
+
   return segment
     .replace(/-/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -70,11 +82,8 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
       area: "Operations",
       items: [
         { href: "/dashboard", label: "Dashboard" },
-        {
-          href: "/incidents",
-          label: "Incidents",
-          activePrefixes: ["/incidents"],
-        },
+        { href: "/incidents", label: "Incidents", activePrefixes: ["/incidents"] },
+        { href: "/timeline", label: "Timeline" },
       ],
     },
     {
@@ -91,7 +100,13 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
         {
           href: "/admin/driver-protocol",
           label: "Driver Protocol",
-          activePrefixes: ["/admin"],
+          activePrefixes: ["/admin/driver-protocol"],
+          hidden: user.role !== "admin",
+        },
+        {
+          href: "/admin/vehicles",
+          label: "Admin Vehicles",
+          activePrefixes: ["/admin/vehicles"],
           hidden: user.role !== "admin",
         },
       ],
@@ -123,19 +138,20 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
 
         <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
           <Link
-            href="/incidents?quick=create"
+            href="/incidents"
+            aria-label="Create a new incident"
             className="rounded border border-blue-200 px-3 py-1 font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
           >
             + Create Incident
           </Link>
           <Link
-            href="/incidents?filter=active"
+            href="/incidents"
             className="rounded border border-amber-200 px-3 py-1 font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
           >
             Open Active Queue
           </Link>
           <Link
-            href="/exports?intent=request"
+            href="/exports"
             className="rounded border border-emerald-200 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950"
           >
             Request Export
