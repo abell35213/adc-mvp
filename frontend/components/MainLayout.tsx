@@ -23,6 +23,13 @@ interface NavGroup {
   items: NavItem[];
 }
 
+interface QuickAction {
+  href: string;
+  label: string;
+  ariaLabel: string;
+  className: string;
+}
+
 const SEGMENT_LABELS: Record<string, string> = {
   admin: "Administration",
   incidents: "Incidents",
@@ -77,6 +84,7 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
   }
 
   const defaultLanding = getDefaultLandingForRole(user.role);
+
   const navGroups: NavGroup[] = [
     {
       area: "Operations",
@@ -113,6 +121,30 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
     },
   ];
 
+  const quickActions: QuickAction[] = [
+    {
+      href: "/incidents?quick=create",
+      label: "+ Create Incident",
+      ariaLabel: "Create a new incident",
+      className:
+        "rounded border border-blue-200 px-3 py-1 font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950",
+    },
+    {
+      href: "/incidents?filter=active",
+      label: "Open Active Queue",
+      ariaLabel: "Open active incident queue",
+      className:
+        "rounded border border-amber-200 px-3 py-1 font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950",
+    },
+    {
+      href: "/exports?intent=request",
+      label: "Request Export",
+      ariaLabel: "Open export request flow",
+      className:
+        "rounded border border-emerald-200 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950",
+    },
+  ];
+
   const breadcrumbs = pathname
     .split("/")
     .filter(Boolean)
@@ -123,7 +155,8 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
         href,
         label: isIdLike ? `${segment.slice(0, 8)}…` : toTitleCase(segment),
       };
-    });
+    })
+    .filter((crumb) => crumb.href !== defaultLanding);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -137,25 +170,16 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-          <Link
-            href="/incidents"
-            aria-label="Create a new incident"
-            className="rounded border border-blue-200 px-3 py-1 font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
-          >
-            + Create Incident
-          </Link>
-          <Link
-            href="/incidents"
-            className="rounded border border-amber-200 px-3 py-1 font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
-          >
-            Open Active Queue
-          </Link>
-          <Link
-            href="/exports"
-            className="rounded border border-emerald-200 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950"
-          >
-            Request Export
-          </Link>
+          {quickActions.map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              aria-label={action.ariaLabel}
+              className={action.className}
+            >
+              {action.label}
+            </Link>
+          ))}
           <button
             onClick={logout}
             className="ml-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
