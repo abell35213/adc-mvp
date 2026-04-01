@@ -56,3 +56,7 @@ Each page should include at least **two** of the following proof types (high-int
 3. Artifact-level proof (sample export, workflow diagram, checklist).
 4. Governance proof (security/privacy/compliance statements).
 5. Operational proof (implementation timeline, support SLA, uptime/reliability stats).
+
+## IA implementation status (updated April 1, 2026)
+
+All routes listed in this IA are now represented in `frontend/app/` and can be safely linked from primary navigation, utility navigation, and footer navigation.
