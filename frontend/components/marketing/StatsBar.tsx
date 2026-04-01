@@ -9,18 +9,18 @@ const stats = [
 
 export function StatsBar() {
   return (
-    <MarketingSection className="bg-sky-900 py-14 text-white">
-      <ul
-        className="grid gap-y-10 text-center sm:grid-cols-2 lg:grid-cols-4"
+    <MarketingSection className="bg-[#EBF2FA]">
+      <dl
+        className="grid gap-y-12 text-center sm:grid-cols-2 lg:grid-cols-4"
         aria-label="Platform impact statistics"
       >
         {stats.map(({ value, label }) => (
-          <li key={label}>
-            <p className="text-4xl font-bold tracking-tight">{value}</p>
-            <p className="mt-1 text-sm font-medium text-sky-200">{label}</p>
-          </li>
+          <div key={label}>
+            <dt className="text-5xl font-bold tracking-tight text-[#062040]">{value}</dt>
+            <dd className="mt-2 text-sm font-medium text-slate-500 max-w-[12rem] mx-auto">{label}</dd>
+          </div>
         ))}
-      </ul>
+      </dl>
     </MarketingSection>
   );
 }

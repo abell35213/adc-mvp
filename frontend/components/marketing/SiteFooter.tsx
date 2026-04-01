@@ -12,33 +12,33 @@ const navLinks = [
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-slate-200 bg-slate-50">
+    <footer className="bg-white border-t border-slate-100">
       {/* Final CTA band */}
-      <div className="bg-sky-900 py-14 text-white">
+      <div className="bg-[#062040] py-14 text-white">
         <MarketingContainer>
           <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:justify-between sm:text-left">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight">
+              <h2 className="text-2xl font-bold tracking-tight">
                 Ready to operate smarter?
               </h2>
-              <p className="mt-1 text-sky-200 text-sm">
-                Reduce risk and improve visibility with one scalable platform.
+              <p className="mt-1 text-slate-300 text-sm">
+                Reduce risk and improve fleet visibility with one scalable platform.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/pricing"
-                className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-sky-900 shadow-sm transition hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                aria-label="Get pricing"
+                className="inline-flex items-center justify-center rounded-full bg-[#1B6EF3] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1558c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                aria-label="Check our prices"
               >
-                Get Pricing
+                Check Our Prices
               </Link>
               <Link
                 href="/company/contact"
-                className="inline-flex items-center justify-center rounded-md border border-sky-400 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                aria-label="Book a demo"
+                className="inline-flex items-center justify-center rounded-full border border-slate-500 px-6 py-3 text-sm font-bold text-white transition hover:border-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                aria-label="Try the demo"
               >
-                Book Demo
+                Try the Demo
               </Link>
             </div>
           </div>
@@ -48,14 +48,14 @@ export function SiteFooter() {
       {/* Footer nav */}
       <MarketingContainer>
         <div className="flex flex-col items-center gap-6 py-10 sm:flex-row sm:justify-between">
-          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">ADC</span>
+          <span className="text-lg font-bold text-[#062040]">ADC</span>
           <nav aria-label="Footer navigation">
-            <ul className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-slate-600" role="list">
+            <ul className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-slate-500" role="list">
               {navLinks.map(({ label, href }) => (
                 <li key={label}>
                   <Link
                     href={href}
-                    className="hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                    className="hover:text-[#062040] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]"
                   >
                     {label}
                   </Link>
