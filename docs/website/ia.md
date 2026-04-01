@@ -56,3 +56,13 @@ Each page should include at least **two** of the following proof types (high-int
 3. Artifact-level proof (sample export, workflow diagram, checklist).
 4. Governance proof (security/privacy/compliance statements).
 5. Operational proof (implementation timeline, support SLA, uptime/reliability stats).
+
+## MVP deferments (updated April 1, 2026)
+
+To keep navigation links valid in the current MVP build, the following IA routes remain intentionally deferred and are not linked in primary/footer navigation yet:
+
+- `/resources/case-studies`
+- `/resources/blog`
+- `/resources/docs`
+
+When these routes are implemented, restore IA-recommended resource sub-navigation and utility "Docs" navigation.
