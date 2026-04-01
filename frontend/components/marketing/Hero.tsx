@@ -20,18 +20,23 @@ export function Hero() {
 
         <div className="grid gap-10 py-14 lg:grid-cols-[1.15fr_1fr] lg:items-center lg:py-20">
           <div className="space-y-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">Safety + operations intelligence</p>
-            <h1 className={marketingTokens.headingScale.display}>Faster fleet investigations with audit-ready evidence.</h1>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">Fleet safety + operations intelligence</p>
+            <h1 className={marketingTokens.headingScale.display}>Operate smarter with one scalable platform.</h1>
             <p className={marketingTokens.headingScale.body}>
-              Centralize incidents, telematics, and chain-of-custody exports in one place your safety team can trust.
+              Reduce claim exposure and improve fleet visibility with AI-powered incident response, evidence retention, and insurer-ready exports.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link className={marketingTokens.buttonVariants.primary} href="/login" aria-label="Start a free fleet trial">
-                Start free trial
+              <Link className={marketingTokens.buttonVariants.primary} href="/pricing" aria-label="View pricing plans">
+                Get Pricing
               </Link>
-              <a className={marketingTokens.buttonVariants.secondary} href="#pricing" aria-label="Jump to pricing plans">
-                View pricing
-              </a>
+              <Link className={marketingTokens.buttonVariants.secondary} href="/company/contact" aria-label="Book a product demo">
+                Book Demo
+              </Link>
+            </div>
+            <div className="flex items-center gap-2 pt-1 text-sm text-slate-600">
+              <span aria-hidden="true" className="text-amber-400">★★★★★</span>
+              <span className="sr-only">5 out of 5 stars.</span>
+              <span>Rated 4.9/5 stars by 200+ fleet operators</span>
             </div>
           </div>
 
