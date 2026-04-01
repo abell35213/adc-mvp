@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
@@ -9,21 +9,46 @@ const fleetSizes = ["1 – 5", "6 – 29", "30 – 499", "500 – 4,999", "5,000
 
 const bulletFeatures = [
   {
-    title: "Safety & Compliance",
-    body: "Reduce incidents with real-time alerts and automated reporting.",
+    title: "Incident-triggered evidence capture",
+    body: "Auto-pull Samsara clips and combine driver uploads into one defensible incident record.",
   },
   {
-    title: "Efficiency & Visibility",
-    body: "Optimize asset use and streamline workflows with actionable data.",
+    title: "Verifiable chain-of-custody",
+    body: "Track every handoff with timestamped actions and integrity hashes that prove files were not altered.",
   },
   {
-    title: "AI-Powered Intelligence",
-    body: "Drive smarter decisions with predictive analytics and connected fleet data.",
+    title: "Litigation-ready exports",
+    body: "Generate insurer and legal packages with evidence indexes, metadata, and audit trails in minutes.",
   },
 ];
 
 export function Hero() {
   const [selectedFleet, setSelectedFleet] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return;
+    }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    fetch(`${apiBase}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          setIsAuthenticated(false);
+          return;
+        }
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      });
+  }, []);
 
   return (
     <header className="bg-[#EBF2FA]">
@@ -40,9 +65,15 @@ export function Hero() {
           </ul>
 
           <div className="flex items-center gap-3">
-            <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
-              Login
-            </Link>
+            {isAuthenticated ? (
+              <Link href="/dashboard" className={marketingTokens.buttonVariants.ghost}>
+                Go to dashboard
+              </Link>
+            ) : (
+              <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
+                Sign in
+              </Link>
+            )}
             <div className="h-5 w-px bg-slate-300" aria-hidden="true" />
             <Link href="/pricing" className={marketingTokens.buttonVariants.secondary}>
               Check Our Prices
@@ -67,11 +98,11 @@ export function Hero() {
             </div>
 
             <h1 className={marketingTokens.headingScale.display}>
-              Operate Smarter<sup className="text-3xl align-super">™</sup>
+              Defend Every Claim With Verifiable Evidence
             </h1>
 
             <p className="text-lg leading-8 text-slate-600 max-w-lg">
-              Lower costs and improve safety with an open, secure platform built to scale.
+              When an incident happens, ADC assembles proof fast—capturing telematics and media, preserving integrity, and packaging evidence for insurers and counsel.
             </p>
 
             <ul className="space-y-4" aria-label="Key capabilities">

@@ -77,8 +77,16 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
 
   if (!user) {
     return (
-      <div className="p-6 text-sm text-gray-500">
-        You must be logged in to view this page.
+      <div className="space-y-2 p-6 text-sm text-gray-500">
+        <p>You must be logged in to view this page.</p>
+        <div className="flex items-center gap-4">
+          <Link href="/login" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+            Sign in
+          </Link>
+          <Link href="/" className="font-medium text-gray-600 hover:underline dark:text-gray-300">
+            Back to homepage
+          </Link>
+        </div>
       </div>
     );
   }

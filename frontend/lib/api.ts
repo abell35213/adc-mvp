@@ -122,6 +122,24 @@ export interface Incident {
   created_at_utc?: string;
   evidence_captured?: number;
   evidence_total?: number;
+  driver_response?: DriverResponseSummary | null;
+  driver_protocol_summary?: DriverProtocolSummary | null;
+}
+
+export interface DriverResponseSummary {
+  notification_sent_at_utc?: string | null;
+  acknowledged_at_utc?: string | null;
+  uploads_complete?: boolean;
+  uploads_completed_at_utc?: string | null;
+  awaiting_driver_action?: boolean;
+}
+
+export interface DriverProtocolSummary {
+  instruction_source?: string;
+  require_ack?: boolean;
+  sms_enabled?: boolean;
+  voice_enabled?: boolean;
+  safety_manager_phone?: string | null;
 }
 
 export interface ArtifactSummary {
@@ -136,6 +154,17 @@ export interface ExportSummary {
   export_id: string;
   status: string;
   created_at_utc?: string | null;
+  generated_by?: string | null;
+  generation_duration_seconds?: number | null;
+  artifact_count?: number | null;
+  failure_count?: number | null;
+  failure_reason?: string | null;
+  retry_guidance?: string | null;
+  readiness?: {
+    required_artifacts_present?: boolean | null;
+    custody_complete?: boolean | null;
+    integrity_checks_passed?: boolean | null;
+  } | null;
 }
 
 /**

@@ -57,10 +57,28 @@ interface EvidenceTableProps {
   artifacts: ArtifactSummary[];
 }
 
+interface ArtifactDetail extends ArtifactSummary {
+  artifact_hash?: string | null;
+  source_provider?: string | null;
+  capture_method?: string | null;
+  remediation_state?: string | null;
+  collected_at_utc?: string | null;
+  validated_at_utc?: string | null;
+  exported_at_utc?: string | null;
+  downloaded_at_utc?: string | null;
+}
+
+function toTitleCase(value?: string | null): string {
+  if (!value) return "—";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
-  const artifactMap = new Map<string, ArtifactSummary>();
+  const artifactMap = new Map<string, ArtifactDetail>();
   for (const a of artifacts) {
-    artifactMap.set(a.artifact_type, a);
+    artifactMap.set(a.artifact_type, a as ArtifactDetail);
   }
 
   return (
@@ -78,7 +96,19 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
               Captured Time
             </th>
             <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
-              Reason
+              Artifact Hash
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Source Provider
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Capture Method
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Custody Timestamps
+            </th>
+            <th className="px-4 py-2 font-medium text-gray-600 dark:text-gray-300">
+              Availability Notes
             </th>
           </tr>
         </thead>
@@ -87,7 +117,10 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
             const art = artifactMap.get(type);
             const status = art?.status ?? "pending";
             return (
-              <tr key={type}>
+              <tr
+                key={type}
+                className={status === "unavailable" ? "bg-red-50/60" : undefined}
+              >
                 <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">
                   {label}
                 </td>
@@ -104,7 +137,45 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
                   {formatTime(art?.captured_at_utc)}
                 </td>
                 <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
-                  {art?.unavailable_reason ?? "—"}
+                  {art?.artifact_hash ? (
+                    <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
+                      {art.artifact_hash}
+                    </code>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                  {toTitleCase(art?.source_provider)}
+                </td>
+                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                  {toTitleCase(art?.capture_method)}
+                </td>
+                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="space-y-1">
+                    <p>Collected: {formatTime(art?.collected_at_utc ?? art?.captured_at_utc)}</p>
+                    <p>Validated: {formatTime(art?.validated_at_utc)}</p>
+                    <p>Exported: {formatTime(art?.exported_at_utc)}</p>
+                    <p>Downloaded: {formatTime(art?.downloaded_at_utc)}</p>
+                  </div>
+                </td>
+                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                  {status === "unavailable" ? (
+                    <div className="space-y-1 text-xs">
+                      <p>
+                        <span className="font-medium text-red-700">Reason:</span>{" "}
+                        {art?.unavailable_reason ?? "Unknown"}
+                      </p>
+                      <p>
+                        <span className="font-medium text-red-700">
+                          Remediation:
+                        </span>{" "}
+                        {toTitleCase(art?.remediation_state)}
+                      </p>
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </td>
               </tr>
             );
