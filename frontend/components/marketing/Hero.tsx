@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
@@ -18,21 +18,46 @@ const primaryNavLinks = [
 
 const bulletFeatures = [
   {
-    title: "Safety & Compliance",
-    body: "Reduce incidents with real-time alerts and automated reporting.",
+    title: "Incident-triggered evidence capture",
+    body: "Auto-pull Samsara clips and combine driver uploads into one defensible incident record.",
   },
   {
-    title: "Efficiency & Visibility",
-    body: "Optimize asset use and streamline workflows with actionable data.",
+    title: "Verifiable chain-of-custody",
+    body: "Track every handoff with timestamped actions and integrity hashes that prove files were not altered.",
   },
   {
-    title: "AI-Powered Intelligence",
-    body: "Drive smarter decisions with predictive analytics and connected fleet data.",
+    title: "Litigation-ready exports",
+    body: "Generate insurer and legal packages with evidence indexes, metadata, and audit trails in minutes.",
   },
 ];
 
 export function Hero() {
   const [selectedFleet, setSelectedFleet] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return;
+    }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    fetch(`${apiBase}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          setIsAuthenticated(false);
+          return;
+        }
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      });
+  }, []);
 
   return (
     <header className="bg-[#EBF2FA]">

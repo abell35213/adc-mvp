@@ -4,31 +4,31 @@ import { marketingTokens } from "@/components/marketing/tokens";
 
 const featured = {
   type: "Report",
-  title: "ADC helps reduce claim costs by nearly 40%",
+  title: "From collision alert to counsel-ready file: the ADC evidence workflow",
   summary:
-    "Based on 1,200+ fleets, the ADC Safety Report reveals how AI-powered incident workflows reduce contested claim payouts, risky behaviors, and compliance gaps.",
+    "See how teams combine Samsara events, driver uploads, hash verification, and chain-of-custody logs to deliver insurer-ready packages without rework.",
   href: "/resources",
-  cta: "See the report →",
+  cta: "Read the workflow brief →",
 };
 
 const reports = [
   {
     type: "Report",
-    title: "ADC rated No. 1: Satisfaction, support & service",
+    title: "Checklist: building a defensible chain-of-custody for fleet incidents",
     href: "/resources",
-    cta: "See the report →",
+    cta: "Open checklist →",
   },
   {
-    type: "Report",
-    title: "Plan, act, recover: Tech is reshaping disaster preparedness",
+    type: "Template",
+    title: "Template: insurer-ready export package for bodily injury claims",
     href: "/resources",
-    cta: "See the report →",
+    cta: "Get template →",
   },
   {
-    type: "Report",
-    title: "IDC study: ADC delivers 8× ROI",
+    type: "Guide",
+    title: "Guide: validating evidence integrity with file hashing and audit trails",
     href: "/resources",
-    cta: "Download the report ↓",
+    cta: "Read the guide →",
   },
 ];
 
@@ -41,7 +41,7 @@ export function ResourcesSection() {
           Resources
         </span>
         <h2 className={marketingTokens.headingScale.h2}>
-          Keep up with our latest news and updates
+          Proof resources for risk, legal, and claims teams
         </h2>
       </div>
 
