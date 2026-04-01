@@ -57,12 +57,6 @@ Each page should include at least **two** of the following proof types (high-int
 4. Governance proof (security/privacy/compliance statements).
 5. Operational proof (implementation timeline, support SLA, uptime/reliability stats).
 
-## MVP deferments (updated April 1, 2026)
+## IA implementation status (updated April 1, 2026)
 
-To keep navigation links valid in the current MVP build, the following IA routes remain intentionally deferred and are not linked in primary/footer navigation yet:
-
-- `/resources/case-studies`
-- `/resources/blog`
-- `/resources/docs`
-
-When these routes are implemented, restore IA-recommended resource sub-navigation and utility "Docs" navigation.
+All routes listed in this IA are now represented in `frontend/app/` and can be safely linked from primary navigation, utility navigation, and footer navigation.

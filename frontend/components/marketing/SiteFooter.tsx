@@ -20,10 +20,19 @@ const footerSections = [
     ],
   },
   {
-    title: "Resources & Company",
+    title: "Resources",
     links: [
-      { label: "Resources", href: "/resources" },
-      { label: "Company", href: "/company" },
+      { label: "Resource Hub", href: "/resources" },
+      { label: "Case Studies", href: "/resources/case-studies" },
+      { label: "Blog", href: "/resources/blog" },
+      { label: "Docs", href: "/resources/docs" },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { label: "Company Overview", href: "/company" },
+      { label: "About", href: "/company/about" },
       { label: "Contact", href: "/company/contact" },
       { label: "Careers", href: "/company/careers" },
     ],
@@ -69,7 +78,7 @@ export function SiteFooter() {
 
       <MarketingContainer>
         <div className="py-10">
-          <div className="grid gap-8 md:grid-cols-5">
+          <div className="grid gap-8 md:grid-cols-6">
             <div>
               <span className="text-lg font-bold text-[#062040]">ADC</span>
             </div>
