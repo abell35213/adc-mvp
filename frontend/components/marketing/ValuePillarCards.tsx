@@ -3,9 +3,9 @@ import { marketingTokens } from "@/components/marketing/tokens";
 
 const features = [
   {
-    eyebrow: "Fleet Telematics",
-    title: "Fleet Telematics",
-    body: "Get GPS, fuel, routing, and maintenance data to boost efficiency and support safety.",
+    eyebrow: "Evidence Integrity",
+    title: "Evidence Integrity",
+    body: "Apply tamper-evident hashing and immutable audit logs across every photo, video, and document tied to a claim.",
     visual: (
       <div className="rounded-xl bg-[#F4F8FC] p-6 border border-slate-200">
         <p className="text-sm font-semibold text-[#062040] mb-3">Oil Change</p>
@@ -23,9 +23,9 @@ const features = [
     ),
   },
   {
-    eyebrow: "Mobile Apps",
-    title: "Mobile Apps",
-    body: "Mobile tools for safety, compliance, logs, inspections, coaching, and simplified workflows.",
+    eyebrow: "Legal Exports",
+    title: "Legal Exports",
+    body: "Export insurer-ready and counsel-ready packets with exhibits, chain-of-custody records, and synced telematics context.",
     visual: (
       <div className="rounded-xl bg-[#062040] p-6 text-white">
         <p className="text-sm font-semibold mb-4 text-center">ADC</p>
@@ -63,9 +63,9 @@ export function ValuePillarCards() {
       {/* Stats row */}
       <dl className="mt-16 grid gap-8 text-center sm:grid-cols-3">
         {[
-          { value: "250K+", label: "accidents prevented in FY25" },
-          { value: "3B+", label: "miles of safety data analyzed" },
-          { value: "300M+", label: "frontline workflows digitized" },
+          { value: "12 min", label: "median time to assemble first notice evidence packet" },
+          { value: "100%", label: "of exported files include hash + custody audit metadata" },
+          { value: "3×", label: "faster response to insurer evidence requests" },
         ].map(({ value, label }) => (
           <div key={label}>
             <dt className="text-6xl font-bold tracking-tight text-[#062040]">{value}</dt>

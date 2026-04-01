@@ -3,8 +3,8 @@ import { marketingTokens } from "@/components/marketing/tokens";
 
 const features = [
   {
-    title: "AI Dash Cams and Videos",
-    body: "Protect drivers and reduce costs with AI-powered video and in-cab alerts for coaching and evidence.",
+    title: "Incident-triggered capture from Samsara + drivers",
+    body: "Trigger evidence capture from Samsara events, then let drivers upload photos, docs, and statements so every incident starts with complete proof.",
     dark: true,
     visual: (
       <div className="rounded-xl bg-[#062040] p-4 text-white">
@@ -25,8 +25,8 @@ const features = [
     ),
   },
   {
-    title: "Equipment Tracking",
-    body: "Track all assets with trusted tracking. Gain GPS location, utilization, and diagnostics to optimize.",
+    title: "Hash-verified chain-of-custody timeline",
+    body: "Every file action is logged, signed, and hashed so risk teams can show exactly who touched evidence, when, and whether anything changed.",
     dark: false,
     visual: (
       <div className="rounded-xl bg-[#F4F8FC] p-4 border border-slate-200">
