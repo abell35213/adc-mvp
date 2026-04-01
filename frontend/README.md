@@ -7,9 +7,10 @@ This package contains the Next.js frontend for the Accident Documentation & Comp
 ### Core app routes
 
 - `/login` – email/password sign-in page.
-- `/` – auth-aware redirect page:
-  - redirects to `/login` when no valid token is present,
-  - redirects to `/dashboard` when authenticated.
+- `/` – public marketing homepage (canonical landing route).
+  - always renders the marketing content for unauthenticated visitors,
+  - runs a lightweight client-side session check for header CTA behavior,
+  - shows `Sign in` when signed out and `Go to dashboard` when authenticated.
 - `/dashboard` – primary landing page with summary cards and links into workflow areas.
 - `/incidents` – incidents listing page.
 - `/incidents/[id]` – incident detail page (evidence inventory, timeline, exports status/actions).
@@ -82,5 +83,4 @@ These behaviors are intentional in the current MVP and differ from what develope
 - **Token storage is in `localStorage`**: not HTTP-only cookie auth.
 - **Timeline page is a placeholder**: it does not yet use SSE/WebSockets for true live event streaming.
 - **Some dashboard cards are placeholders**: counts for non-incident metrics currently render as `—`.
-- **Root route is redirect-only**: `/` is not a content page; it is a session check/redirect shim.
-
+- **Root route is marketing-first**: `/` is always the public marketing page. Session-aware CTA links help returning users jump to `/dashboard`.

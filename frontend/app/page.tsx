@@ -19,6 +19,7 @@ export const metadata: Metadata = buildPageMetadata(
 export default function Home() {
   return (
     <>
+      {/* Canonical root route: public marketing home (session-aware CTA in Hero). */}
       {/* 1. Hero — headline, subhead, 2 CTAs, trust badge */}
       <Hero />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
@@ -24,6 +24,31 @@ const bulletFeatures = [
 
 export function Hero() {
   const [selectedFleet, setSelectedFleet] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return;
+    }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    fetch(`${apiBase}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          setIsAuthenticated(false);
+          return;
+        }
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      });
+  }, []);
 
   return (
     <header className="bg-[#EBF2FA]">
@@ -40,9 +65,15 @@ export function Hero() {
           </ul>
 
           <div className="flex items-center gap-3">
-            <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
-              Login
-            </Link>
+            {isAuthenticated ? (
+              <Link href="/dashboard" className={marketingTokens.buttonVariants.ghost}>
+                Go to dashboard
+              </Link>
+            ) : (
+              <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
+                Sign in
+              </Link>
+            )}
             <div className="h-5 w-px bg-slate-300" aria-hidden="true" />
             <Link href="/pricing" className={marketingTokens.buttonVariants.secondary}>
               Check Our Prices
