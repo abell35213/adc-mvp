@@ -9,16 +9,16 @@ const fleetSizes = ["1 – 5", "6 – 29", "30 – 499", "500 – 4,999", "5,000
 
 const bulletFeatures = [
   {
-    title: "Safety & Compliance",
-    body: "Reduce incidents with real-time alerts and automated reporting.",
+    title: "Incident-triggered evidence capture",
+    body: "Auto-pull Samsara clips and combine driver uploads into one defensible incident record.",
   },
   {
-    title: "Efficiency & Visibility",
-    body: "Optimize asset use and streamline workflows with actionable data.",
+    title: "Verifiable chain-of-custody",
+    body: "Track every handoff with timestamped actions and integrity hashes that prove files were not altered.",
   },
   {
-    title: "AI-Powered Intelligence",
-    body: "Drive smarter decisions with predictive analytics and connected fleet data.",
+    title: "Litigation-ready exports",
+    body: "Generate insurer and legal packages with evidence indexes, metadata, and audit trails in minutes.",
   },
 ];
 
@@ -98,11 +98,11 @@ export function Hero() {
             </div>
 
             <h1 className={marketingTokens.headingScale.display}>
-              Operate Smarter<sup className="text-3xl align-super">™</sup>
+              Defend Every Claim With Verifiable Evidence
             </h1>
 
             <p className="text-lg leading-8 text-slate-600 max-w-lg">
-              Lower costs and improve safety with an open, secure platform built to scale.
+              When an incident happens, ADC assembles proof fast—capturing telematics and media, preserving integrity, and packaging evidence for insurers and counsel.
             </p>
 
             <ul className="space-y-4" aria-label="Key capabilities">

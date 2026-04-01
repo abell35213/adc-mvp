@@ -1,10 +1,10 @@
 import { MarketingSection } from "@/components/marketing/LayoutPrimitives";
 
 const stats = [
-  { value: "250K+", label: "incidents documented" },
-  { value: "34%", label: "faster evidence turnaround" },
-  { value: "22%", label: "lower average claim payout" },
-  { value: "2.5×", label: "coaching follow-through" },
+  { value: "<15 min", label: "to capture Samsara event footage plus driver uploads" },
+  { value: "Chain logged", label: "every custody handoff is timestamped and hash-verified" },
+  { value: "1 click", label: "to export legal and insurer-ready evidence bundles" },
+  { value: "Zero gaps", label: "in package manifests, metadata, and supporting files" },
 ];
 
 export function StatsBar() {
