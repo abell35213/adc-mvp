@@ -154,6 +154,17 @@ export interface ExportSummary {
   export_id: string;
   status: string;
   created_at_utc?: string | null;
+  generated_by?: string | null;
+  generation_duration_seconds?: number | null;
+  artifact_count?: number | null;
+  failure_count?: number | null;
+  failure_reason?: string | null;
+  retry_guidance?: string | null;
+  readiness?: {
+    required_artifacts_present?: boolean | null;
+    custody_complete?: boolean | null;
+    integrity_checks_passed?: boolean | null;
+  } | null;
 }
 
 /**
