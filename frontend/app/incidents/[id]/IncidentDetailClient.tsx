@@ -5,9 +5,12 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   getIncident,
+  getDriverProtocolSettings,
   requestExport,
   downloadExport,
   type IncidentDetail,
+  type DriverProtocolSummary,
+  type DriverResponseSummary,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import EvidenceTable, { EVIDENCE_TYPES } from "@/components/EvidenceTable";
@@ -35,6 +38,8 @@ export default function IncidentDetailClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [driverProtocolSettings, setDriverProtocolSettings] =
+    useState<DriverProtocolSummary | null>(null);
 
   const artifactStatuses = useMemo(() => {
     if (!incident) return [];
@@ -100,6 +105,15 @@ export default function IncidentDetailClient() {
       .finally(() => setLoading(false));
   }, [id, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    getDriverProtocolSettings()
+      .then((data) => setDriverProtocolSettings(data))
+      .catch(() => {
+        // Non-admin users may not have access to admin settings.
+      });
+  }, [user]);
+
   const refreshIncident = useCallback(() => {
     return getIncident(id)
       .then(setIncident)
@@ -159,6 +173,17 @@ export default function IncidentDetailClient() {
           unavailable === 1 ? "" : "s"
         }.`
       : "Capture complete.";
+
+  const driverResponse: DriverResponseSummary = incident.driver_response ?? {};
+  const protocolSummary =
+    incident.driver_protocol_summary ?? driverProtocolSettings;
+  const notificationSent = Boolean(driverResponse.notification_sent_at_utc);
+  const acknowledged = Boolean(driverResponse.acknowledged_at_utc);
+  const uploadsComplete = Boolean(driverResponse.uploads_complete);
+  const waitingOnDriver = Boolean(
+    driverResponse.awaiting_driver_action ??
+      (notificationSent && (!acknowledged || !uploadsComplete))
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -259,6 +284,84 @@ export default function IncidentDetailClient() {
             onDownload={handleDownload}
             exporting={exporting}
           />
+        </div>
+
+        {/* ── Panel D: Driver Response ───────────────────────────── */}
+        <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            D) Driver response
+          </h2>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                waitingOnDriver
+                  ? "bg-yellow-100 text-yellow-800"
+                  : "bg-green-100 text-green-800"
+              }`}
+            >
+              {waitingOnDriver
+                ? "Waiting on driver action"
+                : "Driver response complete"}
+            </span>
+          </div>
+          <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-200">
+            <li className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+              <span>Notification sent</span>
+              <span className={notificationSent ? "text-green-700" : "text-gray-500"}>
+                {notificationSent
+                  ? formatTime(driverResponse.notification_sent_at_utc)
+                  : "Pending"}
+              </span>
+            </li>
+            <li className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+              <span>Acknowledged</span>
+              <span className={acknowledged ? "text-green-700" : "text-gray-500"}>
+                {acknowledged ? formatTime(driverResponse.acknowledged_at_utc) : "Pending"}
+              </span>
+            </li>
+            <li className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+              <span>Uploads complete</span>
+              <span className={uploadsComplete ? "text-green-700" : "text-gray-500"}>
+                {uploadsComplete
+                  ? formatTime(driverResponse.uploads_completed_at_utc)
+                  : "Pending"}
+              </span>
+            </li>
+          </ul>
+
+          {protocolSummary && (
+            <div className="mt-6 rounded-md border bg-gray-50 p-4 dark:bg-gray-900/40">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Driver protocol configuration
+              </h3>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-gray-500">Instruction source</dt>
+                  <dd className="font-medium capitalize text-gray-800 dark:text-gray-200">
+                    {protocolSummary.instruction_source ?? "Default"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Acknowledgment required</dt>
+                  <dd className="font-medium text-gray-800 dark:text-gray-200">
+                    {protocolSummary.require_ack ? "Yes" : "No"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">SMS notifications</dt>
+                  <dd className="font-medium text-gray-800 dark:text-gray-200">
+                    {protocolSummary.sms_enabled ? "Enabled" : "Disabled"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Voice notifications</dt>
+                  <dd className="font-medium text-gray-800 dark:text-gray-200">
+                    {protocolSummary.voice_enabled ? "Enabled" : "Disabled"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
         </div>
       </main>
     </div>
