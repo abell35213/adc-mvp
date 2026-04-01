@@ -59,6 +59,38 @@ export default function IncidentDetailClient() {
   const total = artifactStatuses.length || EVIDENCE_TYPES.length;
   const isCapturing = pending > 0;
   const refreshIntervalSeconds = REFRESH_INTERVAL_MS / 1000;
+  const timelineTypes = useMemo(
+    () => new Set((incident?.timeline ?? []).map((event) => event.event_type)),
+    [incident]
+  );
+  const lifecycleCoverage = useMemo(() => {
+    const hasCollected = [...timelineTypes].some(
+      (type) =>
+        type.includes("capture") ||
+        type.includes("collected") ||
+        type.includes("incident_started")
+    );
+    const hasValidated = [...timelineTypes].some(
+      (type) => type.includes("hash") || type.includes("validat")
+    );
+    const hasExported = [...timelineTypes].some((type) => type.includes("export"));
+    const hasDownloaded = [...timelineTypes].some((type) =>
+      type.includes("download")
+    );
+    return { hasCollected, hasValidated, hasExported, hasDownloaded };
+  }, [timelineTypes]);
+  const completenessPercent = Math.round((captured / total) * 100);
+  const continuityChecks = [
+    lifecycleCoverage.hasCollected,
+    lifecycleCoverage.hasValidated,
+    lifecycleCoverage.hasExported,
+  ].filter(Boolean).length;
+  const custodyContinuityLabel =
+    continuityChecks === 3
+      ? "Strong"
+      : continuityChecks === 2
+        ? "Partial"
+        : "Limited";
 
   useEffect(() => {
     if (!user) return;
@@ -164,6 +196,41 @@ export default function IncidentDetailClient() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 p-6">
+        <div className="rounded-lg border bg-white p-4 shadow dark:bg-gray-800">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Defensibility Summary
+          </h2>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">
+              <p className="text-xs text-gray-500">Artifact Completeness</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {captured}/{total} ({completenessPercent}%)
+              </p>
+            </div>
+            <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">
+              <p className="text-xs text-gray-500">Custody Continuity</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {custodyContinuityLabel}
+              </p>
+            </div>
+            <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">
+              <p className="text-xs text-gray-500">Unavailable Artifacts</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {unavailable}
+              </p>
+            </div>
+            <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">
+              <p className="text-xs text-gray-500">Lifecycle Coverage</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {lifecycleCoverage.hasCollected ? "✓C " : "•C "}
+                {lifecycleCoverage.hasValidated ? "✓V " : "•V "}
+                {lifecycleCoverage.hasExported ? "✓E " : "•E "}
+                {lifecycleCoverage.hasDownloaded ? "✓D" : "•D"}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* ── Panel A: Evidence Inventory ────────────────────────── */}
         <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
