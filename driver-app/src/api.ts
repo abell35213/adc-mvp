@@ -113,6 +113,20 @@ export type DriverSceneFactsPayload = {
   short_description: string;
 };
 
+export type DriverPartyPayload = {
+  full_name: string | null;
+  phone_number: string | null;
+  vehicle_description: string | null;
+  insurer_name: string | null;
+  policy_number: string | null;
+  notes: string | null;
+};
+
+export type DriverIncidentPartiesPayload = {
+  parties: DriverPartyPayload[];
+  completion_state: 'completed' | 'skipped';
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -236,6 +250,15 @@ export const patchDriverIncidentNarrative = (
   payload: DriverNarrativePayload,
 ) =>
   request(`/driver/incidents/${incidentId}/narrative`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, true);
+
+export const patchDriverIncidentParties = (
+  incidentId: string,
+  payload: DriverIncidentPartiesPayload,
+) =>
+  request(`/driver/incidents/${incidentId}/parties`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, true);
