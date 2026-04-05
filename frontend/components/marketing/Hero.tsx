@@ -1,8 +1,24 @@
+"use client";
+
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
+import { trackCtaClick } from "@/lib/tracking";
 
 export function Hero() {
+  const [submitted, setSubmitted] = useState(false);
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    trackCtaClick({
+      event: "lead_form_submit",
+      location: "home-hero",
+      label: "Request walkthrough",
+    });
+  };
+
   return (
     <header className="border-b border-slate-200/80">
       <MarketingContainer>
@@ -40,7 +56,11 @@ export function Hero() {
             </div>
           </div>
 
-          <form className={`${marketingTokens.surfaces.card} space-y-4`} aria-label="Request demo form">
+          <form
+            className={`${marketingTokens.surfaces.card} space-y-4`}
+            aria-label="Request demo form"
+            onSubmit={onSubmit}
+          >
             <h2 className={marketingTokens.headingScale.h3}>Request a walkthrough</h2>
             <label className="block text-sm font-medium text-slate-800" htmlFor="work-email">Work email</label>
             <input
@@ -54,6 +74,7 @@ export function Hero() {
             <button type="submit" className={`${marketingTokens.buttonVariants.primary} w-full`} aria-label="Submit demo request">
               Request demo
             </button>
+            {submitted ? <p className="text-sm text-emerald-700">Thanks, our team will follow up within 1 business day.</p> : null}
           </form>
         </div>
       </MarketingContainer>
