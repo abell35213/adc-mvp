@@ -89,6 +89,19 @@ export type DriverIncidentStatusResponse = {
   last_evidence_update_utc?: string | null;
 };
 
+export type DriverSceneFactsPayload = {
+  incident_datetime_utc: string;
+  location_text: string | null;
+  location_gps: {
+    latitude: number;
+    longitude: number;
+  } | null;
+  injuries_reported: boolean;
+  police_called: boolean;
+  vehicle_drivable: boolean;
+  short_description: string;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -196,3 +209,12 @@ export const acknowledgeDriverInstructions = (instructionSetId: string) =>
     },
     true,
   );
+
+export const patchDriverIncidentSceneFacts = (
+  incidentId: string,
+  payload: DriverSceneFactsPayload,
+) =>
+  request(`/driver/incidents/${incidentId}/scene`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, true);
