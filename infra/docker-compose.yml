@@ -6,19 +6,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
-      - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET_KEY=change-me-in-production
+      - APP_ENV=${APP_ENV:-staging}
+      - SECRET_PROVIDER=${SECRET_PROVIDER:-aws_secrets_manager}
+      - AWS_SECRETS_MANAGER_SECRET_ID=${AWS_SECRETS_MANAGER_SECRET_ID:?set by your secret provider}
+      - AWS_SECRETS_MANAGER_VERSION_STAGE=${AWS_SECRETS_MANAGER_VERSION_STAGE:-AWSCURRENT}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - STORAGE_BACKEND=fs
       - VAULT_ROOT=/var/adc/vault
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
-      - TWILIO_VERIFY_SERVICE_SID=${TWILIO_VERIFY_SERVICE_SID:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
-      - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
     volumes:
       - vaultdata:/var/adc/vault
     depends_on:
@@ -29,18 +24,14 @@ services:
     build: ../backend
     command: celery -A app.tasks.celery_app worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://adc:adc@db:5432/adc_mvp
-      - REDIS_URL=redis://redis:6379/0
+      - APP_ENV=${APP_ENV:-staging}
+      - SECRET_PROVIDER=${SECRET_PROVIDER:-aws_secrets_manager}
+      - AWS_SECRETS_MANAGER_SECRET_ID=${AWS_SECRETS_MANAGER_SECRET_ID:?set by your secret provider}
+      - AWS_SECRETS_MANAGER_VERSION_STAGE=${AWS_SECRETS_MANAGER_VERSION_STAGE:-AWSCURRENT}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - STORAGE_BACKEND=fs
       - VAULT_ROOT=/var/adc/vault
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
-      - TWILIO_VERIFY_SERVICE_SID=${TWILIO_VERIFY_SERVICE_SID:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - S3_ARTIFACTS_BUCKET=${S3_ARTIFACTS_BUCKET:-adc-mvp-artifacts}
-      - S3_EXPORTS_BUCKET=${S3_EXPORTS_BUCKET:-adc-mvp-exports}
     volumes:
       - vaultdata:/var/adc/vault
     depends_on:
