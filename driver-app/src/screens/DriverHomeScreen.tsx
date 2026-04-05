@@ -1,10 +1,15 @@
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, HelperText, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { DriverMeResponse, getDriverMe } from '../api';
+import {
+  DriverActiveIncidentResponse,
+  DriverMeResponse,
+  getDriverActiveIncident,
+  getDriverMe,
+} from '../api';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 
@@ -12,18 +17,24 @@ type Props = NativeStackScreenProps<RootStackParamList, 'DriverHome'>;
 
 export default function DriverHomeScreen({ navigation }: Props) {
   const [driver, setDriver] = useState<DriverMeResponse | null>(null);
+  const [activeIncident, setActiveIncident] =
+    useState<DriverActiveIncidentResponse | null>(null);
   const { startProtocol } = useProtocolFlow();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const loadDriver = useCallback(async () => {
+  const loadHomeData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await getDriverMe();
-      setDriver(response);
+      const [driverResponse, activeIncidentResponse] = await Promise.all([
+        getDriverMe(),
+        getDriverActiveIncident(),
+      ]);
+      setDriver(driverResponse);
+      setActiveIncident(activeIncidentResponse);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load profile.');
+      setError(err instanceof Error ? err.message : 'Unable to load home data.');
     } finally {
       setIsLoading(false);
     }
@@ -31,11 +42,40 @@ export default function DriverHomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      loadDriver();
-    }, [loadDriver]),
+      loadHomeData();
+    }, [loadHomeData]),
   );
 
   const vehicleLabel = driver?.vehicle?.display_label ?? 'Unassigned';
+  const canResumeIncident = activeIncident?.incident_id != null;
+  const startNewIncidentProtocol = () => {
+    startProtocol();
+    navigation.navigate('IncidentConfirm');
+  };
+
+  const handleStartIncidentProtocol = () => {
+    if (!canResumeIncident) {
+      startNewIncidentProtocol();
+      return;
+    }
+
+    Alert.alert(
+      'Active incident in progress',
+      'You have an active incident. Resume it to avoid duplicate submissions, or continue to start a new incident protocol.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume incident',
+          onPress: () => navigation.navigate('IncidentStatus'),
+        },
+        {
+          text: 'Start new',
+          style: 'destructive',
+          onPress: startNewIncidentProtocol,
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -54,10 +94,7 @@ export default function DriverHomeScreen({ navigation }: Props) {
       {error ? <HelperText type="error">{error}</HelperText> : null}
       <Button
         mode="contained"
-        onPress={() => {
-          startProtocol();
-          navigation.navigate('IncidentConfirm');
-        }}
+        onPress={handleStartIncidentProtocol}
         loading={isLoading}
         disabled={isLoading}
         style={styles.button}
@@ -69,8 +106,25 @@ export default function DriverHomeScreen({ navigation }: Props) {
         onPress={() => navigation.navigate('QrScan')}
         style={styles.button}
       >
-        Scan QR override
+        Scan Vehicle QR
       </Button>
+      {canResumeIncident ? (
+        <Card style={styles.card}>
+          <Card.Title title="Resume Incident" />
+          <Card.Content style={styles.resumeContent}>
+            <Text variant="bodyMedium">
+              Incident #{activeIncident?.incident_id} is currently {activeIncident?.status}.
+            </Text>
+            <Button
+              mode="contained-tonal"
+              style={styles.resumeButton}
+              onPress={() => navigation.navigate('IncidentStatus')}
+            >
+              Resume Incident
+            </Button>
+          </Card.Content>
+        </Card>
+      ) : null}
     </ScrollView>
   );
 }
@@ -92,5 +146,11 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 8,
+  },
+  resumeContent: {
+    gap: 12,
+  },
+  resumeButton: {
+    alignSelf: 'flex-start',
   },
 });
