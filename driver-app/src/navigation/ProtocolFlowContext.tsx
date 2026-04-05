@@ -1,11 +1,15 @@
 import { ReactNode, createContext, useContext, useMemo, useState } from 'react';
 
+import { transitionProtocol } from '../store/protocolStore';
+import { DriverProtocolState } from '../types/protocol';
 import { ProtocolRouteName } from './protocolFlow';
 
 type ProtocolFlowContextValue = {
   completedRoutes: Set<ProtocolRouteName>;
+  workflowState: DriverProtocolState;
   startProtocol: () => void;
   completeRoute: (routeName: ProtocolRouteName) => void;
+  transitionWorkflow: (toState: DriverProtocolState) => void;
   resetProtocol: () => void;
 };
 
@@ -17,12 +21,16 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
   const [completedRoutes, setCompletedRoutes] = useState<Set<ProtocolRouteName>>(
     new Set(),
   );
+  const [workflowState, setWorkflowState] =
+    useState<DriverProtocolState>('authenticated');
 
   const value = useMemo<ProtocolFlowContextValue>(
     () => ({
       completedRoutes,
+      workflowState,
       startProtocol: () => {
         setCompletedRoutes(new Set());
+        setWorkflowState('authenticated');
       },
       completeRoute: (routeName) => {
         setCompletedRoutes((previous) => {
@@ -31,11 +39,36 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
           return updated;
         });
       },
+      transitionWorkflow: (toState) => {
+        setWorkflowState((previousState) =>
+          transitionProtocol(
+            {
+              state: previousState,
+              incidentDraftStatus: 'idle',
+              uploadState: 'idle',
+              updatedAt: new Date().toISOString(),
+              version: 1,
+              context: {
+                isAuthenticated: true,
+                vehicleResolved: false,
+                safetyAcknowledged: false,
+                submissionValidations: {
+                  hasIncidentType: false,
+                  hasDescription: false,
+                  hasMedia: false,
+                },
+              },
+            },
+            toState,
+          ).state,
+        );
+      },
       resetProtocol: () => {
         setCompletedRoutes(new Set());
+        setWorkflowState('authenticated');
       },
     }),
-    [completedRoutes],
+    [completedRoutes, workflowState],
   );
 
   return (
