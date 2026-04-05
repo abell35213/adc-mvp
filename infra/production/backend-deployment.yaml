@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adc-backend
+  namespace: adc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: adc-backend
+  template:
+    metadata:
+      labels:
+        app: adc-backend
+    spec:
+      serviceAccountName: adc-backend
+      containers:
+        - name: app
+          image: ghcr.io/your-org/adc-backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: APP_ENV
+              value: prod
+            - name: SECRET_PROVIDER
+              value: aws_secrets_manager
+            - name: AWS_REGION
+              value: us-east-1
+            - name: AWS_SECRETS_MANAGER_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-secret-ref
+                  key: secret_id
+            - name: AWS_SECRETS_MANAGER_VERSION_STAGE
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-secret-ref
+                  key: version_stage
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: REDIS_URL
+            - name: STORAGE_BACKEND
+              value: s3
+            - name: S3_ARTIFACTS_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: S3_ARTIFACTS_BUCKET
+            - name: S3_EXPORTS_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: S3_EXPORTS_BUCKET
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adc-worker
+  namespace: adc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adc-worker
+  template:
+    metadata:
+      labels:
+        app: adc-worker
+    spec:
+      serviceAccountName: adc-backend
+      containers:
+        - name: worker
+          image: ghcr.io/your-org/adc-backend:latest
+          command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+          env:
+            - name: APP_ENV
+              value: prod
+            - name: SECRET_PROVIDER
+              value: aws_secrets_manager
+            - name: AWS_REGION
+              value: us-east-1
+            - name: AWS_SECRETS_MANAGER_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-secret-ref
+                  key: secret_id
+            - name: AWS_SECRETS_MANAGER_VERSION_STAGE
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-secret-ref
+                  key: version_stage
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: REDIS_URL
+            - name: STORAGE_BACKEND
+              value: s3
+            - name: S3_ARTIFACTS_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: S3_ARTIFACTS_BUCKET
+            - name: S3_EXPORTS_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: adc-runtime-settings
+                  key: S3_EXPORTS_BUCKET
