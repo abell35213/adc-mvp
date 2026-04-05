@@ -15,11 +15,18 @@ from app.api.schemas import (
 )
 from app.core.config import settings
 from app.core.deps import get_current_user
+from app.core.logging import set_log_context
+from app.core.metrics import MetricNames, increment, timed
 from app.core.security import hash_password, verify_password, create_access_token
 from app.db.models import User
+from app.db.repo.users import (
+    create_org,
+    create_user,
+    get_user_by_email,
+    get_user_org_ids,
+    link_user_org,
+)
 from app.db.session import get_db
-from app.db.repo.users import get_user_by_email, create_user, link_user_org
-from app.db.repo.users import create_org, get_user_org_ids
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +35,30 @@ router = APIRouter()
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    user = get_user_by_email(db, body.email)
-    if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated",
-        )
+    increment(MetricNames.AUTH_LOGIN_ATTEMPTS)
+    with timed(MetricNames.AUTH_LOGIN_ATTEMPTS):
+        user = get_user_by_email(db, body.email)
 
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+        if not user or not verify_password(body.password, user.password_hash):
+            increment(MetricNames.AUTH_LOGIN_FAILURES)
+            logger.warning("Login failed for email", extra={"email": body.email})
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        if not user.is_active:
+            increment(MetricNames.AUTH_LOGIN_FAILURES)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+
+        org_ids = get_user_org_ids(db, user.id)
+        set_log_context(
+            user_id=str(user.id), org_id=str(org_ids[0]) if org_ids else None
+        )
+        token = create_access_token({"sub": str(user.id), "role": user.role})
 
     # Set httpOnly cookie for browser-based dashboard access
     response.set_cookie(
@@ -57,21 +75,26 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
-    existing = get_user_by_email(db, body.email)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+    increment(MetricNames.AUTH_REGISTER_ATTEMPTS)
+    with timed(MetricNames.AUTH_REGISTER_ATTEMPTS):
+        existing = get_user_by_email(db, body.email)
+        if existing:
+            increment(MetricNames.AUTH_REGISTER_FAILURES)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
 
-    pw_hash = hash_password(body.password)
-    user = create_user(db, email=body.email, password_hash=pw_hash, role=body.role)
+        pw_hash = hash_password(body.password)
+        user = create_user(db, email=body.email, password_hash=pw_hash, role=body.role)
 
-    # Auto-create org and link
-    org = create_org(db, name=body.org_name)
-    link_user_org(db, user_id=user.id, org_id=org.id)
+        # Auto-create org and link
+        org = create_org(db, name=body.org_name)
+        link_user_org(db, user_id=user.id, org_id=org.id)
 
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+        set_log_context(user_id=str(user.id), org_id=str(org.id))
+        token = create_access_token({"sub": str(user.id), "role": user.role})
+
     return RegisterResponse(
         user_id=user.id,
         email=user.email,
@@ -88,6 +111,7 @@ def logout(response: Response, current_user: User = Depends(get_current_user)):
     response.delete_cookie(
         key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
     )
+    set_log_context(user_id=str(current_user.id))
     return LogoutResponse()
 
 
@@ -97,6 +121,9 @@ def me(
     db: Session = Depends(get_db),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
+    set_log_context(
+        user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+    )
     return MeResponse(
         user_id=current_user.id,
         email=current_user.email,

@@ -11,10 +11,15 @@ from app.api.routes_driver import router as driver_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_twilio import router as twilio_router
 from app.core.config import settings
+from app.core.logging import RequestContextMiddleware, setup_logging
 
 app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
 
+setup_logging(settings.LOG_LEVEL)
+
 # CORS — allow the Next.js dev server and any configured origins
+app.add_middleware(RequestContextMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_ORIGIN],
@@ -30,6 +35,7 @@ app.include_router(driver_auth_router, prefix="/driver/auth", tags=["driver-auth
 app.include_router(driver_router, prefix="/driver", tags=["driver"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
+
 
 @app.get("/health")
 async def health_check():

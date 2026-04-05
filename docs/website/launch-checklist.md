@@ -105,3 +105,40 @@ Use this checklist before publishing any major website update (new pages, messag
 - Compliance approver:
 - Analytics validation completed by:
 - Notes / follow-ups:
+
+## 6) Backend observability runbook (launch blocker)
+
+Use this section for backend go/no-go monitoring once traffic starts.
+
+### Logging requirements
+
+- [ ] JSON logging is enabled in backend API and Celery workers.
+- [ ] `request_id` is propagated from inbound HTTP (`X-Request-ID`) to async Celery jobs.
+- [ ] Log records include correlation fields: `request_id`, `user_id`, and `org_id` where available.
+
+### Metrics dashboard requirements
+
+- [ ] Dashboard includes counters for auth (`auth.login.*`, `auth.register.*`).
+- [ ] Dashboard includes counters for incident creation (`incidents.create.*`).
+- [ ] Dashboard includes counters for export flows (`exports.request.*`, `exports.download.*`, `exports.build.*`).
+- [ ] Dashboard includes Twilio metrics (`twilio.webhook.*`, `twilio.send_sms.*`, `twilio.place_call.*`).
+- [ ] Dashboard includes Celery reliability (`celery.task.started`, `celery.task.failures`).
+- [ ] Dashboard includes p95 duration charts from timing metrics (`*.duration_ms`).
+
+### Suggested launch alert thresholds (initial)
+
+- [ ] **Auth failures:** alert when `auth.login.failures / auth.login.attempts > 0.20` over 10 minutes.
+- [ ] **Incident creation failures:** alert on any sustained error ratio > 5% over 10 minutes.
+- [ ] **Export download failures:** alert when `exports.download.failures` > 10 in 15 minutes.
+- [ ] **Twilio webhook failures:** alert when `twilio.webhook.failures` > 3 in 5 minutes.
+- [ ] **Twilio outbound failures:** alert when `twilio.send_sms.failures + twilio.place_call.failures` > 5 in 15 minutes.
+- [ ] **Celery task failures:** alert when `celery.task.failures / celery.task.started > 0.10` over 15 minutes.
+
+### On-call dashboard panels (minimum)
+
+- [ ] Request volume, error volume, and error rate per API route.
+- [ ] Incident creation success vs failure trend.
+- [ ] Export queue depth, export build duration, and export failure counters.
+- [ ] Twilio webhook signature failures and outbound call/SMS outcomes.
+- [ ] Celery task throughput by queue (`evidence`, `exports`, `notifications`).
+- [ ] Top 20 backend errors grouped by logger + message + request_id.
