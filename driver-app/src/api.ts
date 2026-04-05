@@ -81,6 +81,14 @@ export type DriverInstructionAckResponse = {
   acknowledged: boolean;
 };
 
+export type DriverIncidentStatusResponse = {
+  incident_id: string;
+  status: 'open' | 'evidence_capturing' | 'closed' | string;
+  safety_notified: boolean;
+  capture_state: 'pending' | 'in_progress' | 'completed' | 'failed' | string;
+  last_evidence_update_utc?: string | null;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -170,6 +178,10 @@ export const initiateDriverIncident = (payload: DriverIncidentInitiateRequest) =
     },
     true,
   );
+
+
+export const getDriverIncidentStatus = (incidentId: string) =>
+  request<DriverIncidentStatusResponse>(`/driver/incidents/${incidentId}/status`, {}, true);
 
 
 export const getDriverActiveInstructions = () =>
