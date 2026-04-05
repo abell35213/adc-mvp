@@ -7,6 +7,16 @@ type ApiError = {
   detail?: string;
 };
 
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+  }
+}
+
 export type DriverMeResponse = {
   driver_id: string;
   org_id: string;
@@ -25,6 +35,14 @@ export type ResolveQrResponse = {
 
 export type VerifyOtpResponse = {
   access_token: string;
+};
+
+export type DriverActiveIncidentResponse = {
+  incident_id: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+  adc_vehicle_id?: string | null;
 };
 
 const request = async <T>(
@@ -57,11 +75,12 @@ const request = async <T>(
   }
 
   if (!response.ok) {
+    const apiDetail = (data as ApiError).detail;
     const errorMessage =
-      typeof (data as ApiError).detail === 'string'
-        ? (data as ApiError).detail
-        : response.statusText;
-    throw new Error(errorMessage);
+      typeof apiDetail === 'string'
+        ? apiDetail
+        : response.statusText || 'Request failed';
+    throw new ApiRequestError(errorMessage, response.status);
   }
 
   return data as T;
@@ -80,6 +99,21 @@ export const verifyOtp = (phoneE164: string, otpCode: string) =>
   });
 
 export const getDriverMe = () => request<DriverMeResponse>('/driver/me', {}, true);
+
+export const getDriverActiveIncident = async () => {
+  try {
+    return await request<DriverActiveIncidentResponse>(
+      '/driver/incidents/active',
+      {},
+      true,
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+};
 
 export const resolveQr = (qrToken: string) =>
   request<ResolveQrResponse>(
