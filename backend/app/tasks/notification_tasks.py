@@ -42,6 +42,30 @@ def _emit(db, incident_id, event_type, payload=None):
     )
 
 
+def _idempotency_key(*parts: str | None) -> str:
+    normalized = [p or "none" for p in parts]
+    return "|".join(normalized)
+
+
+def _event_exists(db, incident_id, event_type: str, idempotency_key: str) -> bool:
+    from app.db.repo.events import get_events_by_incident
+
+    events = get_events_by_incident(db, incident_id)
+    return any(
+        ev.event_type == event_type
+        and isinstance(ev.payload, dict)
+        and ev.payload.get("idempotency_key") == idempotency_key
+        for ev in events
+    )
+
+
+def _emit_once(db, incident_id, event_type, idempotency_key: str, payload=None):
+    full_payload = {"idempotency_key": idempotency_key, **(payload or {})}
+    if _event_exists(db, incident_id, event_type, idempotency_key):
+        return None
+    return _emit(db, incident_id, event_type, full_payload)
+
+
 def _format_value(value: str | None, fallback: str) -> str:
     return value or fallback
 
@@ -78,6 +102,7 @@ def notify_safety_manager(self, incident_id: str):
     from app.services.twilio_notify import build_voice_twiml, place_call, send_sms
 
     inc_uuid = _uuid.UUID(incident_id)
+    workflow_key = _idempotency_key("notify_safety_manager", incident_id)
     db = _get_db()
 
     try:
@@ -98,20 +123,22 @@ def notify_safety_manager(self, incident_id: str):
         if not phone:
             reason = PHONE_MISSING_MESSAGE
             if org.sms_enabled:
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.SAFETY_MANAGER_SMS_FAILED,
+                    f"{workflow_key}:sms_failed",
                     {
                         "phone": None,
                         "reason": reason,
                     },
                 )
             if org.voice_enabled:
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.SAFETY_MANAGER_CALL_FAILED,
+                    f"{workflow_key}:call_failed",
                     {
                         "phone": None,
                         "reason": reason,
@@ -122,60 +149,86 @@ def notify_safety_manager(self, incident_id: str):
         message = _compose_sms(incident)
         twiml = build_voice_twiml(_compose_voice(incident))
         errors = []
-        result = {"incident_id": incident_id}
+        result = {
+            "incident_id": incident_id,
+            "idempotency_key": workflow_key,
+        }
 
         if org.sms_enabled:
-            try:
-                sms_sid = send_sms(phone, message)
-                result["sms_sid"] = sms_sid
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.SAFETY_MANAGER_SMS_SENT,
-                    {
-                        "phone": phone,
-                        "sms_sid": sms_sid,
-                    },
-                )
-            except (httpx.HTTPError, ValueError) as exc:
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.SAFETY_MANAGER_SMS_FAILED,
-                    {
-                        "phone": phone,
-                        "reason": str(exc),
-                    },
-                )
-                errors.append(f"SMS failed: {exc}")
+            sms_event_key = f"{workflow_key}:sms_sent"
+            if _event_exists(
+                db, inc_uuid, SystemEventType.SAFETY_MANAGER_SMS_SENT, sms_event_key
+            ):
+                result["sms_status"] = "already_sent"
+            else:
+                try:
+                    sms_sid = send_sms(phone, message)
+                    result["sms_sid"] = sms_sid
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.SAFETY_MANAGER_SMS_SENT,
+                        sms_event_key,
+                        {
+                            "phone": phone,
+                            "sms_sid": sms_sid,
+                        },
+                    )
+                except (httpx.HTTPError, ValueError) as exc:
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.SAFETY_MANAGER_SMS_FAILED,
+                        f"{workflow_key}:sms_failed",
+                        {
+                            "phone": phone,
+                            "reason": str(exc),
+                        },
+                    )
+                    errors.append(f"SMS failed: {exc}")
 
         if org.voice_enabled:
-            try:
-                call_sid = place_call(phone, twiml)
-                result["call_sid"] = call_sid
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.SAFETY_MANAGER_CALL_PLACED,
-                    {
-                        "phone": phone,
-                        "call_sid": call_sid,
-                    },
-                )
-            except (httpx.HTTPError, ValueError) as exc:
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.SAFETY_MANAGER_CALL_FAILED,
-                    {
-                        "phone": phone,
-                        "reason": str(exc),
-                    },
-                )
-                errors.append(f"Call failed: {exc}")
+            call_event_key = f"{workflow_key}:call_placed"
+            if _event_exists(
+                db, inc_uuid, SystemEventType.SAFETY_MANAGER_CALL_PLACED, call_event_key
+            ):
+                result["call_status"] = "already_placed"
+            else:
+                try:
+                    call_sid = place_call(phone, twiml)
+                    result["call_sid"] = call_sid
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.SAFETY_MANAGER_CALL_PLACED,
+                        call_event_key,
+                        {
+                            "phone": phone,
+                            "call_sid": call_sid,
+                        },
+                    )
+                except (httpx.HTTPError, ValueError) as exc:
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.SAFETY_MANAGER_CALL_FAILED,
+                        f"{workflow_key}:call_failed",
+                        {
+                            "phone": phone,
+                            "reason": str(exc),
+                        },
+                    )
+                    errors.append(f"Call failed: {exc}")
 
         if errors:
             raise RuntimeError(f"Notification failures: {'; '.join(errors)}")
+
+        if result.get("sms_status") == "already_sent" and result.get(
+            "call_status"
+        ) == "already_placed":
+            result["status"] = "skipped_duplicate"
+        else:
+            result["status"] = "notified"
 
         return result
 

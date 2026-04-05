@@ -36,6 +36,12 @@ def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _idempotency_key(*parts: str | None) -> str:
+    """Return a deterministic idempotency key from stable task inputs."""
+    normalized = [p or "none" for p in parts]
+    return _hash_bytes("|".join(normalized).encode())
+
+
 def _get_db():
     """Return a new database session (non-generator helper for tasks)."""
     from app.db.session import SessionLocal
@@ -65,6 +71,25 @@ def _emit(db, incident_id, event_type, payload=None):
         actor_id="celery",
         payload=payload,
     )
+
+
+def _event_exists(db, incident_id, event_type: str, idempotency_key: str) -> bool:
+    from app.db.repo.events import get_events_by_incident
+
+    events = get_events_by_incident(db, incident_id)
+    return any(
+        ev.event_type == event_type
+        and isinstance(ev.payload, dict)
+        and ev.payload.get("idempotency_key") == idempotency_key
+        for ev in events
+    )
+
+
+def _emit_once(db, incident_id, event_type, idempotency_key: str, payload=None):
+    full_payload = {"idempotency_key": idempotency_key, **(payload or {})}
+    if _event_exists(db, incident_id, event_type, idempotency_key):
+        return None
+    return _emit(db, incident_id, event_type, full_payload)
 
 
 def _artifact_filename(s3_key):
@@ -112,13 +137,14 @@ def build_export(self, incident_id: str, export_id: str):
     from app.core.config import settings
     from app.db.repo.artifacts import get_artifacts_by_incident
     from app.db.repo.events import get_events_by_incident
-    from app.db.repo.exports import update_export
+    from app.db.repo.exports import get_export, update_export
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.vault_s3 import VaultS3
 
     inc_uuid = _uuid.UUID(incident_id)
     exp_uuid = _uuid.UUID(export_id)
+    workflow_key = _idempotency_key("export", incident_id, export_id)
     db = _get_db()
 
     try:
@@ -132,14 +158,32 @@ def build_export(self, incident_id: str, export_id: str):
             for e in existing_events
         )
         if not already_requested:
-            _emit(
+            _emit_once(
                 db,
                 inc_uuid,
                 SystemEventType.EXPORT_REQUESTED,
+                workflow_key,
                 {
                     "export_id": export_id,
                 },
             )
+        export_row = get_export(db, exp_uuid)
+        if (
+            export_row is not None
+            and export_row.status == "ready"
+            and export_row.s3_key
+            and _event_exists(
+                db, inc_uuid, SystemEventType.EXPORT_GENERATED, workflow_key
+            )
+        ):
+            return {
+                "export_id": export_id,
+                "incident_id": incident_id,
+                "status": "ready",
+                "idempotency_key": workflow_key,
+                "s3_key": export_row.s3_key,
+                "duplicate": True,
+            }
 
         # 2. Read artifacts and events
         artifacts = get_artifacts_by_incident(db, inc_uuid)
@@ -311,10 +355,11 @@ def build_export(self, incident_id: str, export_id: str):
         )
 
         # 9. Emit EXPORT_GENERATED
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EXPORT_GENERATED,
+            workflow_key,
             {
                 "export_id": export_id,
                 "s3_key": zip_key,
@@ -327,14 +372,17 @@ def build_export(self, incident_id: str, export_id: str):
             "export_id": export_id,
             "incident_id": incident_id,
             "status": "ready",
+            "idempotency_key": workflow_key,
+            "duplicate": False,
         }
 
     except Exception:
         logger.exception("Export %s failed for incident %s", export_id, incident_id)
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EXPORT_FAILED,
+            workflow_key,
             {
                 "export_id": export_id,
             },
