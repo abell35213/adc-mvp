@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
+import { trackCtaClick } from "@/lib/tracking";
 
 const fleetSizes = ["1 – 5", "6 – 29", "30 – 499", "500 – 4,999", "5,000+"];
 
@@ -32,32 +33,17 @@ const bulletFeatures = [
 ];
 
 export function Hero() {
-  const [selectedFleet, setSelectedFleet] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      return;
-    }
-
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-    fetch(`${apiBase}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    })
-      .then((res) => {
-        if (!res.ok) {
-          localStorage.removeItem("token");
-          setIsAuthenticated(false);
-          return;
-        }
-        setIsAuthenticated(true);
-      })
-      .catch(() => {
-        setIsAuthenticated(false);
-      });
-  }, []);
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    trackCtaClick({
+      event: "lead_form_submit",
+      location: "home-hero",
+      label: "Request walkthrough",
+    });
+  };
 
   return (
     <header className="bg-[#EBF2FA]">
@@ -136,62 +122,26 @@ export function Hero() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
-            <h2 className="mb-6 text-center text-xl font-bold text-[#062040]">Get pricing in minutes</h2>
-
-            <form aria-label="Get pricing form" className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="sr-only" htmlFor="first-name">First name</label>
-                  <input id="first-name" name="firstName" type="text" required placeholder="First name" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#062040] placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]" />
-                </div>
-                <div>
-                  <label className="sr-only" htmlFor="last-name">Last name</label>
-                  <input id="last-name" name="lastName" type="text" required placeholder="Last name" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#062040] placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]" />
-                </div>
-              </div>
-
-              <div>
-                <label className="sr-only" htmlFor="company">Company name</label>
-                <input id="company" name="company" type="text" required placeholder="Company name" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#062040] placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="sr-only" htmlFor="email">Email address</label>
-                  <input id="email" name="email" type="email" required placeholder="Email address" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#062040] placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]" />
-                </div>
-                <div>
-                  <label className="sr-only" htmlFor="phone">Phone number</label>
-                  <input id="phone" name="phone" type="tel" placeholder="Phone number" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#062040] placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]" />
-                </div>
-              </div>
-
-              <fieldset>
-                <legend className="mb-3 text-sm font-medium text-[#062040]">How many vehicles are in your fleet?</legend>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Fleet size">
-                  {fleetSizes.map((size) => (
-                    <button key={size} type="button" onClick={() => setSelectedFleet(size)} aria-pressed={selectedFleet === size} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] ${
-                      selectedFleet === size
-                        ? "border-[#062040] bg-[#062040] text-white"
-                        : "border-slate-300 bg-white text-slate-600 hover:border-[#062040] hover:text-[#062040]"
-                    }`}>
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              <button type="submit" className="w-full rounded-full bg-[#1B6EF3] py-3.5 text-sm font-bold text-white transition hover:bg-[#1558c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2">
-                Check Our Prices
-              </button>
-            </form>
-
-            <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">
-              By submitting this form you agree to ADC&apos;s <a href="/terms" className="underline hover:text-slate-600">terms of service</a>{" "}
-              and <a href="/privacy" className="underline hover:text-slate-600">privacy policy</a>.
-            </p>
-          </div>
+          <form
+            className={`${marketingTokens.surfaces.card} space-y-4`}
+            aria-label="Request demo form"
+            onSubmit={onSubmit}
+          >
+            <h2 className={marketingTokens.headingScale.h3}>Request a walkthrough</h2>
+            <label className="block text-sm font-medium text-slate-800" htmlFor="work-email">Work email</label>
+            <input
+              id="work-email"
+              name="email"
+              type="email"
+              required
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              placeholder="you@fleetco.com"
+            />
+            <button type="submit" className={`${marketingTokens.buttonVariants.primary} w-full`} aria-label="Submit demo request">
+              Request demo
+            </button>
+            {submitted ? <p className="text-sm text-emerald-700">Thanks, our team will follow up within 1 business day.</p> : null}
+          </form>
         </div>
       </MarketingContainer>
     </header>
