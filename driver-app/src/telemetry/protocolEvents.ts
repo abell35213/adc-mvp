@@ -5,7 +5,8 @@ export type DriverProtocolEventName =
   | 'driver_emergency_call_tapped'
   | 'driver_safety_call_tapped'
   | 'driver_instruction_step_viewed'
-  | 'driver_instruction_step_acknowledged';
+  | 'driver_instruction_step_acknowledged'
+  | 'driver_scene_facts_saved';
 
 export function emitTimelineAndAnalyticsEvent(
   eventName: DriverProtocolEventName,
