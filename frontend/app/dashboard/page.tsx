@@ -32,12 +32,28 @@ export default function DashboardPage() {
     const loadDashboard = async () => {
       try {
         const incidents = await listIncidents();
-        const details = await Promise.all(
+        const detailResults = await Promise.allSettled(
           incidents.map((incident) => getIncident(incident.incident_id))
         );
+        const details = detailResults
+          .filter(
+            (result): result is PromiseFulfilledResult<IncidentDetail> =>
+              result.status === "fulfilled"
+          )
+          .map((result) => result.value);
+        const failedCount = detailResults.length - details.length;
+
         if (!cancelled) {
-          setIncidentDetails(details);
-          setError("");
+          if (details.length > 0 || incidents.length === 0) {
+            setIncidentDetails(details);
+          }
+          if (failedCount > 0) {
+            setError(
+              `Loaded ${details.length} of ${detailResults.length} incidents. ${failedCount} failed to refresh.`
+            );
+          } else {
+            setError("");
+          }
         }
       } catch (err) {
         if (!cancelled) {
