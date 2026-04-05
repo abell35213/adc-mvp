@@ -41,9 +41,16 @@ export default function TimelinePage() {
     const refresh = async () => {
       try {
         const incidents = await listIncidents();
-        const details = await Promise.all(
+        const detailResults = await Promise.allSettled(
           incidents.map((incident) => getIncident(incident.incident_id))
         );
+        const details = detailResults
+          .filter(
+            (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getIncident>>> =>
+              result.status === "fulfilled"
+          )
+          .map((result) => result.value);
+        const failedCount = detailResults.length - details.length;
 
         const allEvents = details
           .flatMap((incident) =>
@@ -60,8 +67,16 @@ export default function TimelinePage() {
           .slice(0, MAX_EVENTS);
 
         if (!cancelled) {
-          setEvents(allEvents);
-          setError("");
+          if (details.length > 0 || incidents.length === 0) {
+            setEvents(allEvents);
+          }
+          if (failedCount > 0) {
+            setError(
+              `Loaded ${details.length} of ${detailResults.length} incidents. ${failedCount} failed to refresh.`
+            );
+          } else {
+            setError("");
+          }
         }
       } catch (err) {
         if (!cancelled) {
