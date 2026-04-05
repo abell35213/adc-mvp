@@ -82,7 +82,11 @@ export default function App() {
               <Stack.Screen
                 name="SafetyGate"
                 component={SafetyGateScreen}
-                options={{ title: 'Safety Gate' }}
+                options={{
+                  title: 'Safety Gate',
+                  headerBackVisible: false,
+                  gestureEnabled: false,
+                }}
               />
               <Stack.Screen
                 name="IncidentStartLoading"

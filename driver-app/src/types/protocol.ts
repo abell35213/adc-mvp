@@ -33,6 +33,10 @@ export type ProtocolContext = {
   vehicleId: string | null;
   qrToken: string | null;
   safetyAcknowledged: boolean;
+  safetyGateViewedAt: string | null;
+  safetyGateAcknowledgedAt: string | null;
+  emergencyCallTapTimestamps: string[];
+  safetyManagerCallTapTimestamps: string[];
   submissionValidations: SubmissionValidations;
 };
 
@@ -54,6 +58,10 @@ export const INITIAL_PROTOCOL_CONTEXT: ProtocolContext = {
   vehicleId: null,
   qrToken: null,
   safetyAcknowledged: false,
+  safetyGateViewedAt: null,
+  safetyGateAcknowledgedAt: null,
+  emergencyCallTapTimestamps: [],
+  safetyManagerCallTapTimestamps: [],
   submissionValidations: {
     hasIncidentType: false,
     hasDescription: false,
