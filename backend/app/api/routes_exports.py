@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DownloadExportResponse
-from app.core.deps import get_current_user
+from app.core.deps import (
+    get_current_user,
+    get_current_user_org_ids,
+)
+from app.db.repo.users import get_user_org_ids
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User

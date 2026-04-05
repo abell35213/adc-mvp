@@ -16,7 +16,12 @@ from app.api.schemas import (
     IncidentDetailResponse,
     IncidentListItem,
 )
-from app.core.deps import get_current_user
+from app.core.deps import (
+    enforce_resource_org_ownership,
+    get_current_user,
+    get_current_user_org_ids,
+    get_current_user_primary_org_id,
+)
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
