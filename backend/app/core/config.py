@@ -1,13 +1,79 @@
 """Application configuration."""
 
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
+
+import boto3
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+)
+
+
+class AwsSecretsManagerSettingsSource(PydanticBaseSettingsSource):
+    """Load settings from AWS Secrets Manager when enabled."""
+
+    def __init__(self, settings_cls: type[BaseSettings]):
+        super().__init__(settings_cls)
+        self._data = self._load_secret_data()
+
+    def get_field_value(self, field, field_name: str) -> tuple[Any, str, bool]:
+        return self._data.get(field_name), field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        return self._data
+
+    def _load_secret_data(self) -> dict[str, Any]:
+        provider = os.getenv("SECRET_PROVIDER", "env").strip().lower()
+        if provider != "aws_secrets_manager":
+            return {}
+
+        secret_id = os.getenv("AWS_SECRETS_MANAGER_SECRET_ID", "").strip()
+        if not secret_id:
+            raise ValueError(
+                "AWS_SECRETS_MANAGER_SECRET_ID must be set when "
+                "SECRET_PROVIDER=aws_secrets_manager"
+            )
+
+        region = os.getenv("AWS_SECRETS_MANAGER_REGION") or os.getenv("AWS_REGION") or "us-east-1"
+        version_stage = os.getenv("AWS_SECRETS_MANAGER_VERSION_STAGE", "AWSCURRENT")
+
+        client = boto3.client("secretsmanager", region_name=region)
+        response = client.get_secret_value(SecretId=secret_id, VersionStage=version_stage)
+
+        secret_string = response.get("SecretString", "")
+        if not secret_string:
+            raise ValueError(
+                "AWS Secrets Manager secret must contain SecretString JSON payload"
+            )
+
+        try:
+            decoded = json.loads(secret_string)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "AWS Secrets Manager secret payload must be valid JSON"
+            ) from exc
+
+        if not isinstance(decoded, dict):
+            raise ValueError("AWS Secrets Manager secret payload must decode to an object")
+
+        return {str(k): v for k, v in decoded.items()}
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_ENV: str = "dev"
+
+    # Secret loading strategy
+    SECRET_PROVIDER: str = "env"
+    AWS_SECRETS_MANAGER_SECRET_ID: str = ""
+    AWS_SECRETS_MANAGER_REGION: str = "us-east-1"
+    AWS_SECRETS_MANAGER_VERSION_STAGE: str = "AWSCURRENT"
 
     DATABASE_URL: str = "postgresql://localhost/adc_mvp"
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -51,6 +117,24 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Explicit constructor args / env vars always win over remote secrets.
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            AwsSecretsManagerSettingsSource(settings_cls),
+            file_secret_settings,
+        )
 
     @property
     def is_prod(self) -> bool:
@@ -106,6 +190,10 @@ class Settings(BaseSettings):
         self.APP_ENV = self.APP_ENV.strip().lower()
         if self.APP_ENV not in {"dev", "staging", "prod"}:
             raise ValueError("APP_ENV must be one of: dev, staging, prod")
+
+        self.SECRET_PROVIDER = self.SECRET_PROVIDER.strip().lower()
+        if self.SECRET_PROVIDER not in {"env", "aws_secrets_manager"}:
+            raise ValueError("SECRET_PROVIDER must be one of: env, aws_secrets_manager")
 
         return self
 

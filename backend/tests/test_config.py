@@ -1,5 +1,7 @@
 """Tests for environment configuration validation."""
 
+import json
+
 import pytest
 
 from app.core.config import Settings
@@ -42,3 +44,70 @@ class TestSettingsValidation:
     def test_invalid_app_env_fails(self):
         with pytest.raises(ValueError, match="APP_ENV must be one of"):
             Settings(APP_ENV="production")
+
+    def test_invalid_secret_provider_fails(self):
+        with pytest.raises(ValueError, match="SECRET_PROVIDER must be one of"):
+            Settings(SECRET_PROVIDER="vault")
+
+
+class TestAwsSecretsManagerSource:
+    def test_loads_runtime_settings_from_aws_secrets_manager(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        class FakeSecretsClient:
+            def get_secret_value(self, SecretId: str, VersionStage: str):  # noqa: N803
+                assert SecretId == "adc/runtime"
+                assert VersionStage == "AWSCURRENT"
+                return {
+                    "SecretString": json.dumps(
+                        {
+                            "JWT_SECRET_KEY": "jwt-from-secret",
+                            "DATABASE_URL": "postgresql://prod/db",
+                            "TWILIO_AUTH_TOKEN": "token-from-secret",
+                        }
+                    )
+                }
+
+        monkeypatch.setenv("SECRET_PROVIDER", "aws_secrets_manager")
+        monkeypatch.setenv("AWS_SECRETS_MANAGER_SECRET_ID", "adc/runtime")
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
+        monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        monkeypatch.setattr("app.core.config.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
+
+        settings = Settings()
+
+        assert settings.JWT_SECRET_KEY == "jwt-from-secret"
+        assert settings.DATABASE_URL == "postgresql://prod/db"
+        assert settings.TWILIO_AUTH_TOKEN == "token-from-secret"
+
+    def test_environment_overrides_aws_secret_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        class FakeSecretsClient:
+            def get_secret_value(self, SecretId: str, VersionStage: str):  # noqa: N803
+                return {
+                    "SecretString": json.dumps(
+                        {
+                            "JWT_SECRET_KEY": "jwt-from-secret",
+                            "DATABASE_URL": "postgresql://prod/db",
+                        }
+                    )
+                }
+
+        monkeypatch.setenv("SECRET_PROVIDER", "aws_secrets_manager")
+        monkeypatch.setenv("AWS_SECRETS_MANAGER_SECRET_ID", "adc/runtime")
+        monkeypatch.setenv("JWT_SECRET_KEY", "jwt-from-env")
+        monkeypatch.setattr("app.core.config.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
+
+        settings = Settings()
+
+        assert settings.JWT_SECRET_KEY == "jwt-from-env"
+
+    def test_aws_provider_requires_secret_id(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("SECRET_PROVIDER", "aws_secrets_manager")
+        monkeypatch.delenv("AWS_SECRETS_MANAGER_SECRET_ID", raising=False)
+
+        with pytest.raises(ValueError, match="AWS_SECRETS_MANAGER_SECRET_ID"):
+            Settings()

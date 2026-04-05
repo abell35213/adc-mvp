@@ -116,7 +116,7 @@ def test_driver(db_session, test_org):
 
 @pytest.fixture()
 def driver_headers(test_driver):
-    token = create_access_token({"sub": str(test_driver.driver_id), "role": "driver"})
+    token = create_access_token({"sub": str(test_driver.driver_id), "scope": "driver"})
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -268,6 +268,30 @@ class TestResolveQr:
         resp = client.post(
             "/driver/vehicle/resolve-qr",
             json={"qr_token": "nonexistent-token"},
+            headers=driver_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_resolve_qr_other_org_token_returns_404(
+        self, client, db_session, test_driver, driver_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+        db_session.add(
+            VehicleQrToken(
+                qr_token="other-org-token",
+                org_id=other_org.id,
+                adc_vehicle_id="veh-901",
+                status="active",
+            )
+        )
+        db_session.commit()
+
+        resp = client.post(
+            "/driver/vehicle/resolve-qr",
+            json={"qr_token": "other-org-token"},
             headers=driver_headers,
         )
         assert resp.status_code == 404

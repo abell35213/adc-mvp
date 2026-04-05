@@ -38,6 +38,7 @@ router = APIRouter()
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
@@ -71,6 +72,7 @@ def list_incidents_endpoint(
 def create_incident_endpoint(
     body: CreateIncidentRequest,
     db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_user_primary_org_id),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.INCIDENT_CREATE_ATTEMPTS)
@@ -134,6 +136,7 @@ def create_incident_endpoint(
 def get_incident_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
@@ -144,6 +147,7 @@ def get_incident_endpoint(
     incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
 
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
@@ -203,6 +207,7 @@ def get_incident_endpoint(
 def request_export_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
@@ -212,6 +217,7 @@ def request_export_endpoint(
     if not incident:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
 
     set_log_context(
         user_id=str(current_user.id),
