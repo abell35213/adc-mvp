@@ -21,6 +21,10 @@ type ProtocolFlowContextValue = {
     method: VehicleResolutionMethod;
     qrToken?: string | null;
   }) => void;
+  markSafetyGateViewed: () => void;
+  acknowledgeSafetyGate: () => void;
+  recordEmergencyCallTap: () => void;
+  recordSafetyManagerCallTap: () => void;
   resetProtocol: () => void;
 };
 
@@ -79,6 +83,37 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
           vehicleResolutionMethod: method,
           vehicleId,
           qrToken: qrToken ?? null,
+        }));
+      },
+      markSafetyGateViewed: () => {
+        setProtocolContext((previous) => ({
+          ...previous,
+          safetyGateViewedAt: previous.safetyGateViewedAt ?? new Date().toISOString(),
+        }));
+      },
+      acknowledgeSafetyGate: () => {
+        setProtocolContext((previous) => ({
+          ...previous,
+          safetyAcknowledged: true,
+          safetyGateAcknowledgedAt: new Date().toISOString(),
+        }));
+      },
+      recordEmergencyCallTap: () => {
+        setProtocolContext((previous) => ({
+          ...previous,
+          emergencyCallTapTimestamps: [
+            ...previous.emergencyCallTapTimestamps,
+            new Date().toISOString(),
+          ],
+        }));
+      },
+      recordSafetyManagerCallTap: () => {
+        setProtocolContext((previous) => ({
+          ...previous,
+          safetyManagerCallTapTimestamps: [
+            ...previous.safetyManagerCallTapTimestamps,
+            new Date().toISOString(),
+          ],
         }));
       },
       resetProtocol: () => {
