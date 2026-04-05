@@ -1,16 +1,18 @@
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, HelperText, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { DriverMeResponse, getDriverMe } from '../api';
 import { RootStackParamList } from '../navigation/types';
+import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DriverHome'>;
 
 export default function DriverHomeScreen({ navigation }: Props) {
   const [driver, setDriver] = useState<DriverMeResponse | null>(null);
+  const { startProtocol } = useProtocolFlow();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,7 +54,10 @@ export default function DriverHomeScreen({ navigation }: Props) {
       {error ? <HelperText type="error">{error}</HelperText> : null}
       <Button
         mode="contained"
-        onPress={() => Alert.alert('Incident Protocol', 'Starting soon.')}
+        onPress={() => {
+          startProtocol();
+          navigation.navigate('IncidentConfirm');
+        }}
         loading={isLoading}
         disabled={isLoading}
         style={styles.button}
