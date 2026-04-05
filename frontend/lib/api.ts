@@ -11,15 +11,10 @@ async function request<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string>),
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -28,8 +23,8 @@ async function request<T>(
   });
 
   if (res.status === 401) {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("token");
+    const isAuthMutation = path === "/auth/login" || path === "/auth/register";
+    if (typeof window !== "undefined" && !isAuthMutation) {
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -40,32 +35,38 @@ async function request<T>(
     throw new Error(body.detail ?? res.statusText);
   }
 
-  return res.json() as Promise<T>;
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return res.json() as Promise<T>;
+  }
+  return undefined as T;
 }
 
 /* ── Auth ──────────────────────────────────────────────────────── */
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  role: string;
+  user: MeResponse;
 }
 
 export async function login(email: string, password: string) {
-  const data = await request<LoginResponse>("/auth/login", {
+  await request<void>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-  localStorage.setItem("token", data.access_token);
-  return data;
+  const user = await getMe();
+  return { user } satisfies LoginResponse;
 }
 
 export interface RegisterResponse {
+  user: MeResponse;
   user_id: string;
   email: string;
   role: string;
   org_id: string;
-  access_token: string;
 }
 
 export async function register(
@@ -78,25 +79,18 @@ export async function register(
     method: "POST",
     body: JSON.stringify({ email, password, role, org_name: orgName }),
   });
-  localStorage.setItem("token", data.access_token);
-  return data;
+  const user = await getMe();
+  return { ...data, user };
 }
 
 export function logout() {
-  const token = localStorage.getItem("token");
-  if (token) {
-    // Fire-and-forget; clear local state regardless
-    fetch(`${API_BASE}/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    }).catch(() => {});
-  }
-  localStorage.removeItem("token");
-  window.location.href = "/login";
+  return request<void>("/auth/logout", {
+    method: "POST",
+  }).finally(() => {
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  });
 }
 
 export interface MeResponse {
@@ -122,6 +116,24 @@ export interface Incident {
   created_at_utc?: string;
   evidence_captured?: number;
   evidence_total?: number;
+  driver_response?: DriverResponseSummary | null;
+  driver_protocol_summary?: DriverProtocolSummary | null;
+}
+
+export interface DriverResponseSummary {
+  notification_sent_at_utc?: string | null;
+  acknowledged_at_utc?: string | null;
+  uploads_complete?: boolean;
+  uploads_completed_at_utc?: string | null;
+  awaiting_driver_action?: boolean;
+}
+
+export interface DriverProtocolSummary {
+  instruction_source?: string;
+  require_ack?: boolean;
+  sms_enabled?: boolean;
+  voice_enabled?: boolean;
+  safety_manager_phone?: string | null;
 }
 
 export interface ArtifactSummary {
@@ -136,6 +148,17 @@ export interface ExportSummary {
   export_id: string;
   status: string;
   created_at_utc?: string | null;
+  generated_by?: string | null;
+  generation_duration_seconds?: number | null;
+  artifact_count?: number | null;
+  failure_count?: number | null;
+  failure_reason?: string | null;
+  retry_guidance?: string | null;
+  readiness?: {
+    required_artifacts_present?: boolean | null;
+    custody_complete?: boolean | null;
+    integrity_checks_passed?: boolean | null;
+  } | null;
 }
 
 /**

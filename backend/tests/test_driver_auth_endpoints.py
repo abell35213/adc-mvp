@@ -1,5 +1,4 @@
 """Tests for driver auth OTP endpoints."""
-
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -13,6 +12,7 @@ from app.api import routes_driver_auth
 from app.db.models import Base, Driver, Org, OtpChallenge
 from app.db.session import get_db
 from app.main import app
+from tests.helpers.fake_redis import FakeRedisRateLimiter
 
 
 @pytest.fixture()
@@ -64,11 +64,11 @@ def driver(db_session):
 
 @pytest.fixture(autouse=True)
 def reset_rate_limits():
-    routes_driver_auth._request_timestamps.clear()
-    routes_driver_auth._verify_timestamps.clear()
+    routes_driver_auth._redis_client = FakeRedisRateLimiter()
+    routes_driver_auth._rate_limit_script_sha = None
     yield
-    routes_driver_auth._request_timestamps.clear()
-    routes_driver_auth._verify_timestamps.clear()
+    routes_driver_auth._redis_client = None
+    routes_driver_auth._rate_limit_script_sha = None
 
 
 def test_driver_otp_flow(client, db_session, driver):

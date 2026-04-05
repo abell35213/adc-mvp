@@ -77,7 +77,8 @@ adc-mvp/
 ├── contracts/
 │   └── schemas/                       # JSON schemas (single source of truth)
 ├── infra/
-│   └── docker-compose.yml             # Docker Compose stack
+│   ├── docker-compose.yml             # Docker Compose stack
+│   └── production/                    # Production manifests + secret provider refs
 ├── scripts/                           # Utility scripts
 │   ├── create_admin.py                # Create admin user
 │   └── validate_schemas.py            # Validate JSON schemas
@@ -152,6 +153,19 @@ uvicorn app.main:app --reload
 cd backend && pytest tests/ -v
 python scripts/validate_schemas.py
 ```
+
+
+### Production secret-loading
+
+Backend runtime settings can be loaded from AWS Secrets Manager by setting:
+
+- `SECRET_PROVIDER=aws_secrets_manager`
+- `AWS_SECRETS_MANAGER_SECRET_ID=<secret-name>`
+- `AWS_REGION=<region>`
+
+The secret payload should be JSON with setting keys (for example `DATABASE_URL`, `JWT_SECRET_KEY`, `TWILIO_AUTH_TOKEN`).
+
+Reference manifests are in `infra/production/` and use External Secrets to sync secrets from AWS Secrets Manager into Kubernetes.
 
 ### Driver App (Expo)
 

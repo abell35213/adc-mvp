@@ -1,0 +1,888 @@
+{
+  "meta": {
+    "models": [
+      "LoginRequest",
+      "RegisterRequest",
+      "MeResponse",
+      "CreateIncidentRequest",
+      "CreateIncidentResponse",
+      "IncidentListItem",
+      "IncidentDetailResponse",
+      "CreateExportResponse",
+      "DownloadExportResponse",
+      "DriverProtocolSettingsResponse",
+      "DriverInstructionSetResponse",
+      "AdminVehicleSummary",
+      "RotateQrResponse",
+      "QrPayloadResponse"
+    ],
+    "source": "backend/app/api/schemas.py"
+  },
+  "schemas": {
+    "AdminVehicleSummary": {
+      "properties": {
+        "adc_vehicle_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Adc Vehicle Id",
+          "type": "string"
+        },
+        "display_label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Display Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adc_vehicle_id",
+        "display_label"
+      ],
+      "title": "AdminVehicleSummary",
+      "type": "object"
+    },
+    "CreateExportResponse": {
+      "properties": {
+        "export_id": {
+          "format": "uuid",
+          "title": "Export Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "requested",
+            "processing",
+            "ready",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "export_id",
+        "status"
+      ],
+      "title": "CreateExportResponse",
+      "type": "object"
+    },
+    "CreateIncidentRequest": {
+      "properties": {
+        "adc_driver_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Adc Driver Id",
+          "type": "string"
+        },
+        "adc_vehicle_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Adc Vehicle Id",
+          "type": "string"
+        },
+        "samsara_vehicle_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Samsara Vehicle Id",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "minor",
+            "serious",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "window_end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window End"
+        },
+        "window_start": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Start"
+        }
+      },
+      "required": [
+        "severity",
+        "adc_vehicle_id",
+        "samsara_vehicle_id",
+        "adc_driver_id"
+      ],
+      "title": "CreateIncidentRequest",
+      "type": "object"
+    },
+    "CreateIncidentResponse": {
+      "properties": {
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "evidence_capturing",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "incident_id",
+        "status"
+      ],
+      "title": "CreateIncidentResponse",
+      "type": "object"
+    },
+    "DownloadExportResponse": {
+      "properties": {
+        "export_id": {
+          "format": "uuid",
+          "title": "Export Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "requested",
+            "processing",
+            "ready",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "url": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "export_id",
+        "url",
+        "status"
+      ],
+      "title": "DownloadExportResponse",
+      "type": "object"
+    },
+    "DriverInstructionSetResponse": {
+      "$defs": {
+        "DriverInstructionStep": {
+          "properties": {
+            "body": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Body",
+              "type": "string"
+            },
+            "enabled": {
+              "default": true,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "order": {
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Order",
+              "type": "integer"
+            },
+            "step_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Step Id"
+            },
+            "title": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "order",
+            "title",
+            "body"
+          ],
+          "title": "DriverInstructionStep",
+          "type": "object"
+        },
+        "DriverInstructionStepResponse": {
+          "properties": {
+            "body": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Body",
+              "type": "string"
+            },
+            "step_id": {
+              "format": "uuid",
+              "title": "Step Id",
+              "type": "string"
+            },
+            "step_order": {
+              "title": "Step Order",
+              "type": "integer"
+            },
+            "title": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "step_id",
+            "step_order",
+            "title",
+            "body"
+          ],
+          "title": "DriverInstructionStepResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "instruction_set_id": {
+          "format": "uuid",
+          "title": "Instruction Set Id",
+          "type": "string"
+        },
+        "require_ack": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Require Ack"
+        },
+        "scope": {
+          "enum": [
+            "default",
+            "company",
+            "insurer"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DriverInstructionStep"
+              },
+              {
+                "$ref": "#/$defs/DriverInstructionStepResponse"
+              }
+            ]
+          },
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "instruction_set_id"
+      ],
+      "title": "DriverInstructionSetResponse",
+      "type": "object"
+    },
+    "DriverProtocolSettingsResponse": {
+      "properties": {
+        "instruction_source": {
+          "enum": [
+            "default",
+            "company",
+            "insurer"
+          ],
+          "title": "Instruction Source",
+          "type": "string"
+        },
+        "require_ack": {
+          "title": "Require Ack",
+          "type": "boolean"
+        },
+        "safety_manager_phone": {
+          "anyOf": [
+            {
+              "pattern": "^\\+[1-9]\\d{1,14}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safety Manager Phone"
+        },
+        "sms_enabled": {
+          "title": "Sms Enabled",
+          "type": "boolean"
+        },
+        "voice_enabled": {
+          "title": "Voice Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "instruction_source",
+        "require_ack",
+        "sms_enabled",
+        "voice_enabled"
+      ],
+      "title": "DriverProtocolSettingsResponse",
+      "type": "object"
+    },
+    "IncidentDetailResponse": {
+      "$defs": {
+        "ArtifactSummary": {
+          "properties": {
+            "artifact_id": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            },
+            "artifact_type": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Artifact Type",
+              "type": "string"
+            },
+            "captured_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Captured At Utc"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "captured",
+                "unavailable"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "unavailable_reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Unavailable Reason"
+            }
+          },
+          "required": [
+            "artifact_id",
+            "artifact_type",
+            "status"
+          ],
+          "title": "ArtifactSummary",
+          "type": "object"
+        },
+        "EventSummary": {
+          "properties": {
+            "actor_type": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Actor Type",
+              "type": "string"
+            },
+            "event_type": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Event Type",
+              "type": "string"
+            },
+            "occurred_at_utc": {
+              "format": "date-time",
+              "title": "Occurred At Utc",
+              "type": "string"
+            },
+            "payload": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payload"
+            }
+          },
+          "required": [
+            "event_type",
+            "occurred_at_utc",
+            "actor_type"
+          ],
+          "title": "EventSummary",
+          "type": "object"
+        },
+        "ExportSummary": {
+          "properties": {
+            "created_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Created At Utc"
+            },
+            "export_id": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "requested",
+                "processing",
+                "ready",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "export_id",
+            "status"
+          ],
+          "title": "ExportSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "adc_driver_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adc Driver Id"
+        },
+        "adc_vehicle_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adc Vehicle Id"
+        },
+        "created_at_utc": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At Utc"
+        },
+        "evidence_inventory": {
+          "items": {
+            "$ref": "#/$defs/ArtifactSummary"
+          },
+          "title": "Evidence Inventory",
+          "type": "array"
+        },
+        "export_status": {
+          "items": {
+            "$ref": "#/$defs/ExportSummary"
+          },
+          "title": "Export Status",
+          "type": "array"
+        },
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "samsara_vehicle_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samsara Vehicle Id"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "minor",
+                "serious",
+                "critical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "evidence_capturing",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timeline": {
+          "items": {
+            "$ref": "#/$defs/EventSummary"
+          },
+          "title": "Timeline",
+          "type": "array"
+        }
+      },
+      "required": [
+        "incident_id",
+        "status"
+      ],
+      "title": "IncidentDetailResponse",
+      "type": "object"
+    },
+    "IncidentListItem": {
+      "properties": {
+        "adc_driver_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adc Driver Id"
+        },
+        "adc_vehicle_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adc Vehicle Id"
+        },
+        "created_at_utc": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At Utc"
+        },
+        "evidence_captured": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Evidence Captured",
+          "type": "integer"
+        },
+        "evidence_total": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Evidence Total",
+          "type": "integer"
+        },
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "samsara_vehicle_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samsara Vehicle Id"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "minor",
+                "serious",
+                "critical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "evidence_capturing",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "incident_id",
+        "status"
+      ],
+      "title": "IncidentListItem",
+      "type": "object"
+    },
+    "LoginRequest": {
+      "properties": {
+        "email": {
+          "maxLength": 254,
+          "minLength": 6,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+          "title": "Email",
+          "type": "string"
+        },
+        "password": {
+          "maxLength": 256,
+          "minLength": 4,
+          "title": "Password",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email",
+        "password"
+      ],
+      "title": "LoginRequest",
+      "type": "object"
+    },
+    "MeResponse": {
+      "properties": {
+        "active_org_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Org Id"
+        },
+        "email": {
+          "maxLength": 254,
+          "minLength": 6,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+          "title": "Email",
+          "type": "string"
+        },
+        "org_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Org Ids",
+          "type": "array"
+        },
+        "role": {
+          "enum": [
+            "admin",
+            "safety_manager"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "email",
+        "role"
+      ],
+      "title": "MeResponse",
+      "type": "object"
+    },
+    "QrPayloadResponse": {
+      "properties": {
+        "deep_link": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Deep Link",
+          "type": "string"
+        }
+      },
+      "required": [
+        "deep_link"
+      ],
+      "title": "QrPayloadResponse",
+      "type": "object"
+    },
+    "RegisterRequest": {
+      "properties": {
+        "email": {
+          "maxLength": 254,
+          "minLength": 6,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+          "title": "Email",
+          "type": "string"
+        },
+        "org_name": {
+          "default": "Default",
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Org Name",
+          "type": "string"
+        },
+        "password": {
+          "maxLength": 256,
+          "minLength": 4,
+          "title": "Password",
+          "type": "string"
+        },
+        "role": {
+          "default": "safety_manager",
+          "enum": [
+            "admin",
+            "safety_manager"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email",
+        "password"
+      ],
+      "title": "RegisterRequest",
+      "type": "object"
+    },
+    "RotateQrResponse": {
+      "properties": {
+        "qr_token": {
+          "maxLength": 256,
+          "minLength": 8,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Qr Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "qr_token"
+      ],
+      "title": "RotateQrResponse",
+      "type": "object"
+    }
+  }
+}

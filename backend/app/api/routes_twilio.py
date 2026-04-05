@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import hashlib
 import hmac
 from urllib.parse import parse_qs
@@ -10,7 +11,10 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.core.config import settings
+from app.core.metrics import MetricNames, increment, timed
 from app.services.twilio_notify import build_voice_twiml
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -65,10 +69,17 @@ def _flatten_twilio_params(raw_params: dict[str, list[str]]) -> dict[str, str]:
 
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request):
-    body = await request.body()
-    raw_params = parse_qs(body.decode(), keep_blank_values=True)
-    params = _flatten_twilio_params(raw_params)
-    _validate_twilio_request(request, params)
+    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
+    with timed(MetricNames.TWILIO_WEBHOOK_ATTEMPTS):
+        body = await request.body()
+        raw_params = parse_qs(body.decode(), keep_blank_values=True)
+        params = _flatten_twilio_params(raw_params)
+        try:
+            _validate_twilio_request(request, params)
+        except HTTPException:
+            increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
+            logger.warning("Twilio webhook signature validation failed")
+            raise
     return Response(
         content=build_voice_twiml(VOICE_MESSAGE),
         media_type="application/xml",

@@ -19,7 +19,10 @@ from app.api.schemas import (
     RotateQrResponse,
 )
 from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import (
+    get_current_user_org_ids,
+    require_user_role,
+)
 from app.db.models import (
     DriverInstructionSet,
     DriverInstructionStep as DriverInstructionStepModel,
@@ -29,7 +32,6 @@ from app.db.models import (
     VehicleQrToken,
 )
 from app.db.session import get_db
-from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 
 logger = logging.getLogger(__name__)
@@ -63,20 +65,8 @@ ADMIN_VEHICLES = [
 ]
 
 
-def _require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Ensure the authenticated user has the admin role."""
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return current_user
-
-
-def _get_admin_org(db: Session, admin: User) -> Org:
-    org_ids = get_user_org_ids(db, admin.id)
-    org_id = org_ids[0] if org_ids else None
-    org = db.query(Org).filter(Org.id == org_id).first() if org_id else None
+def _get_admin_org(db: Session, admin_org_id: uuid.UUID) -> Org:
+    org = db.query(Org).filter(Org.id == admin_org_id).first()
     if org is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -151,9 +141,10 @@ def _serialize_instruction_steps(
 )
 def get_driver_protocol_settings(
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
-    org = _get_admin_org(db, admin)
+    org = _get_admin_org(db, admin_org_ids[0])
     return DriverProtocolSettingsResponse(
         instruction_source=org.instruction_source,
         require_ack=org.require_driver_ack,
@@ -170,9 +161,10 @@ def get_driver_protocol_settings(
 def update_driver_protocol_settings(
     body: DriverProtocolSettingsRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
-    org = _get_admin_org(db, admin)
+    org = _get_admin_org(db, admin_org_ids[0])
     org.instruction_source = _normalize_instruction_scope(body.instruction_source)
     org.require_driver_ack = body.require_ack
     org.sms_enabled = body.sms_enabled
@@ -195,9 +187,10 @@ def update_driver_protocol_settings(
 def get_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
-    org = _get_admin_org(db, admin)
+    org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     steps = (
@@ -226,9 +219,10 @@ def get_driver_protocol_instructions(
 def update_driver_protocol_instructions(
     body: DriverInstructionSetRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
-    org = _get_admin_org(db, admin)
+    org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(body.scope)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
@@ -261,9 +255,10 @@ def update_driver_protocol_instructions(
 def reset_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
-    org = _get_admin_org(db, admin)
+    org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
@@ -280,7 +275,7 @@ def reset_driver_protocol_instructions(
 
 
 @router.get("/vehicles", response_model=list[AdminVehicleSummary])
-def list_admin_vehicles(admin: User = Depends(_require_admin)):
+def list_admin_vehicles(admin: User = Depends(require_user_role("admin"))):
     return [AdminVehicleSummary(**vehicle) for vehicle in ADMIN_VEHICLES]
 
 
@@ -292,7 +287,8 @@ def list_admin_vehicles(admin: User = Depends(_require_admin)):
 def rotate_qr(
     vehicle_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(_require_admin),
+    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    admin: User = Depends(require_user_role("admin")),
 ):
     """Revoke the current active QR token for a vehicle and issue a new one."""
     # Revoke existing active token(s)
@@ -301,6 +297,7 @@ def rotate_qr(
         .filter(
             VehicleQrToken.adc_vehicle_id == vehicle_id,
             VehicleQrToken.status == "active",
+            VehicleQrToken.org_id.in_(admin_org_ids),
         )
         .all()
     )
@@ -311,8 +308,7 @@ def rotate_qr(
     new_token = secrets.token_urlsafe(32)
 
     # Determine org_id from the admin's org membership
-    org_ids = get_user_org_ids(db, admin.id)
-    org_id = org_ids[0] if org_ids else None
+    org_id = admin_org_ids[0]
 
     qr = VehicleQrToken(
         qr_token=new_token,
@@ -351,7 +347,7 @@ def rotate_qr(
 @router.get("/vehicles/{vehicle_id}/qr", response_model=QrPayloadResponse)
 def get_qr_payload(
     vehicle_id: str,
-    admin: User = Depends(_require_admin),
+    admin: User = Depends(require_user_role("admin")),
 ):
     """Return the deep link string for QR code generation."""
     scheme = settings.DRIVER_APP_DEEPLINK_SCHEME

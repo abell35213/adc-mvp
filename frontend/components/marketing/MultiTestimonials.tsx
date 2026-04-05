@@ -4,55 +4,58 @@ import { marketingTokens } from "@/components/marketing/tokens";
 const testimonials = [
   {
     quote:
-      "ADC cut our investigation prep from hours to minutes. We finally have one defensible source of truth our insurers actually accept.",
+      "With ADC, we're not just tracking vehicles and incidents—we're protecting our entire operation. It's given us the tools we need to be more efficient, reduce claim costs, and stay ahead.",
     name: "Jordan Lee",
-    title: "Director of Safety Operations",
+    title: "CEO, NorthLine Freight",
     company: "NorthLine Freight",
+    abbr: "NLF",
   },
   {
     quote:
-      "Before ADC we were losing winnable claims because we couldn't produce evidence fast enough. That problem is gone.",
+      "I can physically point to claims we would have lost without ADC's evidence packages. The platform paid for itself in our first contested case.",
     name: "Maria Santos",
-    title: "VP of Risk Management",
+    title: "Director of Risk Management, Summit Logistics",
     company: "Summit Logistics",
-  },
-  {
-    quote:
-      "The compliance export feature alone saved our team 15+ hours per month. Audits are no longer a fire drill.",
-    name: "Derek Chung",
-    title: "Fleet Safety Manager",
-    company: "Apex Transport",
+    abbr: "SL",
   },
 ];
 
 export function MultiTestimonials() {
   return (
-    <MarketingSection>
-      <div className="space-y-3 text-center">
-        <h2 className={marketingTokens.headingScale.h2}>What fleet leaders say</h2>
-        <p className="text-slate-600">Real outcomes from real operations teams.</p>
-      </div>
-      <div className="mt-10 grid gap-6 md:grid-cols-3">
-        {testimonials.map(({ quote, name, title, company }) => (
+    <MarketingSection className="bg-white">
+      <h2 className={`${marketingTokens.headingScale.h2} text-center mb-12`}>
+        Driving real impact for our customers
+      </h2>
+      <div className="grid gap-6 md:grid-cols-2">
+        {testimonials.map(({ quote, name, title, abbr }) => (
           <figure
             key={name}
-            className={`${marketingTokens.surfaces.card} flex flex-col`}
+            className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
           >
-            <p className="text-xs font-semibold uppercase tracking-widest text-sky-600 mb-3">
-              <span aria-hidden="true">★★★★★</span>
-              <span className="sr-only">5 out of 5 stars</span>
-            </p>
-            <blockquote className="flex-1 text-sm leading-7 text-slate-700">
+            <blockquote className="text-base leading-8 text-slate-700">
               &ldquo;{quote}&rdquo;
             </blockquote>
-            <figcaption className="mt-6 border-t border-slate-100 pt-4">
-              <p className="text-sm font-semibold text-slate-900">{name}</p>
-              <p className="text-xs text-slate-500">
-                {title}, {company}
-              </p>
+            <figcaption className="mt-6 flex items-center gap-4">
+              <div className="h-10 w-10 shrink-0 rounded-full bg-[#062040] flex items-center justify-center text-white text-xs font-bold">
+                {abbr}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#062040]">{name}</p>
+                <p className="text-xs text-slate-500">{title}</p>
+              </div>
             </figcaption>
           </figure>
         ))}
+      </div>
+
+      {/* Navigation arrow */}
+      <div className="flex justify-end mt-6">
+        <button
+          className="h-10 w-10 rounded-full bg-[#062040] text-white flex items-center justify-center hover:bg-[#0a3060] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#062040] focus-visible:ring-offset-2"
+          aria-label="View more testimonials"
+        >
+          →
+        </button>
       </div>
     </MarketingSection>
   );

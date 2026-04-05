@@ -1,7 +1,7 @@
 """Incident API routes."""
 
-import uuid
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -17,13 +17,15 @@ from app.api.schemas import (
     IncidentListItem,
 )
 from app.core.deps import get_current_user
+from app.core.logging import get_request_id, set_log_context
+from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
-from app.db.session import get_db
-from app.db.repo.incidents import create_incident, get_incident, list_incidents
-from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.artifacts import get_artifacts_by_incident
+from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
+from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.repo.users import get_user_org_ids
+from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
@@ -36,9 +38,13 @@ router = APIRouter()
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
+    set_log_context(
+        user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+    )
     incidents = list_incidents(db, org_ids=org_ids)
     result = []
     for inc in incidents:
@@ -66,55 +72,59 @@ def list_incidents_endpoint(
 def create_incident_endpoint(
     body: CreateIncidentRequest,
     db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_user_primary_org_id),
     current_user: User = Depends(get_current_user),
 ):
-    # Use the first org the user belongs to
-    org_ids = get_user_org_ids(db, current_user.id)
-    org_id = org_ids[0] if org_ids else None
+    increment(MetricNames.INCIDENT_CREATE_ATTEMPTS)
 
-    # 1. Create the incident record
-    incident = create_incident(
-        db,
-        status="evidence_capturing",
-        adc_vehicle_id=body.adc_vehicle_id,
-        samsara_vehicle_id=body.samsara_vehicle_id,
-        adc_driver_id=body.adc_driver_id,
-        severity=body.severity,
-        org_id=org_id,
-    )
+    with timed(MetricNames.INCIDENT_CREATE_ATTEMPTS):
+        org_ids = get_user_org_ids(db, current_user.id)
+        org_id = org_ids[0] if org_ids else None
+        set_log_context(
+            user_id=str(current_user.id), org_id=str(org_id) if org_id else None
+        )
 
-    incident_id = incident.incident_id
+        incident = create_incident(
+            db,
+            status="evidence_capturing",
+            adc_vehicle_id=body.adc_vehicle_id,
+            samsara_vehicle_id=body.samsara_vehicle_id,
+            adc_driver_id=body.adc_driver_id,
+            severity=body.severity,
+            org_id=org_id,
+        )
 
-    # 2. Write INCIDENT_STARTED event
-    create_event(
-        db,
-        incident_id=incident_id,
-        event_type=SystemEventType.INCIDENT_STARTED,
-        actor_type="user",
-        actor_id=str(current_user.id),
-        payload={
-            "severity": body.severity,
-            "adc_vehicle_id": body.adc_vehicle_id,
-            "samsara_vehicle_id": body.samsara_vehicle_id,
-            "adc_driver_id": body.adc_driver_id,
-        },
-    )
+        incident_id = incident.incident_id
 
-    # 3. Write EVIDENCE_LOCKDOWN_STARTED event
-    create_event(
-        db,
-        incident_id=incident_id,
-        event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED,
-        actor_type="user",
-        actor_id=str(current_user.id),
-    )
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STARTED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload={
+                "severity": body.severity,
+                "adc_vehicle_id": body.adc_vehicle_id,
+                "samsara_vehicle_id": body.samsara_vehicle_id,
+                "adc_driver_id": body.adc_driver_id,
+            },
+        )
 
-    # 4. Enqueue Celery evidence-capture workflow
-    str_id = str(incident_id)
-    window_start = body.window_start or ""
-    window_end = body.window_end or ""
-    capture_dashcam.delay(str_id, window_start, window_end)
-    capture_telematics_bundle.delay(str_id, window_start, window_end)
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+        )
+
+        window_start = body.window_start or ""
+        window_end = body.window_end or ""
+        str_id = str(incident_id)
+
+        logger.info("Queueing evidence capture tasks", extra={"request_id": get_request_id()})
+        capture_dashcam.delay(str_id, window_start, window_end)
+        capture_telematics_bundle.delay(str_id, window_start, window_end)
 
     return CreateIncidentResponse(
         incident_id=incident_id,
@@ -126,12 +136,18 @@ def create_incident_endpoint(
 def get_incident_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
+    set_log_context(
+        user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+    )
+
     incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
 
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
@@ -186,19 +202,27 @@ def get_incident_endpoint(
 
 
 @router.post(
-    "/{incident_id}/exports",
-    response_model=CreateExportResponse,
-    status_code=201,
+    "/{incident_id}/exports", response_model=CreateExportResponse, status_code=201
 )
 def request_export_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
+    increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
+
     org_ids = get_user_org_ids(db, current_user.id)
     incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
+
+    set_log_context(
+        user_id=str(current_user.id),
+        org_id=str(incident.org_id) if incident.org_id else None,
+    )
 
     export = create_export(
         db,
@@ -216,9 +240,7 @@ def request_export_endpoint(
         payload={"export_id": str(export.export_id)},
     )
 
+    logger.info("Queueing export build task", extra={"request_id": get_request_id()})
     build_export.delay(str(incident_id), str(export.export_id))
 
-    return CreateExportResponse(
-        export_id=export.export_id,
-        status=export.status,
-    )
+    return CreateExportResponse(export_id=export.export_id, status=export.status)

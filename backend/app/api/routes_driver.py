@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,8 @@ from app.api.schemas import (
     VehicleInfo,
 )
 from app.core.config import settings
-from app.core.security import create_access_token, decode_access_token
+from app.core.deps import get_current_driver
+from app.core.security import create_access_token
 from app.db.models import (
     Driver,
     DriverInstructionSet,
@@ -51,7 +51,6 @@ from app.tasks.notification_tasks import notify_safety_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-_bearer = HTTPBearer(auto_error=False)
 OTP_EXPIRATION_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
 
@@ -66,54 +65,6 @@ def _hash_otp_code(code: str) -> str:
         code.encode(),
         hashlib.sha256,
     ).hexdigest()
-
-
-def _get_current_driver(
-    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
-    db: Session = Depends(get_db),
-):
-    """Decode driver JWT and return active driver."""
-    if creds is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Driver not authenticated",
-        )
-
-    payload = decode_access_token(creds.credentials)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    driver_id = payload.get("sub")
-    if driver_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing subject",
-        )
-    try:
-        driver_uuid = uuid.UUID(driver_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token subject",
-        ) from exc
-
-    driver = (
-        db.query(Driver)
-        .filter(
-            Driver.driver_id == driver_uuid,
-            Driver.is_active.is_(True),
-        )
-        .first()
-    )
-    if driver is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Driver not found or inactive",
-        )
-    return driver
 
 
 def _get_or_create_default_org(db: Session) -> Org:
@@ -263,7 +214,7 @@ def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db
 
 @router.get("/me", response_model=DriverMeResponse)
 def driver_me(
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Return the authenticated driver profile and current vehicle (if any)."""
@@ -295,7 +246,7 @@ def driver_me(
 @router.post("/vehicle/resolve-qr", response_model=ResolveQrResponse)
 def resolve_qr(
     body: ResolveQrRequest,
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Resolve a QR token to a vehicle. Only active tokens are accepted."""
@@ -304,6 +255,7 @@ def resolve_qr(
         .filter(
             VehicleQrToken.qr_token == body.qr_token,
             VehicleQrToken.status == "active",
+            VehicleQrToken.org_id == driver.org_id,
         )
         .first()
     )
@@ -449,7 +401,7 @@ def _evidence_capture_state(events: list, incident_status: str) -> str:
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)
 def initiate_incident(
     body: DriverIncidentInitiateRequest,
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Initiate a driver incident protocol and start evidence capture."""
@@ -513,7 +465,7 @@ def initiate_incident(
 
 @router.get("/instructions/active", response_model=DriverInstructionSetResponse)
 def get_active_instructions(
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Return the active instruction set for the driver's org."""
@@ -541,7 +493,7 @@ def get_active_instructions(
 @router.post("/instructions/ack", response_model=DriverInstructionAckResponse)
 def acknowledge_instructions(
     body: DriverInstructionAckRequest,
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Acknowledge the active driver instruction set if required."""
@@ -581,7 +533,7 @@ def acknowledge_instructions(
 )
 def driver_incident_status(
     incident_id: uuid.UUID,
-    driver: Driver = Depends(_get_current_driver),
+    driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Return status and evidence capture state for an incident."""

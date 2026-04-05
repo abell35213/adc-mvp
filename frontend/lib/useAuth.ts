@@ -6,7 +6,7 @@ import { getMe, type MeResponse } from "@/lib/api";
 
 /**
  * Hook that validates the current session by calling /auth/me.
- * Redirects to /login if the token is missing or invalid.
+ * Redirects to /login when the server-side session is missing or invalid.
  */
 export function useAuth() {
   const router = useRouter();
@@ -14,18 +14,9 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
     getMe()
       .then(setUser)
-      .catch(() => {
-        localStorage.removeItem("token");
-        router.replace("/login");
-      })
+      .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
   }, [router]);
 

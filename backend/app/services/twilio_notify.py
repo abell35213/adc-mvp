@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 import httpx
 
 from app.core.config import settings
+from app.core.metrics import MetricNames, increment, timed
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +35,19 @@ def _twilio_url(path: str) -> str:
 
 
 def _post_twilio(path: str, data: dict[str, str]) -> dict[str, Any]:
-    url = _twilio_url(path)
-    account_sid, auth_token = _twilio_auth()
-    with httpx.Client() as client:
-        response = client.post(
-            url,
-            data=data,
-            auth=(account_sid, auth_token),
-            timeout=10.0,
-        )
-    response.raise_for_status()
-    payload = response.json()
+    with timed("twilio.http.post"):
+        url = _twilio_url(path)
+        account_sid, auth_token = _twilio_auth()
+        with httpx.Client() as client:
+            response = client.post(
+                url,
+                data=data,
+                auth=(account_sid, auth_token),
+                timeout=10.0,
+            )
+        response.raise_for_status()
+        payload = response.json()
+
     if not isinstance(payload, dict):
         raise ValueError(
             "Unexpected Twilio response payload: expected dict, got "
@@ -55,23 +58,31 @@ def _post_twilio(path: str, data: dict[str, str]) -> dict[str, Any]:
 
 def send_sms(to: str, message: str) -> str:
     """Send an SMS message and return the Twilio message SID."""
+    increment("twilio.send_sms.attempts")
     from_number = _require_setting("TWILIO_SMS_FROM", settings.TWILIO_SMS_FROM)
-    payload = _post_twilio(
-        "Messages.json",
-        {
-            "To": to,
-            "From": from_number,
-            "Body": message,
-        },
-    )
+    try:
+        payload = _post_twilio(
+            "Messages.json",
+            {
+                "To": to,
+                "From": from_number,
+                "Body": message,
+            },
+        )
+    except Exception:
+        increment(MetricNames.TWILIO_SEND_SMS_FAILURES)
+        raise
+
     sid = payload.get("sid")
     if not sid:
+        increment(MetricNames.TWILIO_SEND_SMS_FAILURES)
         raise ValueError(f"Twilio SMS response missing SID. Response: {payload}")
     return sid
 
 
 def place_call(to: str, twiml_content: str) -> str:
     """Place a voice call and return the Twilio call SID."""
+    increment("twilio.place_call.attempts")
     from_number = _require_setting("TWILIO_VOICE_FROM", settings.TWILIO_VOICE_FROM)
     data = {
         "To": to,
@@ -82,9 +93,16 @@ def place_call(to: str, twiml_content: str) -> str:
         data["Url"] = stripped_value
     else:
         data["Twiml"] = stripped_value
-    payload = _post_twilio("Calls.json", data)
+
+    try:
+        payload = _post_twilio("Calls.json", data)
+    except Exception:
+        increment(MetricNames.TWILIO_PLACE_CALL_FAILURES)
+        raise
+
     sid = payload.get("sid")
     if not sid:
+        increment(MetricNames.TWILIO_PLACE_CALL_FAILURES)
         raise ValueError(f"Twilio call response missing SID. Response: {payload}")
     return sid
 

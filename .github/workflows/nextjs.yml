@@ -42,7 +42,7 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           static_site_generator: next
-          generator_config_file: frontend/next.config.ts
+          generator_config_file: frontend/next.config.mjs
       - name: Restore cache
         uses: actions/cache@v4
         with:
