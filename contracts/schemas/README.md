@@ -40,3 +40,11 @@ All artifact JSON files share a common envelope:
 ## Validation
 - Validate JSON artifacts against the schema file with the same name.
 - Fail loudly: if validation fails, emit capture-failed events + unavailable artifacts (no silent gaps).
+
+
+## Runtime API contract snapshot
+- `runtime_api_contracts.json` is generated from `backend/app/api/schemas.py` and captures the backend response/request contract consumed by the frontend.
+- Regenerate after backend schema updates:
+  - `python scripts/generate_runtime_api_contract.py`
+- CI and backend tests both enforce drift detection:
+  - `python scripts/generate_runtime_api_contract.py --check`

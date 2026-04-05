@@ -119,8 +119,11 @@ jobs:
       - name: Validate contract schemas
         run: python scripts/validate_schemas.py
 
-  dependency-vulnerability-scan:
-    name: Dependency vulnerability scan
+      - name: Check runtime API contract drift
+        run: python scripts/generate_runtime_api_contract.py --check
+
+  frontend:
+    name: Frontend (lint + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
