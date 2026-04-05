@@ -89,6 +89,12 @@ export type DriverIncidentStatusResponse = {
   last_evidence_update_utc?: string | null;
 };
 
+
+export type DriverNarrativePayload = {
+  narrative_text: string;
+  completion_state: 'draft' | 'completed';
+};
+
 export type DriverSceneFactsPayload = {
   incident_datetime_utc: string;
   location_text: string | null;
@@ -215,6 +221,16 @@ export const patchDriverIncidentSceneFacts = (
   payload: DriverSceneFactsPayload,
 ) =>
   request(`/driver/incidents/${incidentId}/scene`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, true);
+
+
+export const patchDriverIncidentNarrative = (
+  incidentId: string,
+  payload: DriverNarrativePayload,
+) =>
+  request(`/driver/incidents/${incidentId}/narrative`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, true);
