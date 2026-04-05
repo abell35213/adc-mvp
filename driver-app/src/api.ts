@@ -45,6 +45,24 @@ export type DriverActiveIncidentResponse = {
   adc_vehicle_id?: string | null;
 };
 
+export type DriverIncidentInitiateRequest = {
+  vehicle_strategy: 'last_assigned' | 'qr';
+  qr_token?: string;
+  device_location?: {
+    latitude: number;
+    longitude: number;
+    accuracy_meters?: number | null;
+    timestamp_utc?: string;
+  } | null;
+  device?: Record<string, unknown> | null;
+};
+
+export type DriverIncidentInitiateResponse = {
+  incident_id: string;
+  safety_notified: boolean;
+  capture_started: boolean;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -121,6 +139,16 @@ export const resolveQr = (qrToken: string) =>
     {
       method: 'POST',
       body: JSON.stringify({ qr_token: qrToken }),
+    },
+    true,
+  );
+
+export const initiateDriverIncident = (payload: DriverIncidentInitiateRequest) =>
+  request<DriverIncidentInitiateResponse>(
+    '/driver/incidents/initiate',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
     },
     true,
   );
