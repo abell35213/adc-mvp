@@ -1,30 +1,24 @@
-/** Token handling utilities for authentication. */
+/** Session utilities for httpOnly-cookie authentication. */
 
-const TOKEN_KEY = "token";
+import { getMe } from "@/lib/api";
 
-/** Store a JWT token in localStorage. */
-export function setToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(TOKEN_KEY, token);
+/**
+ * Validate whether the current browser has a server-side authenticated session.
+ * This relies on httpOnly cookies and never checks client-side token storage.
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  try {
+    await getMe();
+    return true;
+  } catch {
+    return false;
   }
 }
 
-/** Retrieve the stored JWT token, or null if absent. */
-export function getToken(): string | null {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem(TOKEN_KEY);
-  }
-  return null;
-}
-
-/** Remove the stored JWT token. */
-export function clearToken(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(TOKEN_KEY);
-  }
-}
-
-/** Check whether a token is currently stored. */
-export function isAuthenticated(): boolean {
-  return getToken() !== null;
+/**
+ * Clear any in-memory auth state.
+ * Cookie clearing must be performed by the backend via /auth/logout.
+ */
+export function clearClientAuthState(): void {
+  // Intentionally empty: no persistent client-side auth token is stored.
 }
