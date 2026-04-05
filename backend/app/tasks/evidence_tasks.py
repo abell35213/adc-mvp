@@ -5,6 +5,7 @@ import logging
 import uuid as _uuid
 from datetime import datetime, timezone
 
+from app.core.metrics import MetricNames, increment
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ def capture_dashcam(
     3. For each stream: download → upload S3 → hash → emit events → record artifact
     4. Emit EVIDENCE_CAPTURE_SUCCEEDED when complete
     """
+    increment("evidence.capture_dashcam.attempts")
     from app.core.config import settings
     from app.db.repo.artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
@@ -329,6 +331,7 @@ def capture_dashcam(
                 "reason": str(exc),
             },
         )
+        increment(MetricNames.CELERY_TASK_FAILURES)
         raise
 
     finally:
@@ -360,6 +363,7 @@ def capture_telematics_bundle(
     5. Generate CSV/PDF renderings, upload each, compute SHA-256
     6. Record artifact metadata and emit events
     """
+    increment("evidence.capture_telematics.attempts")
     import json
     import csv
     import io
@@ -718,6 +722,7 @@ def capture_telematics_bundle(
                 "reason": str(exc),
             },
         )
+        increment(MetricNames.CELERY_TASK_FAILURES)
         raise
 
     finally:

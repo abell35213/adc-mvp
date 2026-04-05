@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     S3_ARTIFACTS_BUCKET: str = "adc-mvp-artifacts"
     S3_EXPORTS_BUCKET: str = "adc-mvp-exports"
     DEBUG: bool = False
+    LOG_LEVEL: str = "INFO"
 
     # CORS / Cookies
     FRONTEND_ORIGIN: str = "http://localhost:3000"

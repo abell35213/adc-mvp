@@ -6,6 +6,7 @@ import uuid as _uuid
 
 import httpx
 
+from app.core.metrics import MetricNames, increment
 from app.tasks.celery_app import celery_app
 
 
@@ -94,6 +95,7 @@ def _compose_voice(incident) -> str:
 )
 def notify_safety_manager(self, incident_id: str):
     """Notify the safety manager via SMS and/or voice call."""
+    increment("notifications.safety_manager.attempts")
     from app.db.models import Org
     from app.db.repo.incidents import get_incident
     from app.domain.system_event_types import SystemEventType
@@ -230,5 +232,8 @@ def notify_safety_manager(self, incident_id: str):
 
         return result
 
+    except Exception:
+        increment(MetricNames.CELERY_TASK_FAILURES)
+        raise
     finally:
         db.close()

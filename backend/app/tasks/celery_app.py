@@ -6,6 +6,8 @@ from celery import Celery
 from celery.signals import task_failure
 
 from app.core.config import settings
+from app.core.logging import clear_log_context, set_log_context, set_request_id
+from app.core.metrics import MetricNames, increment
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,21 @@ celery_app.conf.update(
 )
 
 
-# ── Hello-world smoke-test task ─────────────────────────────────────
+@task_prerun.connect
+def _on_task_prerun(*_, task=None, **__):
+    headers = getattr(task.request, "headers", {}) or {}
+    set_request_id(headers.get("x-request-id"))
+    set_log_context(
+        user_id=headers.get("x-user-id") or None,
+        org_id=headers.get("x-org-id") or None,
+    )
+    increment(MetricNames.CELERY_TASK_STARTED)
+
+
+@task_failure.connect
+def _on_task_failure(*_, **__):
+    increment(MetricNames.CELERY_TASK_FAILURES)
+    clear_log_context()
 
 
 @celery_app.task

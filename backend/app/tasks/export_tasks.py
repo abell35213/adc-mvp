@@ -8,6 +8,7 @@ import re
 import uuid as _uuid
 import zipfile
 
+from app.core.metrics import MetricNames, increment
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ def build_export(self, incident_id: str, export_id: str):
     8. Update export row to ready
     9. Emit EXPORT_GENERATED
     """
+    increment("exports.build.attempts")
     from app.core.config import settings
     from app.db.repo.artifacts import get_artifacts_by_incident
     from app.db.repo.events import get_events_by_incident
@@ -387,6 +389,9 @@ def build_export(self, incident_id: str, export_id: str):
         )
         raise
 
+    except Exception:
+        increment(MetricNames.CELERY_TASK_FAILURES)
+        raise
     finally:
         db.close()
 
