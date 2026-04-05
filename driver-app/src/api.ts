@@ -90,6 +90,11 @@ export type DriverIncidentStatusResponse = {
 };
 
 
+export type DriverSubmitIncidentReportResponse = {
+  incident_id: string;
+  status: string;
+};
+
 export type DriverNarrativePayload = {
   narrative_text: string;
   completion_state: 'draft' | 'completed';
@@ -234,3 +239,12 @@ export const patchDriverIncidentNarrative = (
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, true);
+
+export const submitDriverIncidentReport = (incidentId: string) =>
+  request<DriverSubmitIncidentReportResponse>(
+    `/driver/incidents/${incidentId}/submit-driver-report`,
+    {
+      method: 'POST',
+    },
+    true,
+  );
