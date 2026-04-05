@@ -63,6 +63,24 @@ export type DriverIncidentInitiateResponse = {
   capture_started: boolean;
 };
 
+export type DriverInstructionStepResponse = {
+  step_id: string;
+  step_order: number;
+  title: string;
+  body: string;
+};
+
+export type DriverActiveInstructionsResponse = {
+  instruction_set_id: string;
+  scope: 'default' | 'company' | 'insurer';
+  require_ack?: boolean | null;
+  steps: DriverInstructionStepResponse[];
+};
+
+export type DriverInstructionAckResponse = {
+  acknowledged: boolean;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -149,6 +167,20 @@ export const initiateDriverIncident = (payload: DriverIncidentInitiateRequest) =
     {
       method: 'POST',
       body: JSON.stringify(payload),
+    },
+    true,
+  );
+
+
+export const getDriverActiveInstructions = () =>
+  request<DriverActiveInstructionsResponse>('/driver/instructions/active', {}, true);
+
+export const acknowledgeDriverInstructions = (instructionSetId: string) =>
+  request<DriverInstructionAckResponse>(
+    '/driver/instructions/ack',
+    {
+      method: 'POST',
+      body: JSON.stringify({ instruction_set_id: instructionSetId }),
     },
     true,
   );
