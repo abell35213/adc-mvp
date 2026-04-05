@@ -123,6 +123,19 @@ class TestCeleryAppConfig:
         assert "app.tasks.export_tasks.build_export" in routes
         assert "app.tasks.notification_tasks.notify_safety_manager" in routes
 
+    def test_retry_annotations_defined(self):
+        from app.tasks.celery_app import celery_app
+
+        annotations = celery_app.conf.task_annotations
+        assert annotations["app.tasks.evidence_tasks.capture_dashcam"]["retry_backoff"]
+        assert annotations["app.tasks.export_tasks.build_export"]["retry_jitter"]
+
+    def test_dead_letter_route_defined(self):
+        from app.tasks.celery_app import celery_app
+
+        routes = celery_app.conf.task_routes
+        assert "app.tasks.celery_app.record_dead_letter" in routes
+
 
 # ── capture_dashcam ─────────────────────────────────────────────────
 
@@ -348,6 +361,34 @@ class TestCaptureDashcam:
         )
         for a in artifacts:
             assert a.sha256 == expected_sha
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_duplicate_run_is_skipped(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
+        mock_get_db.return_value = db_session
+
+        samsara_inst = MagicMock()
+        samsara_inst.fetch_dashcam_stream.return_value = b"data"
+        MockSamsara.return_value = samsara_inst
+        MockS3.return_value = MagicMock()
+
+        from app.tasks.evidence_tasks import capture_dashcam
+
+        first = capture_dashcam(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+        second = capture_dashcam(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+        assert first["status"] == "captured"
+        assert second["status"] == "skipped_duplicate"
 
 
 # ── capture_telematics_bundle ───────────────────────────────────────
@@ -728,6 +769,31 @@ class TestBuildExport:
         )
         assert len(events) == 1
 
+    @patch("app.tasks.export_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    def test_export_duplicate_run_returns_duplicate(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
+        mock_get_db.return_value = db_session
+
+        s3_inst = MagicMock()
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.download.return_value = b"file-content"
+        MockS3.return_value = s3_inst
+
+        from app.tasks.export_tasks import build_export
+
+        first = build_export(
+            str(incident.incident_id),
+            str(export_row.export_id),
+        )
+        second = build_export(
+            str(incident.incident_id),
+            str(export_row.export_id),
+        )
+        assert first["duplicate"] is False
+        assert second["duplicate"] is True
+
 
 # ── repo_exports.update_export ──────────────────────────────────────
 
@@ -812,3 +878,28 @@ class TestNotifySafetyManager:
         event_types = {event.event_type for event in events}
         assert SystemEventType.SAFETY_MANAGER_SMS_SENT in event_types
         assert SystemEventType.SAFETY_MANAGER_CALL_PLACED in event_types
+
+    @patch("app.tasks.notification_tasks._get_db")
+    @patch("app.services.twilio_notify.place_call")
+    @patch("app.services.twilio_notify.send_sms")
+    @patch("app.services.twilio_notify.build_voice_twiml", return_value="<Response/>")
+    def test_notify_safety_manager_is_idempotent(
+        self,
+        _mock_twiml,
+        mock_send_sms,
+        mock_place_call,
+        mock_get_db,
+        db_session,
+        incident_with_org,
+    ):
+        mock_get_db.return_value = db_session
+        mock_send_sms.return_value = "SM123"
+        mock_place_call.return_value = "CA123"
+
+        first = notify_safety_manager(str(incident_with_org.incident_id))
+        second = notify_safety_manager(str(incident_with_org.incident_id))
+
+        assert first["status"] == "notified"
+        assert second["status"] == "skipped_duplicate"
+        assert mock_send_sms.call_count == 1
+        assert mock_place_call.call_count == 1

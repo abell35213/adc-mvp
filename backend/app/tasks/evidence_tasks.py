@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+_IDEMPOTENCY_UUID_NAMESPACE = _uuid.UUID("f10f5c65-1d84-42bf-b95c-d6253aac3020")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -17,6 +18,17 @@ logger = logging.getLogger(__name__)
 def _hash_bytes(data: bytes) -> str:
     """Return hex-encoded SHA-256 digest of *data*."""
     return hashlib.sha256(data).hexdigest()
+
+
+def _idempotency_key(*parts: str | None) -> str:
+    """Return a deterministic idempotency key from stable task inputs."""
+    normalized = [p or "none" for p in parts]
+    return _hash_bytes("|".join(normalized).encode())
+
+
+def _deterministic_uuid(key: str) -> _uuid.UUID:
+    """Return a stable UUID for a deterministic key."""
+    return _uuid.uuid5(_IDEMPOTENCY_UUID_NAMESPACE, key)
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -60,6 +72,37 @@ def _emit(db, incident_id, event_type, payload=None):
     )
 
 
+def _event_exists(db, incident_id, event_type: str, idempotency_key: str) -> bool:
+    """Check whether an event with a matching idempotency key already exists."""
+    from app.db.repo.events import get_events_by_incident
+
+    existing_events = get_events_by_incident(db, incident_id)
+    return any(
+        ev.event_type == event_type
+        and isinstance(ev.payload, dict)
+        and ev.payload.get("idempotency_key") == idempotency_key
+        for ev in existing_events
+    )
+
+
+def _emit_once(db, incident_id, event_type, idempotency_key: str, payload=None):
+    """Emit an event exactly once for a given idempotency key."""
+    full_payload = {
+        "idempotency_key": idempotency_key,
+        **(payload or {}),
+    }
+    if _event_exists(db, incident_id, event_type, idempotency_key):
+        return None
+    return _emit(db, incident_id, event_type, full_payload)
+
+
+def _artifact_exists(db, artifact_id: _uuid.UUID) -> bool:
+    """Check whether an artifact with this deterministic identifier exists."""
+    from app.db.models import Artifact
+
+    return db.query(Artifact).filter(Artifact.artifact_id == artifact_id).first() is not None
+
+
 # ---------------------------------------------------------------------------
 # Task: capture_dashcam
 # ---------------------------------------------------------------------------
@@ -91,6 +134,9 @@ def capture_dashcam(
     from app.services.vault_s3 import VaultS3
 
     inc_uuid = _uuid.UUID(incident_id)
+    workflow_key = _idempotency_key(
+        "evidence", "dashcam", incident_id, window_start, window_end
+    )
     ws_dt = _parse_iso(window_start)
     we_dt = _parse_iso(window_end)
     db = _get_db()
@@ -98,20 +144,35 @@ def capture_dashcam(
     try:
         org_id = _get_org_id(db, inc_uuid)
         # 1. Emit EVIDENCE_CAPTURE_REQUESTED
-        _emit(
+        if _event_exists(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            workflow_key,
+        ):
+            return {
+                "incident_id": incident_id,
+                "type": "dashcam",
+                "status": "skipped_duplicate",
+                "idempotency_key": workflow_key,
+            }
+
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_REQUESTED,
+            workflow_key,
             {
                 "type": "dashcam",
                 "window_start": window_start,
                 "window_end": window_end,
             },
         )
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED,
+            workflow_key,
             {
                 "type": "dashcam",
                 "window_start": window_start,
@@ -140,7 +201,12 @@ def capture_dashcam(
                     raise ValueError(f"No footage returned for {stream_label}")
 
                 # 3a. Upload to S3
-                art_id = _uuid.uuid4()
+                artifact_key = _idempotency_key(
+                    workflow_key, stream_label, artifact_type, "video"
+                )
+                art_id = _deterministic_uuid(artifact_key)
+                if _artifact_exists(db, art_id):
+                    continue
                 s3_key = s3_key_builder.dashcam_key(
                     org_id=org_id,
                     incident_id=incident_id,
@@ -153,10 +219,11 @@ def capture_dashcam(
                 sha = _hash_bytes(video_bytes)
 
                 # 3c. Emit ARTIFACT_RECORDED
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.ARTIFACT_RECORDED,
+                    artifact_key,
                     {
                         "artifact_type": artifact_type,
                         "stream": stream_label,
@@ -166,10 +233,11 @@ def capture_dashcam(
                 )
 
                 # 3d. Emit ARTIFACT_HASHED
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.ARTIFACT_HASHED,
+                    artifact_key,
                     {
                         "artifact_type": artifact_type,
                         "sha256": sha,
@@ -201,10 +269,11 @@ def capture_dashcam(
                     reason,
                 )
 
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.ARTIFACT_RECORDED,
+                    _idempotency_key(workflow_key, stream_label, artifact_type, "unavailable"),
                     {
                         "artifact_type": artifact_type,
                         "stream": stream_label,
@@ -213,35 +282,48 @@ def capture_dashcam(
                     },
                 )
 
-                create_artifact(
-                    db,
-                    incident_id=inc_uuid,
-                    artifact_type=artifact_type,
-                    status="unavailable",
-                    capture_window_start_utc=ws_dt,
-                    capture_window_end_utc=we_dt,
-                    unavailable_reason_code="stream_unavailable",
-                    unavailable_reason_detail=reason,
+                unavailable_key = _idempotency_key(
+                    workflow_key, stream_label, artifact_type, "unavailable"
                 )
+                unavailable_art_id = _deterministic_uuid(unavailable_key)
+                if not _artifact_exists(db, unavailable_art_id):
+                    create_artifact(
+                        db,
+                        incident_id=inc_uuid,
+                        artifact_type=artifact_type,
+                        status="unavailable",
+                        artifact_id=unavailable_art_id,
+                        capture_window_start_utc=ws_dt,
+                        capture_window_end_utc=we_dt,
+                        unavailable_reason_code="stream_unavailable",
+                        unavailable_reason_detail=reason,
+                    )
 
         # 4. Emit EVIDENCE_CAPTURE_SUCCEEDED
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            workflow_key,
             {
                 "type": "dashcam",
             },
         )
 
-        return {"incident_id": incident_id, "type": "dashcam", "status": "captured"}
+        return {
+            "incident_id": incident_id,
+            "type": "dashcam",
+            "status": "captured",
+            "idempotency_key": workflow_key,
+        }
 
     except Exception as exc:
         logger.exception("Dashcam capture failed for incident %s", incident_id)
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_FAILED,
+            workflow_key,
             {
                 "type": "dashcam",
                 "reason": str(exc),
@@ -296,26 +378,44 @@ def capture_telematics_bundle(
     from app.services.normalizers.vehicle_state import normalize_vehicle_state
 
     inc_uuid = _uuid.UUID(incident_id)
+    workflow_key = _idempotency_key(
+        "evidence", "telematics", incident_id, window_start, window_end
+    )
     ws_dt = _parse_iso(window_start)
     we_dt = _parse_iso(window_end)
     db = _get_db()
 
     try:
         org_id = _get_org_id(db, inc_uuid)
-        _emit(
+        if _event_exists(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            workflow_key,
+        ):
+            return {
+                "incident_id": incident_id,
+                "type": "telematics",
+                "status": "skipped_duplicate",
+                "idempotency_key": workflow_key,
+            }
+
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_REQUESTED,
+            workflow_key,
             {
                 "type": "telematics",
                 "window_start": window_start,
                 "window_end": window_end,
             },
         )
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED,
+            workflow_key,
             {
                 "type": "telematics",
                 "window_start": window_start,
@@ -377,7 +477,10 @@ def capture_telematics_bundle(
 
                 # 4. Upload JSON to S3
                 json_bytes = json.dumps(normalized, default=str).encode()
-                json_art_id = _uuid.uuid4()
+                json_key_id = _idempotency_key(
+                    workflow_key, dataset_name, spec["artifact_type"], "json"
+                )
+                json_art_id = _deterministic_uuid(json_key_id)
                 json_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
@@ -385,44 +488,47 @@ def capture_telematics_bundle(
                     artifact_id=str(json_art_id),
                     extension="json",
                 )
-                s3.put_bytes(json_key, json_bytes)
-                json_sha = _hash_bytes(json_bytes)
+                if not _artifact_exists(db, json_art_id):
+                    s3.put_bytes(json_key, json_bytes)
+                    json_sha = _hash_bytes(json_bytes)
 
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_RECORDED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "json",
-                        "s3_key": json_key,
-                        "status": "captured",
-                    },
-                )
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_HASHED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "json",
-                        "sha256": json_sha,
-                    },
-                )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_RECORDED,
+                        json_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "json",
+                            "s3_key": json_key,
+                            "status": "captured",
+                        },
+                    )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_HASHED,
+                        json_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "json",
+                            "sha256": json_sha,
+                        },
+                    )
 
-                create_artifact(
-                    db,
-                    incident_id=inc_uuid,
-                    artifact_type=spec["artifact_type"],
-                    status="captured",
-                    artifact_id=json_art_id,
-                    capture_window_start_utc=ws_dt,
-                    capture_window_end_utc=we_dt,
-                    s3_bucket=settings.S3_BUCKET,
-                    s3_key=json_key,
-                    sha256=json_sha,
-                    byte_size=len(json_bytes),
-                )
+                    create_artifact(
+                        db,
+                        incident_id=inc_uuid,
+                        artifact_type=spec["artifact_type"],
+                        status="captured",
+                        artifact_id=json_art_id,
+                        capture_window_start_utc=ws_dt,
+                        capture_window_end_utc=we_dt,
+                        s3_bucket=settings.S3_BUCKET,
+                        s3_key=json_key,
+                        sha256=json_sha,
+                        byte_size=len(json_bytes),
+                    )
 
                 # 5. Generate CSV rendering
                 if normalized:
@@ -434,7 +540,10 @@ def capture_telematics_bundle(
                 else:
                     csv_bytes = b""
 
-                csv_art_id = _uuid.uuid4()
+                csv_key_id = _idempotency_key(
+                    workflow_key, dataset_name, spec["artifact_type"], "csv"
+                )
+                csv_art_id = _deterministic_uuid(csv_key_id)
                 csv_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
@@ -442,51 +551,57 @@ def capture_telematics_bundle(
                     artifact_id=str(csv_art_id),
                     extension="csv",
                 )
-                s3.put_bytes(csv_key, csv_bytes)
-                csv_sha = _hash_bytes(csv_bytes)
+                if not _artifact_exists(db, csv_art_id):
+                    s3.put_bytes(csv_key, csv_bytes)
+                    csv_sha = _hash_bytes(csv_bytes)
 
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_RECORDED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "csv",
-                        "s3_key": csv_key,
-                        "status": "captured",
-                    },
-                )
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_HASHED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "csv",
-                        "sha256": csv_sha,
-                    },
-                )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_RECORDED,
+                        csv_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "csv",
+                            "s3_key": csv_key,
+                            "status": "captured",
+                        },
+                    )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_HASHED,
+                        csv_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "csv",
+                            "sha256": csv_sha,
+                        },
+                    )
 
-                create_artifact(
-                    db,
-                    incident_id=inc_uuid,
-                    artifact_type=spec["artifact_type"],
-                    status="captured",
-                    artifact_id=csv_art_id,
-                    capture_window_start_utc=ws_dt,
-                    capture_window_end_utc=we_dt,
-                    s3_bucket=settings.S3_BUCKET,
-                    s3_key=csv_key,
-                    sha256=csv_sha,
-                    byte_size=len(csv_bytes),
-                )
+                    create_artifact(
+                        db,
+                        incident_id=inc_uuid,
+                        artifact_type=spec["artifact_type"],
+                        status="captured",
+                        artifact_id=csv_art_id,
+                        capture_window_start_utc=ws_dt,
+                        capture_window_end_utc=we_dt,
+                        s3_bucket=settings.S3_BUCKET,
+                        s3_key=csv_key,
+                        sha256=csv_sha,
+                        byte_size=len(csv_bytes),
+                    )
 
                 # 6. Generate PDF rendering
                 pdf_bytes = render_pdf(
                     f"{dataset_name}_report",
                     {"records": normalized, "incident_id": incident_id},
                 )
-                pdf_art_id = _uuid.uuid4()
+                pdf_key_id = _idempotency_key(
+                    workflow_key, dataset_name, spec["artifact_type"], "pdf"
+                )
+                pdf_art_id = _deterministic_uuid(pdf_key_id)
                 pdf_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
@@ -494,44 +609,47 @@ def capture_telematics_bundle(
                     artifact_id=str(pdf_art_id),
                     extension="pdf",
                 )
-                s3.put_bytes(pdf_key, pdf_bytes)
-                pdf_sha = _hash_bytes(pdf_bytes)
+                if not _artifact_exists(db, pdf_art_id):
+                    s3.put_bytes(pdf_key, pdf_bytes)
+                    pdf_sha = _hash_bytes(pdf_bytes)
 
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_RECORDED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "pdf",
-                        "s3_key": pdf_key,
-                        "status": "captured",
-                    },
-                )
-                _emit(
-                    db,
-                    inc_uuid,
-                    SystemEventType.ARTIFACT_HASHED,
-                    {
-                        "artifact_type": spec["artifact_type"],
-                        "format": "pdf",
-                        "sha256": pdf_sha,
-                    },
-                )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_RECORDED,
+                        pdf_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "pdf",
+                            "s3_key": pdf_key,
+                            "status": "captured",
+                        },
+                    )
+                    _emit_once(
+                        db,
+                        inc_uuid,
+                        SystemEventType.ARTIFACT_HASHED,
+                        pdf_key_id,
+                        {
+                            "artifact_type": spec["artifact_type"],
+                            "format": "pdf",
+                            "sha256": pdf_sha,
+                        },
+                    )
 
-                create_artifact(
-                    db,
-                    incident_id=inc_uuid,
-                    artifact_type=spec["artifact_type"],
-                    status="captured",
-                    artifact_id=pdf_art_id,
-                    capture_window_start_utc=ws_dt,
-                    capture_window_end_utc=we_dt,
-                    s3_bucket=settings.S3_BUCKET,
-                    s3_key=pdf_key,
-                    sha256=pdf_sha,
-                    byte_size=len(pdf_bytes),
-                )
+                    create_artifact(
+                        db,
+                        incident_id=inc_uuid,
+                        artifact_type=spec["artifact_type"],
+                        status="captured",
+                        artifact_id=pdf_art_id,
+                        capture_window_start_utc=ws_dt,
+                        capture_window_end_utc=we_dt,
+                        s3_bucket=settings.S3_BUCKET,
+                        s3_key=pdf_key,
+                        sha256=pdf_sha,
+                        byte_size=len(pdf_bytes),
+                    )
 
             except Exception as ds_exc:
                 reason = str(ds_exc)
@@ -542,10 +660,11 @@ def capture_telematics_bundle(
                     reason,
                 )
 
-                _emit(
+                _emit_once(
                     db,
                     inc_uuid,
                     SystemEventType.ARTIFACT_RECORDED,
+                    _idempotency_key(workflow_key, dataset_name, "unavailable"),
                     {
                         "artifact_type": spec["artifact_type"],
                         "status": "unavailable",
@@ -553,34 +672,47 @@ def capture_telematics_bundle(
                     },
                 )
 
-                create_artifact(
-                    db,
-                    incident_id=inc_uuid,
-                    artifact_type=spec["artifact_type"],
-                    status="unavailable",
-                    capture_window_start_utc=ws_dt,
-                    capture_window_end_utc=we_dt,
-                    unavailable_reason_code="dataset_unavailable",
-                    unavailable_reason_detail=reason,
+                unavailable_key = _idempotency_key(
+                    workflow_key, dataset_name, "unavailable"
                 )
+                unavailable_art_id = _deterministic_uuid(unavailable_key)
+                if not _artifact_exists(db, unavailable_art_id):
+                    create_artifact(
+                        db,
+                        incident_id=inc_uuid,
+                        artifact_type=spec["artifact_type"],
+                        status="unavailable",
+                        artifact_id=unavailable_art_id,
+                        capture_window_start_utc=ws_dt,
+                        capture_window_end_utc=we_dt,
+                        unavailable_reason_code="dataset_unavailable",
+                        unavailable_reason_detail=reason,
+                    )
 
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            workflow_key,
             {
                 "type": "telematics",
             },
         )
 
-        return {"incident_id": incident_id, "type": "telematics", "status": "captured"}
+        return {
+            "incident_id": incident_id,
+            "type": "telematics",
+            "status": "captured",
+            "idempotency_key": workflow_key,
+        }
 
     except Exception as exc:
         logger.exception("Telematics capture failed for incident %s", incident_id)
-        _emit(
+        _emit_once(
             db,
             inc_uuid,
             SystemEventType.EVIDENCE_CAPTURE_FAILED,
+            workflow_key,
             {
                 "type": "telematics",
                 "reason": str(exc),
