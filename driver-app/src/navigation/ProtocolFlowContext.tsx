@@ -1,15 +1,26 @@
 import { ReactNode, createContext, useContext, useMemo, useState } from 'react';
 
+import { INITIAL_PROTOCOL_CONTEXT } from '../types/protocol';
 import { transitionProtocol } from '../store/protocolStore';
-import { DriverProtocolState } from '../types/protocol';
+import {
+  DriverProtocolState,
+  ProtocolContext,
+  VehicleResolutionMethod,
+} from '../types/protocol';
 import { ProtocolRouteName } from './protocolFlow';
 
 type ProtocolFlowContextValue = {
   completedRoutes: Set<ProtocolRouteName>;
   workflowState: DriverProtocolState;
+  protocolContext: ProtocolContext;
   startProtocol: () => void;
   completeRoute: (routeName: ProtocolRouteName) => void;
   transitionWorkflow: (toState: DriverProtocolState) => void;
+  resolveVehicle: (payload: {
+    vehicleId: string;
+    method: VehicleResolutionMethod;
+    qrToken?: string | null;
+  }) => void;
   resetProtocol: () => void;
 };
 
@@ -23,14 +34,21 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
   );
   const [workflowState, setWorkflowState] =
     useState<DriverProtocolState>('authenticated');
+  const [protocolContext, setProtocolContext] =
+    useState<ProtocolContext>(INITIAL_PROTOCOL_CONTEXT);
 
   const value = useMemo<ProtocolFlowContextValue>(
     () => ({
       completedRoutes,
       workflowState,
+      protocolContext,
       startProtocol: () => {
         setCompletedRoutes(new Set());
         setWorkflowState('authenticated');
+        setProtocolContext({
+          ...INITIAL_PROTOCOL_CONTEXT,
+          isAuthenticated: true,
+        });
       },
       completeRoute: (routeName) => {
         setCompletedRoutes((previous) => {
@@ -48,27 +66,31 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
               uploadState: 'idle',
               updatedAt: new Date().toISOString(),
               version: 1,
-              context: {
-                isAuthenticated: true,
-                vehicleResolved: false,
-                safetyAcknowledged: false,
-                submissionValidations: {
-                  hasIncidentType: false,
-                  hasDescription: false,
-                  hasMedia: false,
-                },
-              },
+              context: protocolContext,
             },
             toState,
           ).state,
         );
       },
+      resolveVehicle: ({ vehicleId, method, qrToken }) => {
+        setProtocolContext((previous) => ({
+          ...previous,
+          vehicleResolved: true,
+          vehicleResolutionMethod: method,
+          vehicleId,
+          qrToken: qrToken ?? null,
+        }));
+      },
       resetProtocol: () => {
         setCompletedRoutes(new Set());
         setWorkflowState('authenticated');
+        setProtocolContext({
+          ...INITIAL_PROTOCOL_CONTEXT,
+          isAuthenticated: true,
+        });
       },
     }),
-    [completedRoutes, workflowState],
+    [completedRoutes, protocolContext, workflowState],
   );
 
   return (
