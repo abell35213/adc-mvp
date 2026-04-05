@@ -7,11 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DownloadExportResponse
-from app.core.deps import (
-    enforce_resource_org_ownership,
-    get_current_user,
-    get_current_user_org_ids,
-)
+from app.core.deps import get_current_user
+from app.core.logging import set_log_context
+from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import get_export, list_exports_for_org_ids
@@ -47,6 +45,10 @@ def list_exports_endpoint(
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
+    org_ids = get_user_org_ids(db, current_user.id)
+    set_log_context(
+        user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+    )
     exports = list_exports_for_org_ids(db, org_ids)
     return [
         {
@@ -66,12 +68,19 @@ def get_export_endpoint(
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
+    org_ids = get_user_org_ids(db, current_user.id)
+    set_log_context(
+        user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+    )
     export = get_export(db, export_id)
     if not export:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    enforce_resource_org_ownership(export_org_id, org_ids)
+    if export_org_id is None or export_org_id not in org_ids:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     return {
         "export_id": str(export.export_id),
@@ -87,14 +96,24 @@ def download_export_endpoint(
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    export = get_export(db, export_id)
+    increment(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS)
+    with timed(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS):
+        org_ids = get_user_org_ids(db, current_user.id)
+        set_log_context(
+            user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
+        )
+        export = get_export(db, export_id)
     if not export:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    enforce_resource_org_ownership(export_org_id, org_ids)
+    if export_org_id is None or export_org_id not in org_ids:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     if export.status != "ready":
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=409, detail="Export is not ready")
 
     bucket = export.s3_bucket or settings.S3_BUCKET
@@ -109,8 +128,10 @@ def download_export_endpoint(
             expires_in=expires_in_seconds,
         )
     except S3PresignConfigurationError as exc:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except S3PresignGenerationError as exc:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(
             status_code=502,
             detail="Unable to generate export download URL",
