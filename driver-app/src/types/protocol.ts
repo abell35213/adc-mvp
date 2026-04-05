@@ -24,9 +24,14 @@ export type SubmissionValidations = {
   hasMedia: boolean;
 };
 
+export type VehicleResolutionMethod = 'assigned_vehicle' | 'qr_scan';
+
 export type ProtocolContext = {
   isAuthenticated: boolean;
   vehicleResolved: boolean;
+  vehicleResolutionMethod: VehicleResolutionMethod | null;
+  vehicleId: string | null;
+  qrToken: string | null;
   safetyAcknowledged: boolean;
   submissionValidations: SubmissionValidations;
 };
@@ -45,6 +50,9 @@ export const PROTOCOL_PERSISTENCE_VERSION = 1 as const;
 export const INITIAL_PROTOCOL_CONTEXT: ProtocolContext = {
   isAuthenticated: false,
   vehicleResolved: false,
+  vehicleResolutionMethod: null,
+  vehicleId: null,
+  qrToken: null,
   safetyAcknowledged: false,
   submissionValidations: {
     hasIncidentType: false,

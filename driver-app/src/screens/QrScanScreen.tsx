@@ -5,7 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
-import { resolveQr } from '../api';
+import { resolveVehicleQr } from '../services/incidents';
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'QrScan'>;
@@ -54,7 +54,7 @@ export default function QrScanScreen({ navigation }: Props) {
     }
 
     try {
-      const response = await resolveQr(qrToken);
+      const response = await resolveVehicleQr(qrToken);
       setStatusMessage(`Resolved vehicle ${response.display_label}.`);
       timeoutRef.current = setTimeout(
         () => navigation.goBack(),
