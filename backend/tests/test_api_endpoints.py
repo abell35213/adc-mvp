@@ -334,6 +334,21 @@ class TestGetIncident:
         resp = client.get(f"/incidents/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
 
+    def test_get_incident_forbidden_for_other_org(
+        self, client, db_session, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        resp = client.get(f"/incidents/{inc.incident_id}", headers=auth_headers)
+        assert resp.status_code == 403
+
 
 # ── GET /incidents (list) ───────────────────────────────────────────
 
@@ -445,6 +460,21 @@ class TestRequestExport:
         fake_id = str(uuid.uuid4())
         resp = client.post(f"/incidents/{fake_id}/exports", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_request_export_forbidden_for_other_org_incident(
+        self, client, db_session, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        resp = client.post(f"/incidents/{inc.incident_id}/exports", headers=auth_headers)
+        assert resp.status_code == 403
 
 
 # ── GET /exports/{export_id}/download ───────────────────────────────
@@ -775,8 +805,7 @@ class TestGetExport:
 class TestListExports:
     def test_list_exports_no_org_links_returns_empty(self, client, no_org_auth_headers):
         resp = client.get("/exports/", headers=no_org_auth_headers)
-        assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.status_code == 403
 
     def test_get_export_denied_for_user_with_no_org_links(
         self, client, db_session, test_org, no_org_auth_headers

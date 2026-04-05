@@ -7,13 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas import DownloadExportResponse
-from app.core.deps import get_current_user
+from app.core.deps import (
+    enforce_resource_org_ownership,
+    get_current_user,
+    get_current_user_org_ids,
+)
 from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import get_export, list_exports_for_org_ids
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
-from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.services.vault_s3 import (
@@ -41,9 +44,9 @@ def _get_export_owner_org_id(db: Session, export):
 @router.get("/")
 def list_exports_endpoint(
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
     exports = list_exports_for_org_ids(db, org_ids)
     return [
         {
@@ -60,16 +63,15 @@ def list_exports_endpoint(
 def get_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    if export_org_id is None or export_org_id not in org_ids:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    enforce_resource_org_ownership(export_org_id, org_ids)
 
     return {
         "export_id": str(export.export_id),
@@ -82,16 +84,15 @@ def get_export_endpoint(
 def download_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    if export_org_id is None or export_org_id not in org_ids:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    enforce_resource_org_ownership(export_org_id, org_ids)
 
     if export.status != "ready":
         raise HTTPException(status_code=409, detail="Export is not ready")
