@@ -16,14 +16,18 @@ from app.api.schemas import (
     IncidentDetailResponse,
     IncidentListItem,
 )
-from app.core.deps import get_current_user
+from app.core.deps import (
+    enforce_resource_org_ownership,
+    get_current_user,
+    get_current_user_org_ids,
+    get_current_user_primary_org_id,
+)
 from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
-from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
@@ -36,9 +40,9 @@ router = APIRouter()
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
     incidents = list_incidents(db, org_ids=org_ids)
     result = []
     for inc in incidents:
@@ -66,12 +70,9 @@ def list_incidents_endpoint(
 def create_incident_endpoint(
     body: CreateIncidentRequest,
     db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_user_primary_org_id),
     current_user: User = Depends(get_current_user),
 ):
-    # Use the first org the user belongs to
-    org_ids = get_user_org_ids(db, current_user.id)
-    org_id = org_ids[0] if org_ids else None
-
     # 1. Create the incident record
     incident = create_incident(
         db,
@@ -126,12 +127,13 @@ def create_incident_endpoint(
 def get_incident_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    incident = get_incident(db, incident_id, org_ids=org_ids)
+    incident = get_incident(db, incident_id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
 
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
@@ -193,12 +195,13 @@ def get_incident_endpoint(
 def request_export_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    incident = get_incident(db, incident_id, org_ids=org_ids)
+    incident = get_incident(db, incident_id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
 
     export = create_export(
         db,
