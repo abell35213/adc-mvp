@@ -59,6 +59,9 @@ jobs:
       - name: Validate schemas
         run: python scripts/validate_schemas.py
 
+      - name: Check runtime API contract drift
+        run: python scripts/generate_runtime_api_contract.py --check
+
   frontend:
     name: Frontend (lint + build)
     runs-on: ubuntu-latest

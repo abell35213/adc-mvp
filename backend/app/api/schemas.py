@@ -1,52 +1,84 @@
 """Pydantic request / response schemas for the API."""
 
 import uuid
-from typing import Optional
+from datetime import datetime
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+EmailStrLike = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=6,
+        max_length=254,
+        pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$",
+    ),
+]
+PhoneE164 = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        pattern=r"^\+[1-9]\d{1,14}$",
+    ),
+]
+OtpCode = Annotated[str, StringConstraints(pattern=r"^\d{4,8}$")]
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+LongText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+VehicleId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._:-]+$")]
+DriverId = VehicleId
+QrToken = Annotated[str, StringConstraints(strip_whitespace=True, min_length=8, max_length=256, pattern=r"^[A-Za-z0-9_-]+$")]
+
+UserRole = Literal["admin", "safety_manager"]
+InstructionScope = Literal["default", "company", "insurer"]
+IncidentSeverity = Literal["minor", "serious", "critical"]
+IncidentStatus = Literal["open", "evidence_capturing", "closed"]
+ArtifactStatus = Literal["pending", "captured", "unavailable"]
+ExportStatus = Literal["requested", "processing", "ready", "failed"]
+VehicleStrategy = Literal["qr", "last_assigned"]
+CaptureState = Literal["failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"]
 
 
 # ── Auth ────────────────────────────────────────────────────────────
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: EmailStrLike
+    password: Annotated[str, StringConstraints(min_length=4, max_length=256)]
 
 
 class RequestOtpRequest(BaseModel):
-    phone_e164: str = Field(
-        pattern=r"^\+[1-9]\d{1,14}$",
+    phone_e164: PhoneE164 = Field(
         description="Phone number in E.164 format, e.g. +15551234567.",
     )
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    role: str
+    access_token: Annotated[str, StringConstraints(min_length=16)]
+    token_type: Literal["bearer"] = "bearer"
+    role: UserRole
 
 
 class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    role: str = "safety_manager"
-    org_name: str = "Default"
+    email: EmailStrLike
+    password: Annotated[str, StringConstraints(min_length=4, max_length=256)]
+    role: UserRole = "safety_manager"
+    org_name: ShortText = "Default"
 
 
 class RegisterResponse(BaseModel):
     user_id: uuid.UUID
-    email: str
-    role: str
+    email: EmailStrLike
+    role: UserRole
     org_id: uuid.UUID
-    access_token: str
+    access_token: Annotated[str, StringConstraints(min_length=16)]
 
 
 class MeResponse(BaseModel):
     user_id: uuid.UUID
-    email: str
-    role: str
-    org_ids: list[uuid.UUID] = []
+    email: EmailStrLike
+    role: UserRole
+    org_ids: list[uuid.UUID] = Field(default_factory=list)
     active_org_id: Optional[uuid.UUID] = None
 
 
@@ -58,63 +90,63 @@ class LogoutResponse(BaseModel):
 
 
 class CreateIncidentRequest(BaseModel):
-    severity: str
-    adc_vehicle_id: str
-    samsara_vehicle_id: str
-    adc_driver_id: str
-    window_start: Optional[str] = None
-    window_end: Optional[str] = None
+    severity: IncidentSeverity
+    adc_vehicle_id: VehicleId
+    samsara_vehicle_id: VehicleId
+    adc_driver_id: DriverId
+    window_start: Optional[datetime] = None
+    window_end: Optional[datetime] = None
 
 
 class CreateIncidentResponse(BaseModel):
     incident_id: uuid.UUID
-    status: str
+    status: IncidentStatus
 
 
 class ArtifactSummary(BaseModel):
     artifact_id: uuid.UUID
-    artifact_type: str
-    status: str
-    captured_at_utc: Optional[str] = None
-    unavailable_reason: Optional[str] = None
+    artifact_type: ShortText
+    status: ArtifactStatus
+    captured_at_utc: Optional[datetime] = None
+    unavailable_reason: Optional[ShortText] = None
 
 
 class ExportSummary(BaseModel):
     export_id: uuid.UUID
-    status: str
-    created_at_utc: Optional[str] = None
+    status: ExportStatus
+    created_at_utc: Optional[datetime] = None
 
 
 class EventSummary(BaseModel):
-    event_type: str
-    occurred_at_utc: str
-    actor_type: str
+    event_type: ShortText
+    occurred_at_utc: datetime
+    actor_type: ShortText
     payload: Optional[dict] = None
 
 
 class IncidentListItem(BaseModel):
     incident_id: uuid.UUID
-    status: str
-    severity: Optional[str] = None
-    adc_vehicle_id: Optional[str] = None
-    samsara_vehicle_id: Optional[str] = None
-    adc_driver_id: Optional[str] = None
-    created_at_utc: Optional[str] = None
-    evidence_captured: int = 0
-    evidence_total: int = 0
+    status: IncidentStatus
+    severity: Optional[IncidentSeverity] = None
+    adc_vehicle_id: Optional[VehicleId] = None
+    samsara_vehicle_id: Optional[VehicleId] = None
+    adc_driver_id: Optional[DriverId] = None
+    created_at_utc: Optional[datetime] = None
+    evidence_captured: int = Field(default=0, ge=0)
+    evidence_total: int = Field(default=0, ge=0)
 
 
 class IncidentDetailResponse(BaseModel):
     incident_id: uuid.UUID
-    status: str
-    severity: Optional[str] = None
-    adc_vehicle_id: Optional[str] = None
-    samsara_vehicle_id: Optional[str] = None
-    adc_driver_id: Optional[str] = None
-    created_at_utc: Optional[str] = None
-    evidence_inventory: list[ArtifactSummary] = []
-    export_status: list[ExportSummary] = []
-    timeline: list[EventSummary] = []
+    status: IncidentStatus
+    severity: Optional[IncidentSeverity] = None
+    adc_vehicle_id: Optional[VehicleId] = None
+    samsara_vehicle_id: Optional[VehicleId] = None
+    adc_driver_id: Optional[DriverId] = None
+    created_at_utc: Optional[datetime] = None
+    evidence_inventory: list[ArtifactSummary] = Field(default_factory=list)
+    export_status: list[ExportSummary] = Field(default_factory=list)
+    timeline: list[EventSummary] = Field(default_factory=list)
 
 
 # ── Exports ─────────────────────────────────────────────────────────
@@ -122,33 +154,33 @@ class IncidentDetailResponse(BaseModel):
 
 class CreateExportResponse(BaseModel):
     export_id: uuid.UUID
-    status: str
+    status: ExportStatus
 
 
 class DownloadExportResponse(BaseModel):
     export_id: uuid.UUID
-    url: str
-    status: str
+    url: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    status: ExportStatus
 
 
 # ── Driver ──────────────────────────────────────────────────────────
 
 
 class VehicleInfo(BaseModel):
-    adc_vehicle_id: str
-    display_label: str
+    adc_vehicle_id: VehicleId
+    display_label: ShortText
 
 
 class DriverMeResponse(BaseModel):
     driver_id: uuid.UUID
     org_id: uuid.UUID
-    phone_e164: str
-    display_name: str
+    phone_e164: PhoneE164
+    display_name: ShortText
     vehicle: Optional[VehicleInfo] = None
 
 
 class DriverOtpRequest(BaseModel):
-    phone_e164: str
+    phone_e164: PhoneE164
 
 
 class DriverOtpRequestResponse(BaseModel):
@@ -156,33 +188,33 @@ class DriverOtpRequestResponse(BaseModel):
 
 
 class DriverOtpVerifyRequest(BaseModel):
-    phone_e164: str
-    otp_code: str
+    phone_e164: PhoneE164
+    otp_code: OtpCode
 
 
 class DriverOtpVerifyResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+    access_token: Annotated[str, StringConstraints(min_length=16)]
+    token_type: Literal["bearer"] = "bearer"
 
 
 class ResolveQrRequest(BaseModel):
-    qr_token: str
+    qr_token: QrToken
 
 
 class ResolveQrResponse(BaseModel):
-    adc_vehicle_id: str
-    display_label: str
+    adc_vehicle_id: VehicleId
+    display_label: ShortText
 
 
 # ── Admin driver protocol ─────────────────────────────────────────
 
 
 class DriverProtocolSettingsRequest(BaseModel):
-    instruction_source: str
+    instruction_source: InstructionScope
     require_ack: bool
     sms_enabled: bool
     voice_enabled: bool
-    safety_manager_phone: Optional[str] = None
+    safety_manager_phone: Optional[PhoneE164] = None
 
 
 class DriverProtocolSettingsResponse(DriverProtocolSettingsRequest):
@@ -191,40 +223,41 @@ class DriverProtocolSettingsResponse(DriverProtocolSettingsRequest):
 
 class DriverInstructionStep(BaseModel):
     step_id: Optional[uuid.UUID] = None
-    order: int
-    title: str
-    body: str
+    order: int = Field(ge=1, le=100)
+    title: ShortText
+    body: LongText
     enabled: bool = True
 
 
 class DriverInstructionSetRequest(BaseModel):
-    scope: str
-    steps: list[DriverInstructionStep]
+    scope: InstructionScope
+    steps: list[DriverInstructionStep] = Field(min_length=1, max_length=50)
 
 
 class DriverInstructionStepResponse(BaseModel):
     step_id: uuid.UUID
     step_order: int
-    title: str
-    body: str
+    title: ShortText
+    body: LongText
 
 
 class DriverInstructionSetResponse(DriverInstructionSetRequest):
     instruction_set_id: uuid.UUID
     require_ack: Optional[bool] = None
-    steps: list[DriverInstructionStep | DriverInstructionStepResponse] = []  # type: ignore[assignment]
+    steps: list[DriverInstructionStep | DriverInstructionStepResponse] = Field(default_factory=list)
+    model_config = ConfigDict(extra="ignore")
 
 
 # ── Driver incident / instruction responses ────────────────────────
 
 
 class DriverIncidentInitiateRequest(BaseModel):
-    vehicle_strategy: str
-    qr_token: Optional[str] = None
+    vehicle_strategy: VehicleStrategy
+    qr_token: Optional[QrToken] = None
     device_location: Optional[dict] = None
     device: Optional[dict] = None
-    window_start: Optional[str] = None
-    window_end: Optional[str] = None
+    window_start: Optional[datetime] = None
+    window_end: Optional[datetime] = None
 
 
 class DriverIncidentInitiateResponse(BaseModel):
@@ -243,23 +276,23 @@ class DriverInstructionAckResponse(BaseModel):
 
 class DriverIncidentStatusResponse(BaseModel):
     incident_id: uuid.UUID
-    status: str
+    status: IncidentStatus
     safety_notified: bool
-    capture_state: str
-    last_evidence_update_utc: Optional[str] = None
+    capture_state: CaptureState
+    last_evidence_update_utc: Optional[datetime] = None
 
 
 # ── Admin vehicles / QR ────────────────────────────────────────────
 
 
 class AdminVehicleSummary(BaseModel):
-    adc_vehicle_id: str
-    display_label: str
+    adc_vehicle_id: VehicleId
+    display_label: ShortText
 
 
 class RotateQrResponse(BaseModel):
-    qr_token: str
+    qr_token: QrToken
 
 
 class QrPayloadResponse(BaseModel):
-    deep_link: str
+    deep_link: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
