@@ -34,3 +34,10 @@ app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def validate_startup_config() -> None:
+    """Fail fast if environment invariants are broken."""
+
+    settings.validate_production_invariants()

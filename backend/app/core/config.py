@@ -1,10 +1,13 @@
 """Application configuration."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    APP_ENV: str = "dev"
 
     DATABASE_URL: str = "postgresql://localhost/adc_mvp"
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -47,6 +50,63 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    @property
+    def is_prod(self) -> bool:
+        return self.APP_ENV == "prod"
+
+    def _prod_validation_errors(self) -> list[str]:
+        errors: list[str] = []
+
+        required_secrets = {
+            "JWT_SECRET_KEY": self.JWT_SECRET_KEY,
+            "OTP_HASH_PEPPER": self.OTP_HASH_PEPPER,
+            "DATABASE_URL": self.DATABASE_URL,
+        }
+        insecure_defaults = {
+            "JWT_SECRET_KEY": "change-me-in-production",
+            "OTP_HASH_PEPPER": "change-me-in-production",
+            "DATABASE_URL": "postgresql://localhost/adc_mvp",
+        }
+
+        for key, value in required_secrets.items():
+            normalized = value.strip()
+            if not normalized:
+                errors.append(f"{key} must be set in prod")
+                continue
+            if normalized == insecure_defaults[key]:
+                errors.append(f"{key} cannot use development default in prod")
+
+        if not self.COOKIE_SECURE:
+            errors.append("COOKIE_SECURE must be true in prod")
+
+        for key, value in (
+            ("FRONTEND_ORIGIN", self.FRONTEND_ORIGIN),
+            ("PUBLIC_APP_BASE_URL", self.PUBLIC_APP_BASE_URL),
+        ):
+            if value.strip().lower().startswith("http://localhost"):
+                errors.append(f"{key} cannot point to localhost over http in prod")
+
+        return errors
+
+    def validate_production_invariants(self) -> None:
+        """Raise if production configuration invariants are violated."""
+
+        if not self.is_prod:
+            return
+
+        errors = self._prod_validation_errors()
+        if errors:
+            joined = "; ".join(errors)
+            raise ValueError(f"Invalid prod configuration: {joined}")
+
+    @model_validator(mode="after")
+    def validate_environment(self):
+        self.APP_ENV = self.APP_ENV.strip().lower()
+        if self.APP_ENV not in {"dev", "staging", "prod"}:
+            raise ValueError("APP_ENV must be one of: dev, staging, prod")
+
+        return self
 
     class Config:
         env_file = ".env"
