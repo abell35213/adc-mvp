@@ -3,10 +3,10 @@
 import hashlib
 import hmac
 import logging
-import threading
 import time
 from datetime import datetime, timezone
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -34,9 +34,37 @@ router = APIRouter()
 _REQUEST_LIMIT = settings.OTP_REQUEST_RATE_LIMIT
 _VERIFY_LIMIT = settings.OTP_VERIFY_RATE_LIMIT
 _RATE_LIMIT_WINDOW_SECONDS = settings.OTP_RATE_LIMIT_WINDOW_SECONDS
-_rate_limit_lock = threading.Lock()
-_request_timestamps: dict[str, list[float]] = {}
-_verify_timestamps: dict[str, list[float]] = {}
+
+_RATE_LIMIT_SCRIPT = """
+local key = KEYS[1]
+local now_ms = tonumber(ARGV[1])
+local window_ms = tonumber(ARGV[2])
+local max_calls = tonumber(ARGV[3])
+
+redis.call('ZREMRANGEBYSCORE', key, 0, now_ms - window_ms)
+local current = redis.call('ZCARD', key)
+if current >= max_calls then
+    local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+    local retry_after = 1
+    if oldest[2] then
+        retry_after = math.ceil((tonumber(oldest[2]) + window_ms - now_ms) / 1000)
+        if retry_after < 1 then
+            retry_after = 1
+        end
+    end
+    return {0, retry_after}
+end
+
+local request_id = tostring(now_ms) .. '-' .. tostring(redis.call('INCR', key .. ':seq'))
+redis.call('ZADD', key, now_ms, request_id)
+local ttl_seconds = math.ceil(window_ms / 1000)
+redis.call('EXPIRE', key, ttl_seconds)
+redis.call('EXPIRE', key .. ':seq', ttl_seconds)
+return {1, 0}
+"""
+
+_rate_limit_script_sha: str | None = None
+_redis_client: redis.Redis | None = None
 
 
 def _phone_hash(phone_e164: str) -> str:
@@ -48,24 +76,44 @@ def _phone_hash(phone_e164: str) -> str:
     ).hexdigest()
 
 
-def _enforce_rate_limit(
-    bucket: dict[str, list[float]],
-    key: str,
-    max_calls: int,
-):
-    now = time.time()
-    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
-    with _rate_limit_lock:
-        calls = [ts for ts in bucket.get(key, []) if ts >= window_start]
-        if len(calls) >= max_calls:
-            retry_after = max(1, int(calls[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many OTP attempts. Please retry later.",
-                headers={"Retry-After": str(retry_after)},
-            )
-        calls.append(now)
-        bucket[key] = calls
+def _get_redis_client() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=False)
+    return _redis_client
+
+
+def _rate_limit_redis_key(bucket_name: str, phone_e164: str) -> str:
+    return f"otp:ratelimit:{bucket_name}:{_phone_hash(phone_e164)}:{_RATE_LIMIT_WINDOW_SECONDS}s"
+
+
+def _run_rate_limit_script(redis_client: redis.Redis, redis_key: str, max_calls: int):
+    global _rate_limit_script_sha
+    now_ms = int(time.time() * 1000)
+    window_ms = _RATE_LIMIT_WINDOW_SECONDS * 1000
+    args = [now_ms, window_ms, max_calls]
+    if _rate_limit_script_sha is None:
+        _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
+    try:
+        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+    except redis.exceptions.NoScriptError:
+        _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
+        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+
+
+def _enforce_rate_limit(bucket_name: str, phone_e164: str, max_calls: int):
+    redis_client = _get_redis_client()
+    allowed, retry_after = _run_rate_limit_script(
+        redis_client,
+        _rate_limit_redis_key(bucket_name, phone_e164),
+        max_calls,
+    )
+    if int(allowed) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many OTP attempts. Please retry later.",
+            headers={"Retry-After": str(int(retry_after))},
+        )
 
 
 # ── POST /driver/auth/request-otp ──────────────────────────────────
@@ -85,7 +133,7 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid phone number",
         )
-    _enforce_rate_limit(_request_timestamps, _phone_hash(phone_e164), _REQUEST_LIMIT)
+    _enforce_rate_limit("request", phone_e164, _REQUEST_LIMIT)
 
     # Try to start Twilio verification; fall back gracefully
     twilio_sid: str | None = None
@@ -122,7 +170,7 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid phone number",
         )
-    _enforce_rate_limit(_verify_timestamps, _phone_hash(phone_e164), _VERIFY_LIMIT)
+    _enforce_rate_limit("verify", phone_e164, _VERIFY_LIMIT)
 
     # Find the latest challenge for this phone, then branch by challenge status.
     challenge = get_latest_otp_challenge_by_phone(db, phone_e164)
