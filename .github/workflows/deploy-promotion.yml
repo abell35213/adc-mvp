@@ -1,0 +1,48 @@
+name: Deploy Promotion Gates
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-development:
+    name: Deploy to development
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+    steps:
+      - uses: actions/checkout@v4
+      - name: Development deploy
+        run: |
+          echo "Deploying current main build to development environment"
+          echo "Hook your real deployment command here."
+
+  promote-staging:
+    name: Promote to staging
+    runs-on: ubuntu-latest
+    needs: deploy-development
+    environment:
+      name: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Staging promotion
+        run: |
+          echo "Promoting previously validated artifact to staging"
+          echo "Require reviewers in the staging environment settings for approval gating."
+
+  promote-production:
+    name: Promote to production
+    runs-on: ubuntu-latest
+    needs: promote-staging
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Production promotion
+        run: |
+          echo "Promoting approved artifact to production"
+          echo "Require reviewers in the production environment settings to block unapproved releases."
