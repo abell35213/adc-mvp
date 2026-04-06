@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const UPLOAD_QUEUE_STORAGE_KEY = 'driver_upload_queue_v1';
 const UPLOAD_QUEUE_VERSION = 1;
@@ -97,7 +97,7 @@ function normalizeState(candidate: Partial<UploadQueueState>): UploadQueueState 
 }
 
 async function persistState(nextState: UploadQueueState): Promise<void> {
-  await SecureStore.setItemAsync(UPLOAD_QUEUE_STORAGE_KEY, JSON.stringify(nextState));
+  await AsyncStorage.setItem(UPLOAD_QUEUE_STORAGE_KEY, JSON.stringify(nextState));
 }
 
 function emit(nextState: UploadQueueState): void {
@@ -132,7 +132,7 @@ export async function hydrateUploadQueueStore(): Promise<void> {
 
   hydrateInFlight = (async () => {
     try {
-      const raw = await SecureStore.getItemAsync(UPLOAD_QUEUE_STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(UPLOAD_QUEUE_STORAGE_KEY);
       if (!raw) {
         queueState = { ...EMPTY_STATE, updatedAt: makeNowIso() };
       } else {

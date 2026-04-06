@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Divider, HelperText, Surface, Text } from 'react-native-paper';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getDriverActiveIncident } from '../api';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
@@ -151,7 +151,7 @@ export default function MediaCaptureScreen({ navigation }: Props) {
         queue: nextQueue,
       };
 
-      await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(payload));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     },
     [],
   );
@@ -161,7 +161,7 @@ export default function MediaCaptureScreen({ navigation }: Props) {
       try {
         const [activeIncident, storedRaw] = await Promise.all([
           getDriverActiveIncident(),
-          SecureStore.getItemAsync(STORAGE_KEY),
+          AsyncStorage.getItem(STORAGE_KEY),
         ]);
 
         const nextIncidentId = activeIncident?.incident_id ?? null;
