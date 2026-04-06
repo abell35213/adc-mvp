@@ -112,6 +112,8 @@ def test_issue_upload_url_creates_pending_artifact(
     artifact = db_session.query(Artifact).filter(Artifact.incident_id == incident.incident_id).one()
     assert artifact.status == "pending"
     assert artifact.artifact_type == "driver_document"
+    assert artifact.capture_window_end_utc is not None
+    assert artifact.uploaded_at_utc is None
 
 
 def test_issue_upload_url_rejects_disallowed_content_type(client, seeded_driver_and_incident):
@@ -161,6 +163,8 @@ def test_complete_upload_marks_artifact_captured(client, db_session, seeded_driv
     db_session.refresh(artifact)
     assert artifact.status == "captured"
     assert artifact.byte_size == 2048
+    assert artifact.capture_window_end_utc is None
+    assert artifact.uploaded_at_utc is not None
 
 
 def test_list_artifacts_enforces_driver_ownership(client, db_session, seeded_driver_and_incident):
@@ -185,4 +189,43 @@ def test_list_artifacts_enforces_driver_ownership(client, db_session, seeded_dri
         headers=_driver_auth_headers(other_driver.driver_id),
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
+
+
+def test_complete_rejects_cross_incident_artifact_id(
+    client,
+    db_session,
+    seeded_driver_and_incident,
+):
+    driver, incident = seeded_driver_and_incident
+    other_incident = Incident(
+        org_id=incident.org_id,
+        adc_driver_id=str(driver.driver_id),
+        adc_vehicle_id="veh-other",
+        status="open",
+    )
+    db_session.add(other_incident)
+    db_session.commit()
+    db_session.refresh(other_incident)
+
+    foreign_artifact = Artifact(
+        org_id=incident.org_id,
+        incident_id=other_incident.incident_id,
+        artifact_type="driver_photo",
+        status="pending",
+    )
+    db_session.add(foreign_artifact)
+    db_session.commit()
+    db_session.refresh(foreign_artifact)
+
+    response = client.post(
+        f"/driver/incidents/{incident.incident_id}/artifacts/complete",
+        headers=_driver_auth_headers(driver.driver_id),
+        json={
+            "artifact_id": str(foreign_artifact.artifact_id),
+            "byte_size": 2048,
+            "sha256": "b" * 64,
+        },
+    )
+
+    assert response.status_code == 404

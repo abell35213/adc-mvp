@@ -34,20 +34,20 @@ def _validate_incident_driver_ownership(
     incident_id: uuid.UUID,
     driver: Driver,
 ) -> Incident:
-    incident = db.query(Incident).filter(Incident.incident_id == incident_id).first()
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.incident_id == incident_id,
+            Incident.org_id == driver.org_id,
+            Incident.adc_driver_id == str(driver.driver_id),
+        )
+        .first()
+    )
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
-
-    if incident.org_id != driver.org_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-
-    if incident.adc_driver_id is not None and incident.adc_driver_id != str(
-        driver.driver_id
-    ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     return incident
 
@@ -100,6 +100,7 @@ def issue_driver_artifact_upload_url(
         incident_id=incident.incident_id,
         artifact_type=normalized_artifact_type,
         status="pending",
+        capture_window_end_utc=datetime.now(timezone.utc),
     )
     ext = _file_extension(file_name)
     artifact.s3_bucket = settings.S3_ARTIFACTS_BUCKET
@@ -135,13 +136,18 @@ def complete_driver_artifact_upload(
     byte_size: int,
     sha256: str | None,
 ) -> Artifact:
-    _validate_incident_driver_ownership(db, incident_id=incident_id, driver=driver)
+    incident = _validate_incident_driver_ownership(
+        db,
+        incident_id=incident_id,
+        driver=driver,
+    )
 
     artifact = (
         db.query(Artifact)
         .filter(
             Artifact.artifact_id == artifact_id,
             Artifact.incident_id == incident_id,
+            Artifact.org_id == incident.org_id,
         )
         .first()
     )
@@ -154,7 +160,7 @@ def complete_driver_artifact_upload(
     artifact.status = "captured"
     artifact.byte_size = byte_size
     artifact.sha256 = sha256
-    artifact.capture_window_end_utc = datetime.now(timezone.utc)
+    artifact.uploaded_at_utc = datetime.now(timezone.utc)
     db.commit()
     db.refresh(artifact)
     return artifact

@@ -618,6 +618,8 @@ class TestDriverInstructionAck:
         assert events[0].payload["instruction_set_id"] == str(
             instruction_set.instruction_set_id
         )
+        assert events[0].payload["acknowledged_at_utc"] is not None
+        assert events[0].occurred_at_utc is not None
 
 
 class TestDriverTimelineEvents:
@@ -656,6 +658,37 @@ class TestDriverTimelineEvents:
         assert event.actor_id == str(test_driver.driver_id)
         assert event.occurred_at_utc is not None
         assert event.payload["source"] == "driver-app"
+
+    def test_timeline_event_rejects_incident_owned_by_other_driver(
+        self, client, db_session, test_org, driver_headers
+    ):
+        other_driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15550009999",
+            display_name="Different Driver",
+        )
+        db_session.add(other_driver)
+        db_session.commit()
+        db_session.refresh(other_driver)
+
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-888",
+            adc_driver_id=str(other_driver.driver_id),
+            status="open",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        resp = client.post(
+            f"/driver/incidents/{incident.incident_id}/timeline-events",
+            json={
+                "event_name": "driver_safety_gate_viewed",
+                "payload": {"source": "driver-app"},
+            },
+            headers=driver_headers,
+        )
+        assert resp.status_code == 404
 
 
 class TestDriverActiveIncidentAndStatus:
@@ -738,6 +771,37 @@ class TestDriverActiveIncidentAndStatus:
         assert data["protocol_started_at_utc"] is not None
         assert data["evidence_requested_at_utc"] is not None
         assert data["last_evidence_update_utc"] is not None
+
+    def test_status_rejects_incident_owned_by_other_driver(
+        self,
+        client,
+        db_session,
+        test_org,
+        driver_headers,
+    ):
+        other_driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15550008888",
+            display_name="Other Driver",
+        )
+        db_session.add(other_driver)
+        db_session.commit()
+        db_session.refresh(other_driver)
+
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-100",
+            adc_driver_id=str(other_driver.driver_id),
+            status="open",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        resp = client.get(
+            f"/driver/incidents/{incident.incident_id}/status",
+            headers=driver_headers,
+        )
+        assert resp.status_code == 404
 
 
 
