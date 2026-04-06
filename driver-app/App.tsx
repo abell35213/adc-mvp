@@ -23,6 +23,7 @@ import SafetyGateScreen from './src/screens/SafetyGateScreen';
 import SceneFactsScreen from './src/screens/SceneFactsScreen';
 import ThirdPartyInfoScreen from './src/screens/ThirdPartyInfoScreen';
 import VehicleConfirmScreen from './src/screens/VehicleConfirmScreen';
+import { startUploadWorker, stopUploadWorker } from './src/services/uploads';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -34,6 +35,12 @@ export default function App() {
     getStoredToken()
       .then((token) => setInitialRoute(token ? 'DriverHome' : 'PhoneEntry'))
       .catch(() => setInitialRoute('PhoneEntry'));
+
+    void startUploadWorker();
+
+    return () => {
+      stopUploadWorker();
+    };
   }, []);
 
   if (!initialRoute) {
