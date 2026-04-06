@@ -82,7 +82,7 @@ def _driver_auth_headers(driver_id: uuid.UUID) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_patch_scene_creates_incident_updated_event(
+def test_patch_scene_creates_driver_scene_saved_event(
     client, db_session, seeded_driver_and_incident
 ):
     driver, incident = seeded_driver_and_incident
@@ -99,7 +99,7 @@ def test_patch_scene_creates_incident_updated_event(
     event = (
         db_session.query(Event).filter(Event.incident_id == incident.incident_id).one()
     )
-    assert event.event_type == "incident_updated"
+    assert event.event_type == "driver_scene_facts_saved"
     assert event.payload["report_section"] == "scene"
     assert event.payload["report_value"]["weather"] == "rain"
 
@@ -178,4 +178,5 @@ def test_submit_driver_report_writes_submission_event(
         .first()
     )
     assert submission_event is not None
+    assert submission_event.event_type == "driver_report_submitted"
     assert submission_event.payload["driver_report_submitted"] is True

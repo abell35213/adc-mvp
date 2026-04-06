@@ -11,6 +11,11 @@ from app.db.models import Driver, Event, Incident
 from app.domain.system_event_types import SystemEventType
 
 REPORT_SECTIONS = ("scene", "parties", "narrative")
+SECTION_EVENT_TYPES = {
+    "scene": SystemEventType.DRIVER_SCENE_FACTS_SAVED.value,
+    "parties": SystemEventType.DRIVER_PARTIES_SAVED.value,
+    "narrative": SystemEventType.DRIVER_NARRATIVE_SAVED.value,
+}
 
 
 def _validate_incident_write_scope(
@@ -59,7 +64,7 @@ def patch_report_sections(
             Event(
                 org_id=incident.org_id,
                 incident_id=incident.incident_id,
-                event_type=SystemEventType.INCIDENT_UPDATED.value,
+                event_type=SECTION_EVENT_TYPES[section],
                 actor_type="driver_app",
                 actor_id=str(driver.driver_id),
                 payload=payload,
@@ -89,7 +94,7 @@ def submit_driver_report(
         Event(
             org_id=incident.org_id,
             incident_id=incident.incident_id,
-            event_type=SystemEventType.INCIDENT_UPDATED.value,
+            event_type=SystemEventType.DRIVER_REPORT_SUBMITTED.value,
             actor_type="driver_app",
             actor_id=str(driver.driver_id),
             payload={

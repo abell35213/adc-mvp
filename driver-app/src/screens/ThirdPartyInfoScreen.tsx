@@ -13,7 +13,6 @@ import {
 import { MediaPromptType, RootStackParamList } from '../navigation/types';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ThirdPartyInfo'>;
 
@@ -114,7 +113,6 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
         }
       }
 
-      emitTimelineAndAnalyticsEvent('driver_parties_saved');
     },
     [],
   );

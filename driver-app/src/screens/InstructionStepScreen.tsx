@@ -187,7 +187,6 @@ export default function InstructionStepScreen({ navigation }: Props) {
       const nextAcknowledgedStepIds = new Set(acknowledgedStepIds);
       nextAcknowledgedStepIds.add(currentStep.step_id);
       setAcknowledgedStepIds(nextAcknowledgedStepIds);
-      emitTimelineAndAnalyticsEvent('driver_instruction_step_acknowledged');
       await persistProgress(
         activeSet.instruction_set_id,
         currentStepIndex,

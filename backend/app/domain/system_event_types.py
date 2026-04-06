@@ -37,6 +37,17 @@ class SystemEventType(str, Enum):
     # ── Driver / Vehicle QR ────────────────────────────────────────
     DRIVER_VEHICLE_RESOLVED = "driver_vehicle_resolved"
     DRIVER_INSTRUCTION_ACKNOWLEDGED = "driver_instruction_acknowledged"
+    DRIVER_PROTOCOL_LAUNCH_CONFIRMED = "driver_protocol_launch_confirmed"
+    DRIVER_SAFETY_GATE_VIEWED = "driver_safety_gate_viewed"
+    DRIVER_SAFETY_GATE_ACKNOWLEDGED = "driver_safety_gate_acknowledged"
+    DRIVER_INSTRUCTION_STEP_VIEWED = "driver_instruction_step_viewed"
+    DRIVER_INSTRUCTION_STEP_ACKNOWLEDGED = "driver_instruction_step_acknowledged"
+    DRIVER_SCENE_FACTS_SAVED = "driver_scene_facts_saved"
+    DRIVER_PARTIES_SAVED = "driver_parties_saved"
+    DRIVER_MEDIA_UPLOADED = "driver_media_uploaded"
+    DRIVER_MEDIA_UPLOAD_FAILED = "driver_media_upload_failed"
+    DRIVER_NARRATIVE_SAVED = "driver_narrative_saved"
+    DRIVER_REPORT_SUBMITTED = "driver_report_submitted"
     VEHICLE_QR_ROTATED = "vehicle_qr_rotated"
 
     # ── Notifications ───────────────────────────────────────────────
