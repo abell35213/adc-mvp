@@ -1,4 +1,4 @@
-import { ReactNode, createContext, useContext, useMemo, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { INITIAL_PROTOCOL_CONTEXT } from '../types/protocol';
 import { transitionProtocol } from '../store/protocolStore';
@@ -8,12 +8,14 @@ import {
   VehicleResolutionMethod,
 } from '../types/protocol';
 import { ProtocolRouteName } from './protocolFlow';
+import { persistProtocolResumeState } from '../store/protocolResumeStore';
 
 type ProtocolFlowContextValue = {
   completedRoutes: Set<ProtocolRouteName>;
   workflowState: DriverProtocolState;
   protocolContext: ProtocolContext;
   startProtocol: () => void;
+  restoreProtocol: (routes: Iterable<ProtocolRouteName>) => void;
   completeRoute: (routeName: ProtocolRouteName) => void;
   transitionWorkflow: (toState: DriverProtocolState) => void;
   resolveVehicle: (payload: {
@@ -41,6 +43,12 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
   const [protocolContext, setProtocolContext] =
     useState<ProtocolContext>(INITIAL_PROTOCOL_CONTEXT);
 
+
+
+  useEffect(() => {
+    void persistProtocolResumeState(null, completedRoutes);
+  }, [completedRoutes]);
+
   const value = useMemo<ProtocolFlowContextValue>(
     () => ({
       completedRoutes,
@@ -53,6 +61,15 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
           ...INITIAL_PROTOCOL_CONTEXT,
           isAuthenticated: true,
         });
+      },
+      restoreProtocol: (routes) => {
+        setCompletedRoutes(new Set(routes));
+        setWorkflowState('authenticated');
+        setProtocolContext((previous) => ({
+          ...previous,
+          ...INITIAL_PROTOCOL_CONTEXT,
+          isAuthenticated: true,
+        }));
       },
       completeRoute: (routeName) => {
         setCompletedRoutes((previous) => {

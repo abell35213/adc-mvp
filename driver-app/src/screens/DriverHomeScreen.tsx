@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, HelperText, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -10,8 +10,13 @@ import {
   getDriverActiveIncident,
   getDriverMe,
 } from '../api';
+import { ProtocolRouteName, getFirstIncompleteRoute } from '../navigation/protocolFlow';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
+import {
+  clearProtocolLocalDraftsAndResumeState,
+  resolveProtocolResumeState,
+} from '../store/protocolResumeStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DriverHome'>;
 
@@ -19,7 +24,11 @@ export default function DriverHomeScreen({ navigation }: Props) {
   const [driver, setDriver] = useState<DriverMeResponse | null>(null);
   const [activeIncident, setActiveIncident] =
     useState<DriverActiveIncidentResponse | null>(null);
-  const { startProtocol } = useProtocolFlow();
+  const { restoreProtocol, resetProtocol, startProtocol } = useProtocolFlow();
+  const [resumeCompletedRoutes, setResumeCompletedRoutes] = useState<Set<ProtocolRouteName>>(
+    new Set(),
+  );
+  const [hasLocalDrafts, setHasLocalDrafts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -31,8 +40,14 @@ export default function DriverHomeScreen({ navigation }: Props) {
         getDriverMe(),
         getDriverActiveIncident(),
       ]);
+
+      const activeIncidentId = activeIncidentResponse?.incident_id?.trim() || null;
+      const resumeState = await resolveProtocolResumeState(activeIncidentId);
+
       setDriver(driverResponse);
       setActiveIncident(activeIncidentResponse);
+      setResumeCompletedRoutes(resumeState.completedRoutes);
+      setHasLocalDrafts(resumeState.hasLocalDrafts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load home data.');
     } finally {
@@ -48,30 +63,59 @@ export default function DriverHomeScreen({ navigation }: Props) {
 
   const vehicleLabel = driver?.vehicle?.display_label ?? 'Unassigned';
   const canResumeIncident = activeIncident?.incident_id != null;
-  const startNewIncidentProtocol = () => {
+
+  const startNewIncidentProtocol = useCallback(() => {
     startProtocol();
     navigation.navigate('IncidentConfirm');
-  };
+  }, [navigation, startProtocol]);
+
+  const getNextActionRoute = useCallback((): ProtocolRouteName => {
+    if (resumeCompletedRoutes.size > 0 || hasLocalDrafts) {
+      return getFirstIncompleteRoute(resumeCompletedRoutes);
+    }
+
+    return 'IncidentStatus';
+  }, [hasLocalDrafts, resumeCompletedRoutes]);
+
+  const resumeSavedProtocol = useCallback(() => {
+    const nextRoute = getNextActionRoute();
+    restoreProtocol(resumeCompletedRoutes);
+    navigation.navigate(nextRoute);
+  }, [getNextActionRoute, navigation, restoreProtocol, resumeCompletedRoutes]);
+
+  const discardSavedProtocol = useCallback(async () => {
+    await clearProtocolLocalDraftsAndResumeState();
+    resetProtocol();
+    setResumeCompletedRoutes(new Set());
+    setHasLocalDrafts(false);
+  }, [resetProtocol]);
+
+  const hasResumableState = useMemo(
+    () => canResumeIncident || hasLocalDrafts || resumeCompletedRoutes.size > 0,
+    [canResumeIncident, hasLocalDrafts, resumeCompletedRoutes.size],
+  );
 
   const handleStartIncidentProtocol = () => {
-    if (!canResumeIncident) {
+    if (!hasResumableState) {
       startNewIncidentProtocol();
       return;
     }
 
     Alert.alert(
-      'Active incident in progress',
-      'You have an active incident. Resume it to avoid duplicate submissions, or continue to start a new incident protocol.',
+      'Resume previous protocol?',
+      'We found an in-progress incident and/or local draft data. Resume where you left off or discard local draft data and start a new protocol.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Resume incident',
-          onPress: () => navigation.navigate('IncidentStatus'),
+          text: 'Resume',
+          onPress: resumeSavedProtocol,
         },
         {
-          text: 'Start new',
+          text: 'Discard and start new',
           style: 'destructive',
-          onPress: startNewIncidentProtocol,
+          onPress: () => {
+            void discardSavedProtocol().then(() => startNewIncidentProtocol());
+          },
         },
       ],
     );
@@ -118,7 +162,7 @@ export default function DriverHomeScreen({ navigation }: Props) {
             <Button
               mode="contained-tonal"
               style={styles.resumeButton}
-              onPress={() => navigation.navigate('IncidentStatus')}
+              onPress={resumeSavedProtocol}
             >
               Resume Incident
             </Button>
