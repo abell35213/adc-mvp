@@ -56,6 +56,12 @@ VehicleStrategy = Literal["qr", "last_assigned"]
 CaptureState = Literal[
     "failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"
 ]
+ArtifactUploadContentType = Literal[
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "video/mp4",
+]
 
 
 # ── Auth ────────────────────────────────────────────────────────────
@@ -223,6 +229,37 @@ class ResolveQrRequest(BaseModel):
 class ResolveQrResponse(BaseModel):
     adc_vehicle_id: VehicleId
     display_label: ShortText
+
+
+class DriverArtifactUploadUrlRequest(BaseModel):
+    artifact_type: ShortText
+    content_type: ArtifactUploadContentType
+    file_name: Annotated[str, StringConstraints(min_length=1, max_length=255)]
+
+
+class DriverArtifactUploadUrlResponse(BaseModel):
+    artifact_id: uuid.UUID
+    upload_url: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    s3_key: Annotated[str, StringConstraints(min_length=1, max_length=2048)]
+    expires_in_seconds: int = Field(ge=1, le=900)
+    content_type: ArtifactUploadContentType
+
+
+class DriverArtifactCompleteRequest(BaseModel):
+    artifact_id: uuid.UUID
+    byte_size: int = Field(gt=0)
+    sha256: Optional[Annotated[str, StringConstraints(min_length=16, max_length=128)]] = (
+        None
+    )
+
+
+class DriverArtifactCompleteResponse(BaseModel):
+    artifact_id: uuid.UUID
+    status: ArtifactStatus
+
+
+class DriverArtifactListResponse(BaseModel):
+    artifacts: list[ArtifactSummary] = Field(default_factory=list)
 
 
 # ── Admin driver protocol ─────────────────────────────────────────
