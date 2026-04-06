@@ -23,11 +23,28 @@ PhoneE164 = Annotated[
     ),
 ]
 OtpCode = Annotated[str, StringConstraints(pattern=r"^\d{4,8}$")]
-ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
-LongText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
-VehicleId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._:-]+$")]
+ShortText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+]
+LongText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
+]
+VehicleId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    ),
+]
 DriverId = VehicleId
-QrToken = Annotated[str, StringConstraints(strip_whitespace=True, min_length=8, max_length=256, pattern=r"^[A-Za-z0-9_-]+$")]
+QrToken = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=8, max_length=256, pattern=r"^[A-Za-z0-9_-]+$"
+    ),
+]
 
 UserRole = Literal["admin", "safety_manager"]
 InstructionScope = Literal["default", "company", "insurer"]
@@ -36,7 +53,9 @@ IncidentStatus = Literal["open", "evidence_capturing", "closed"]
 ArtifactStatus = Literal["pending", "captured", "unavailable"]
 ExportStatus = Literal["requested", "processing", "ready", "failed"]
 VehicleStrategy = Literal["qr", "last_assigned"]
-CaptureState = Literal["failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"]
+CaptureState = Literal[
+    "failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"
+]
 
 
 # ── Auth ────────────────────────────────────────────────────────────
@@ -244,7 +263,9 @@ class DriverInstructionStepResponse(BaseModel):
 class DriverInstructionSetResponse(DriverInstructionSetRequest):
     instruction_set_id: uuid.UUID
     require_ack: Optional[bool] = None
-    steps: list[DriverInstructionStep | DriverInstructionStepResponse] = Field(default_factory=list)
+    steps: list[DriverInstructionStep | DriverInstructionStepResponse] = Field(
+        default_factory=list
+    )
     model_config = ConfigDict(extra="ignore")
 
 
@@ -280,6 +301,32 @@ class DriverIncidentStatusResponse(BaseModel):
     safety_notified: bool
     capture_state: CaptureState
     last_evidence_update_utc: Optional[datetime] = None
+
+
+class DriverIncidentReportScenePatchRequest(BaseModel):
+    scene: dict = Field(default_factory=dict)
+
+
+class DriverIncidentReportPartiesPatchRequest(BaseModel):
+    parties: list[dict] = Field(default_factory=list)
+
+
+class DriverIncidentReportNarrativePatchRequest(BaseModel):
+    narrative: LongText
+
+
+class DriverIncidentReportPatchRequest(BaseModel):
+    scene: Optional[dict] = None
+    parties: Optional[list[dict]] = None
+    narrative: Optional[LongText] = None
+
+
+class DriverIncidentReportWriteResponse(BaseModel):
+    incident_id: uuid.UUID
+    updated_sections: list[Literal["scene", "parties", "narrative"]] = Field(
+        default_factory=list
+    )
+    submitted: bool = False
 
 
 # ── Admin vehicles / QR ────────────────────────────────────────────
