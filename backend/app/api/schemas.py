@@ -62,6 +62,19 @@ ArtifactUploadContentType = Literal[
     "image/png",
     "video/mp4",
 ]
+DriverTimelineEventName = Literal[
+    "driver_protocol_launch_confirmed",
+    "driver_safety_gate_viewed",
+    "driver_safety_gate_acknowledged",
+    "driver_instruction_step_viewed",
+    "driver_instruction_step_acknowledged",
+    "driver_scene_facts_saved",
+    "driver_parties_saved",
+    "driver_media_uploaded",
+    "driver_media_upload_failed",
+    "driver_narrative_saved",
+    "driver_report_submitted",
+]
 
 
 # ── Auth ────────────────────────────────────────────────────────────
@@ -338,6 +351,16 @@ class DriverInstructionAckRequest(BaseModel):
 
 class DriverInstructionAckResponse(BaseModel):
     acknowledged: bool
+
+
+class DriverTimelineEventWriteRequest(BaseModel):
+    event_name: DriverTimelineEventName
+    occurred_at_utc: Optional[datetime] = None
+    payload: dict = Field(default_factory=dict)
+
+
+class DriverTimelineEventWriteResponse(BaseModel):
+    acknowledged: bool = True
 
 
 class DriverIncidentStatusResponse(BaseModel):

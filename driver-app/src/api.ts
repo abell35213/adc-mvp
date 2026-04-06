@@ -127,6 +127,25 @@ export type DriverIncidentPartiesPayload = {
   completion_state: 'completed' | 'skipped';
 };
 
+export type DriverTimelineEventName =
+  | 'driver_protocol_launch_confirmed'
+  | 'driver_safety_gate_viewed'
+  | 'driver_safety_gate_acknowledged'
+  | 'driver_instruction_step_viewed'
+  | 'driver_instruction_step_acknowledged'
+  | 'driver_scene_facts_saved'
+  | 'driver_parties_saved'
+  | 'driver_media_uploaded'
+  | 'driver_media_upload_failed'
+  | 'driver_narrative_saved'
+  | 'driver_report_submitted';
+
+export type DriverTimelineEventPayload = {
+  event_name: DriverTimelineEventName;
+  occurred_at_utc?: string;
+  payload?: Record<string, unknown>;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit = {},
@@ -268,6 +287,19 @@ export const submitDriverIncidentReport = (incidentId: string) =>
     `/driver/incidents/${incidentId}/submit-driver-report`,
     {
       method: 'POST',
+    },
+    true,
+  );
+
+export const postDriverTimelineEvent = (
+  incidentId: string,
+  payload: DriverTimelineEventPayload,
+) =>
+  request(
+    `/driver/incidents/${incidentId}/timeline-events`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
     },
     true,
   );

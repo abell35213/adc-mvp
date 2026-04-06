@@ -12,7 +12,6 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SceneFacts'>;
 
@@ -163,7 +162,6 @@ export default function SceneFactsScreen({ navigation }: Props) {
         }
       }
 
-      emitTimelineAndAnalyticsEvent('driver_scene_facts_saved');
     },
     [],
   );

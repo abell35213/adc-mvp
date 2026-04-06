@@ -12,7 +12,6 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Narrative'>;
 
@@ -70,7 +69,6 @@ export default function NarrativeScreen({ navigation }: Props) {
         }
       }
 
-      emitTimelineAndAnalyticsEvent('driver_narrative_saved');
     },
     [],
   );

@@ -611,13 +611,51 @@ class TestDriverInstructionAck:
 
         events = (
             db_session.query(Event)
-            .filter(Event.event_type == "driver_instruction_acknowledged")
+            .filter(Event.event_type == "driver_instruction_step_acknowledged")
             .all()
         )
         assert len(events) == 1
         assert events[0].payload["instruction_set_id"] == str(
             instruction_set.instruction_set_id
         )
+
+
+class TestDriverTimelineEvents:
+    def test_timeline_event_is_persisted_with_actor_and_timestamp(
+        self, client, db_session, test_org, test_driver, driver_headers
+    ):
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-321",
+            adc_driver_id=str(test_driver.driver_id),
+            status="evidence_capturing",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        resp = client.post(
+            f"/driver/incidents/{incident.incident_id}/timeline-events",
+            json={
+                "event_name": "driver_safety_gate_viewed",
+                "payload": {"source": "driver-app"},
+            },
+            headers=driver_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["acknowledged"] is True
+
+        event = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == incident.incident_id,
+                Event.event_type == "driver_safety_gate_viewed",
+            )
+            .one()
+        )
+        assert event.actor_type == "driver_app"
+        assert event.actor_id == str(test_driver.driver_id)
+        assert event.occurred_at_utc is not None
+        assert event.payload["source"] == "driver-app"
 
 
 class TestDriverActiveIncidentAndStatus:

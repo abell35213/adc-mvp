@@ -13,7 +13,6 @@ import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { PROTOCOL_ROUTE_ORDER, ProtocolRouteName } from '../navigation/protocolFlow';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReviewSubmit'>;
 
@@ -155,7 +154,6 @@ export default function ReviewSubmitScreen({ navigation }: Props) {
       }
 
       await submitDriverIncidentReport(incidentId);
-      emitTimelineAndAnalyticsEvent('driver_report_submitted');
       completeRoute('ReviewSubmit');
       navigation.navigate('IncidentStatus');
     } catch (error) {

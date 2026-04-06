@@ -157,7 +157,13 @@ async function processUploadItem(item: UploadQueueItem): Promise<void> {
     });
 
     await markUploadSucceeded(item.id);
-    emitTimelineAndAnalyticsEvent('driver_media_uploaded');
+    emitTimelineAndAnalyticsEvent('driver_media_uploaded', {
+      incidentId: item.incidentId,
+      payload: {
+        artifact_type: item.artifactType,
+        queue_item_id: item.id,
+      },
+    });
     emitUploadAnalyticsEvent('driver_upload_succeeded', {
       queue_item_id: item.id,
       incident_id: item.incidentId,
@@ -184,7 +190,14 @@ async function processUploadItem(item: UploadQueueItem): Promise<void> {
     }
 
     await markUploadFailed(item.id, errorMessage);
-    emitTimelineAndAnalyticsEvent('driver_media_upload_failed');
+    emitTimelineAndAnalyticsEvent('driver_media_upload_failed', {
+      incidentId: item.incidentId,
+      payload: {
+        artifact_type: item.artifactType,
+        queue_item_id: item.id,
+        reason: errorMessage,
+      },
+    });
     emitUploadAnalyticsEvent('driver_upload_failed', {
       queue_item_id: item.id,
       incident_id: item.incidentId,

@@ -17,6 +17,8 @@ from app.api.schemas import (
     DriverIncidentStatusResponse,
     DriverInstructionAckRequest,
     DriverInstructionAckResponse,
+    DriverTimelineEventWriteRequest,
+    DriverTimelineEventWriteResponse,
     DriverInstructionSetResponse,
     DriverInstructionStepResponse,
     DriverMeResponse,
@@ -509,10 +511,19 @@ def acknowledge_instructions(
             detail="Instruction acknowledgement not required",
         )
 
+    active_incident = get_active_incident_for_driver(
+        db,
+        org_id=driver.org_id,
+        driver_id=driver.driver_id,
+    )
+    active_incident_id = (
+        active_incident.incident_id if active_incident is not None else None
+    )
+
     event = Event(
         org_id=driver.org_id,
-        incident_id=None,
-        event_type=SystemEventType.DRIVER_INSTRUCTION_ACKNOWLEDGED.value,
+        incident_id=active_incident_id,
+        event_type=SystemEventType.DRIVER_INSTRUCTION_STEP_ACKNOWLEDGED.value,
         actor_type="driver_app",
         actor_id=str(driver.driver_id),
         payload={"instruction_set_id": str(instruction_set.instruction_set_id)},
@@ -521,6 +532,40 @@ def acknowledge_instructions(
     db.commit()
 
     return DriverInstructionAckResponse(acknowledged=True)
+
+
+@router.post(
+    "/incidents/{incident_id}/timeline-events",
+    response_model=DriverTimelineEventWriteResponse,
+)
+def write_driver_timeline_event(
+    incident_id: uuid.UUID,
+    body: DriverTimelineEventWriteRequest,
+    driver: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    """Persist driver app timeline events with actor identity and audit timestamps."""
+    incident = get_incident(db, incident_id, org_ids=[driver.org_id])
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    event_kwargs = {
+        "org_id": incident.org_id,
+        "incident_id": incident.incident_id,
+        "event_type": body.event_name,
+        "actor_type": "driver_app",
+        "actor_id": str(driver.driver_id),
+        "payload": body.payload or {},
+    }
+    if body.occurred_at_utc is not None:
+        event_kwargs["occurred_at_utc"] = body.occurred_at_utc
+
+    event = Event(
+        **event_kwargs,
+    )
+    db.add(event)
+    db.commit()
+    return DriverTimelineEventWriteResponse()
 
 
 @router.get(
