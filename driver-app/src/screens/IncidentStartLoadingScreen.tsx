@@ -11,6 +11,7 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IncidentStartLoading'>;
 
@@ -112,10 +113,22 @@ export default function IncidentStartLoadingScreen({ navigation }: Props) {
       return;
     }
 
+    emitProtocolAnalyticsEvent('incident_initiated', {
+      workflowCorrelationId: protocolContext.workflowCorrelationId,
+      payload: {
+        vehicle_resolution_method: protocolContext.vehicleResolutionMethod,
+      },
+    });
     transitionWorkflow('incident_initiated');
     completeRoute('IncidentStartLoading');
     navigation.replace('InstructionStep');
-  }, [completeRoute, navigation, transitionWorkflow]);
+  }, [
+    completeRoute,
+    navigation,
+    protocolContext.vehicleResolutionMethod,
+    protocolContext.workflowCorrelationId,
+    transitionWorkflow,
+  ]);
 
   const beginIncidentInitiation = useCallback(async () => {
     if (!isMountedRef.current) {

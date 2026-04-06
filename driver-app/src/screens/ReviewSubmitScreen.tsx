@@ -13,6 +13,7 @@ import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { PROTOCOL_ROUTE_ORDER, ProtocolRouteName } from '../navigation/protocolFlow';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReviewSubmit'>;
 
@@ -70,7 +71,7 @@ function describeUploadStatus(incidentStatus: DriverIncidentStatusResponse | nul
 }
 
 export default function ReviewSubmitScreen({ navigation }: Props) {
-  const { completeRoute, completedRoutes } = useProtocolFlow();
+  const { completeRoute, completedRoutes, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('ReviewSubmit', navigation);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -154,6 +155,10 @@ export default function ReviewSubmitScreen({ navigation }: Props) {
       }
 
       await submitDriverIncidentReport(incidentId);
+      emitProtocolAnalyticsEvent('driver_report_submitted', {
+        incidentId,
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+      });
       completeRoute('ReviewSubmit');
       navigation.navigate('IncidentStatus');
     } catch (error) {
@@ -161,7 +166,12 @@ export default function ReviewSubmitScreen({ navigation }: Props) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [completeRoute, minimumSubmissionReady, navigation]);
+  }, [
+    completeRoute,
+    minimumSubmissionReady,
+    navigation,
+    protocolContext.workflowCorrelationId,
+  ]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

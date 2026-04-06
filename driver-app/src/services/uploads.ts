@@ -16,6 +16,7 @@ import {
   UploadQueueItem,
 } from '../store/uploadQueueStore';
 import {
+  emitProtocolAnalyticsEvent,
   emitTimelineAndAnalyticsEvent,
   emitUploadAnalyticsEvent,
 } from '../telemetry/protocolEvents';
@@ -169,6 +170,13 @@ async function processUploadItem(item: UploadQueueItem): Promise<void> {
       incident_id: item.incidentId,
       artifact_type: item.artifactType,
     });
+    emitProtocolAnalyticsEvent('artifact_upload_success', {
+      incidentId: item.incidentId,
+      payload: {
+        queue_item_id: item.id,
+        artifact_type: item.artifactType,
+      },
+    });
   } catch (error) {
     const errorMessage = getErrorMessage(error);
     const nextAttempt = item.attempts + 1;
@@ -204,6 +212,15 @@ async function processUploadItem(item: UploadQueueItem): Promise<void> {
       artifact_type: item.artifactType,
       attempt: nextAttempt,
       reason: errorMessage,
+    });
+    emitProtocolAnalyticsEvent('artifact_upload_failed', {
+      incidentId: item.incidentId,
+      payload: {
+        queue_item_id: item.id,
+        artifact_type: item.artifactType,
+        attempt: nextAttempt,
+        reason: errorMessage,
+      },
     });
   }
 }

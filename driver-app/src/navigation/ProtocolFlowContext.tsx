@@ -9,6 +9,7 @@ import {
 } from '../types/protocol';
 import { ProtocolRouteName } from './protocolFlow';
 import { persistProtocolResumeState } from '../store/protocolResumeStore';
+import { createWorkflowCorrelationId } from '../telemetry/correlation';
 
 type ProtocolFlowContextValue = {
   completedRoutes: Set<ProtocolRouteName>;
@@ -60,6 +61,7 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
         setProtocolContext({
           ...INITIAL_PROTOCOL_CONTEXT,
           isAuthenticated: true,
+          workflowCorrelationId: createWorkflowCorrelationId(),
         });
       },
       restoreProtocol: (routes) => {
@@ -69,6 +71,8 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
           ...previous,
           ...INITIAL_PROTOCOL_CONTEXT,
           isAuthenticated: true,
+          workflowCorrelationId:
+            previous.workflowCorrelationId ?? createWorkflowCorrelationId(),
         }));
       },
       completeRoute: (routeName) => {
@@ -139,6 +143,7 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
         setProtocolContext({
           ...INITIAL_PROTOCOL_CONTEXT,
           isAuthenticated: true,
+          workflowCorrelationId: null,
         });
       },
     }),

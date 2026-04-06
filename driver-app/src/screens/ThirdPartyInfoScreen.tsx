@@ -13,6 +13,7 @@ import {
 import { MediaPromptType, RootStackParamList } from '../navigation/types';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ThirdPartyInfo'>;
 
@@ -86,7 +87,7 @@ function hasPartyData(item: ThirdPartyDraftItem): boolean {
 }
 
 export default function ThirdPartyInfoScreen({ navigation }: Props) {
-  const { completeRoute } = useProtocolFlow();
+  const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('ThirdPartyInfo', navigation);
 
   const [incidentId, setIncidentId] = useState<string | null>(null);
@@ -225,12 +226,28 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
       };
       await persistDraft(nextDraft, incidentId);
       setDraft(nextDraft);
+      emitProtocolAnalyticsEvent('party_info_saved', {
+        incidentId,
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+        payload: {
+          completion_state: nextDraft.completionState,
+          entered_party_count: nonEmptyPartyCount,
+        },
+      });
       completeRoute('ThirdPartyInfo');
       navigation.navigate('MediaCapture', { destinationPromptType: 'general_scene' });
     } finally {
       setIsSaving(false);
     }
-  }, [completeRoute, draft, incidentId, navigation, persistDraft]);
+  }, [
+    completeRoute,
+    draft,
+    incidentId,
+    navigation,
+    nonEmptyPartyCount,
+    persistDraft,
+    protocolContext.workflowCorrelationId,
+  ]);
 
   const handleSkip = useCallback(async () => {
     setErrorText(null);
@@ -244,12 +261,28 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
 
       await persistDraft(nextDraft, incidentId);
       setDraft(nextDraft);
+      emitProtocolAnalyticsEvent('party_info_saved', {
+        incidentId,
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+        payload: {
+          completion_state: nextDraft.completionState,
+          entered_party_count: nonEmptyPartyCount,
+        },
+      });
       completeRoute('ThirdPartyInfo');
       navigation.navigate('MediaCapture', { destinationPromptType: 'general_scene' });
     } finally {
       setIsSaving(false);
     }
-  }, [completeRoute, draft, incidentId, navigation, persistDraft]);
+  }, [
+    completeRoute,
+    draft,
+    incidentId,
+    navigation,
+    nonEmptyPartyCount,
+    persistDraft,
+    protocolContext.workflowCorrelationId,
+  ]);
 
   const handleTakePhotoInstead = useCallback(
     async (promptType: MediaPromptType) => {
@@ -261,13 +294,30 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
           completionState: draft.completionState,
         };
         await persistDraft(nextDraft, incidentId);
+        emitProtocolAnalyticsEvent('party_info_saved', {
+          incidentId,
+          workflowCorrelationId: protocolContext.workflowCorrelationId,
+          payload: {
+            completion_state: nextDraft.completionState,
+            entered_party_count: nonEmptyPartyCount,
+            transitioned_to_media_prompt: promptType,
+          },
+        });
         completeRoute('ThirdPartyInfo');
         navigation.navigate('MediaCapture', { destinationPromptType: promptType });
       } finally {
         setIsSaving(false);
       }
     },
-    [completeRoute, draft, incidentId, navigation, persistDraft],
+    [
+      completeRoute,
+      draft,
+      incidentId,
+      navigation,
+      nonEmptyPartyCount,
+      persistDraft,
+      protocolContext.workflowCorrelationId,
+    ],
   );
 
   if (isInitializing) {
