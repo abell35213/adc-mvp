@@ -7,11 +7,11 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
+    DriverActiveIncidentResponse,
     DriverIncidentInitiateRequest,
     DriverIncidentInitiateResponse,
     DriverIncidentStatusResponse,
@@ -37,14 +37,18 @@ from app.db.models import (
     DriverInstructionStep as DriverInstructionStepModel,
     DriverVehicleAssignment,
     Event,
-    Incident,
     Org,
     OtpChallenge,
     VehicleQrToken,
 )
-from app.db.repo.incidents import create_incident, get_incident
+from app.db.repo.incidents import get_incident
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
+from app.services.incident_workflow_service import (
+    get_active_incident_for_driver,
+    incident_status_summary,
+    initiate_driver_incident,
+)
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.notification_tasks import notify_safety_manager
 
@@ -401,65 +405,57 @@ def _evidence_capture_state(events: list, incident_status: str) -> str:
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)
 def initiate_incident(
     body: DriverIncidentInitiateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
-    """Initiate a driver incident protocol and start evidence capture."""
+    """Initiate a driver incident protocol and start evidence capture idempotently."""
     adc_vehicle_id = _resolve_vehicle_for_driver(body, driver, db)
 
-    incident = (
-        db.query(Incident)
-        .filter(
-            Incident.org_id == driver.org_id,
-            Incident.adc_vehicle_id == adc_vehicle_id,
-            Incident.status != "closed",
-        )
-        .order_by(desc(Incident.created_at_utc))
-        .first()
-    )
-    if incident is None:
-        incident = create_incident(
-            db,
-            status="evidence_capturing",
-            adc_vehicle_id=adc_vehicle_id,
-            adc_driver_id=str(driver.driver_id),
-            org_id=driver.org_id,
-        )
-
-    event_payload = {
-        "vehicle_strategy": body.vehicle_strategy,
-        "adc_vehicle_id": adc_vehicle_id,
-        "device_location": body.device_location,
-        "device": body.device,
-    }
-    protocol_event = Event(
+    initiation = initiate_driver_incident(
+        db,
         org_id=driver.org_id,
-        incident_id=incident.incident_id,
-        event_type=SystemEventType.INCIDENT_PROTOCOL_INITIATED.value,
-        actor_type="driver_app",
-        actor_id=str(driver.driver_id),
-        payload=event_payload,
+        driver_id=driver.driver_id,
+        adc_vehicle_id=adc_vehicle_id,
+        vehicle_strategy=body.vehicle_strategy,
+        device_location=body.device_location,
+        device=body.device,
+        idempotency_key=idempotency_key,
     )
-    lockdown_event = Event(
-        org_id=driver.org_id,
-        incident_id=incident.incident_id,
-        event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED.value,
-        actor_type="driver_app",
-        actor_id=str(driver.driver_id),
-    )
-    db.add(protocol_event)
-    db.add(lockdown_event)
-    db.commit()
 
-    str_id = str(incident.incident_id)
-    capture_dashcam.delay(str_id, body.window_start, body.window_end)
-    capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
-    notify_safety_manager.delay(str_id)
+    if not initiation.protocol_already_started:
+        str_id = str(initiation.incident.incident_id)
+        capture_dashcam.delay(str_id, body.window_start, body.window_end)
+        capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
+        notify_safety_manager.delay(str_id)
 
     return DriverIncidentInitiateResponse(
-        incident_id=incident.incident_id,
+        incident_id=initiation.incident.incident_id,
         safety_notified=True,
-        capture_started=True,
+        capture_started=not initiation.protocol_already_started,
+    )
+
+
+@router.get("/incidents/active", response_model=DriverActiveIncidentResponse)
+def get_active_incident(
+    driver: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    """Return the driver's latest active incident."""
+    incident = get_active_incident_for_driver(
+        db,
+        org_id=driver.org_id,
+        driver_id=driver.driver_id,
+    )
+    if incident is None:
+        raise HTTPException(status_code=404, detail="No active incident")
+
+    return DriverActiveIncidentResponse(
+        incident_id=incident.incident_id,
+        status=incident.status,
+        adc_vehicle_id=incident.adc_vehicle_id,
+        adc_driver_id=incident.adc_driver_id,
+        created_at_utc=incident.created_at_utc,
     )
 
 
@@ -541,33 +537,19 @@ def driver_incident_status(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    events = db.query(Event).filter(Event.incident_id == incident_id).all()
-    safety_notified = any(
-        event.event_type == SystemEventType.INCIDENT_PROTOCOL_INITIATED.value
-        for event in events
-    )
-    evidence_event_types = {
-        SystemEventType.EVIDENCE_CAPTURE_REQUESTED.value,
-        SystemEventType.EVIDENCE_CAPTURE_ATTEMPTED.value,
-        SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED.value,
-        SystemEventType.EVIDENCE_CAPTURE_FAILED.value,
-        SystemEventType.ARTIFACT_RECORDED.value,
-        SystemEventType.ARTIFACT_HASHED.value,
-    }
-    evidence_events = [
-        e
-        for e in events
-        if e.event_type in evidence_event_types and e.occurred_at_utc is not None
-    ]
-    last_evidence_update = None
-    if evidence_events:
-        latest_event = max(evidence_events, key=lambda e: e.occurred_at_utc)
-        last_evidence_update = latest_event.occurred_at_utc.isoformat()
+    summary = incident_status_summary(db, incident_id=incident_id)
+    events = summary["events"]
+    safety_notified = summary["protocol_started_at_utc"] is not None
 
     return DriverIncidentStatusResponse(
         incident_id=incident.incident_id,
         status=incident.status,
         safety_notified=safety_notified,
         capture_state=_evidence_capture_state(events, incident.status),
-        last_evidence_update_utc=last_evidence_update,
+        adc_vehicle_id=incident.adc_vehicle_id,
+        adc_driver_id=incident.adc_driver_id,
+        created_at_utc=incident.created_at_utc,
+        protocol_started_at_utc=summary["protocol_started_at_utc"],
+        evidence_requested_at_utc=summary["evidence_requested_at_utc"],
+        last_evidence_update_utc=summary["last_evidence_update_utc"],
     )

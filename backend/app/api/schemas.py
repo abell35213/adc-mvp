@@ -324,6 +324,14 @@ class DriverIncidentInitiateResponse(BaseModel):
     capture_started: bool
 
 
+class DriverActiveIncidentResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: IncidentStatus
+    adc_vehicle_id: Optional[str] = None
+    adc_driver_id: Optional[str] = None
+    created_at_utc: datetime
+
+
 class DriverInstructionAckRequest(BaseModel):
     instruction_set_id: uuid.UUID
 
@@ -337,6 +345,11 @@ class DriverIncidentStatusResponse(BaseModel):
     status: IncidentStatus
     safety_notified: bool
     capture_state: CaptureState
+    adc_vehicle_id: Optional[str] = None
+    adc_driver_id: Optional[str] = None
+    created_at_utc: datetime
+    protocol_started_at_utc: Optional[datetime] = None
+    evidence_requested_at_utc: Optional[datetime] = None
     last_evidence_update_utc: Optional[datetime] = None
 
 
