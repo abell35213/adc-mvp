@@ -42,8 +42,8 @@ from app.db.models import (
     Org,
     OtpChallenge,
     VehicleQrToken,
+    Incident,
 )
-from app.db.repo.incidents import get_incident
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_workflow_service import (
@@ -404,6 +404,26 @@ def _evidence_capture_state(events: list, incident_status: str) -> str:
     return "pending"
 
 
+def _get_driver_incident(
+    db: Session,
+    *,
+    incident_id: uuid.UUID,
+    driver: Driver,
+) -> Incident:
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.incident_id == incident_id,
+            Incident.org_id == driver.org_id,
+            Incident.adc_driver_id == str(driver.driver_id),
+        )
+        .first()
+    )
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return incident
+
+
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)
 def initiate_incident(
     body: DriverIncidentInitiateRequest,
@@ -519,6 +539,7 @@ def acknowledge_instructions(
     active_incident_id = (
         active_incident.incident_id if active_incident is not None else None
     )
+    acknowledged_at_utc = datetime.now(timezone.utc)
 
     event = Event(
         org_id=driver.org_id,
@@ -526,7 +547,11 @@ def acknowledge_instructions(
         event_type=SystemEventType.DRIVER_INSTRUCTION_STEP_ACKNOWLEDGED.value,
         actor_type="driver_app",
         actor_id=str(driver.driver_id),
-        payload={"instruction_set_id": str(instruction_set.instruction_set_id)},
+        occurred_at_utc=acknowledged_at_utc,
+        payload={
+            "instruction_set_id": str(instruction_set.instruction_set_id),
+            "acknowledged_at_utc": acknowledged_at_utc.isoformat(),
+        },
     )
     db.add(event)
     db.commit()
@@ -545,9 +570,11 @@ def write_driver_timeline_event(
     db: Session = Depends(get_db),
 ):
     """Persist driver app timeline events with actor identity and audit timestamps."""
-    incident = get_incident(db, incident_id, org_ids=[driver.org_id])
-    if incident is None:
-        raise HTTPException(status_code=404, detail="Incident not found")
+    incident = _get_driver_incident(
+        db,
+        incident_id=incident_id,
+        driver=driver,
+    )
 
     event_kwargs = {
         "org_id": incident.org_id,
@@ -557,9 +584,6 @@ def write_driver_timeline_event(
         "actor_id": str(driver.driver_id),
         "payload": body.payload or {},
     }
-    if body.occurred_at_utc is not None:
-        event_kwargs["occurred_at_utc"] = body.occurred_at_utc
-
     event = Event(
         **event_kwargs,
     )
@@ -578,9 +602,11 @@ def driver_incident_status(
     db: Session = Depends(get_db),
 ):
     """Return status and evidence capture state for an incident."""
-    incident = get_incident(db, incident_id, org_ids=[driver.org_id])
-    if incident is None:
-        raise HTTPException(status_code=404, detail="Incident not found")
+    incident = _get_driver_incident(
+        db,
+        incident_id=incident_id,
+        driver=driver,
+    )
 
     summary = incident_status_summary(db, incident_id=incident_id)
     events = summary["events"]

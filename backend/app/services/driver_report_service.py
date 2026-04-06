@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -23,19 +24,19 @@ def _validate_incident_write_scope(
     incident_id: uuid.UUID,
     driver: Driver,
 ) -> Incident:
-    incident = db.query(Incident).filter(Incident.incident_id == incident_id).first()
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.incident_id == incident_id,
+            Incident.org_id == driver.org_id,
+            Incident.adc_driver_id == str(driver.driver_id),
+        )
+        .first()
+    )
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found"
         )
-
-    if incident.org_id != driver.org_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-
-    if incident.adc_driver_id is not None and incident.adc_driver_id != str(
-        driver.driver_id
-    ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     return incident
 
@@ -89,6 +90,7 @@ def submit_driver_report(
     driver: Driver,
 ) -> None:
     incident = _validate_incident_write_scope(db, incident_id, driver)
+    submitted_at_utc = datetime.now(timezone.utc)
 
     db.add(
         Event(
@@ -97,9 +99,11 @@ def submit_driver_report(
             event_type=SystemEventType.DRIVER_REPORT_SUBMITTED.value,
             actor_type="driver_app",
             actor_id=str(driver.driver_id),
+            occurred_at_utc=submitted_at_utc,
             payload={
                 "driver_report_submitted": True,
                 "submitted": True,
+                "submitted_at_utc": submitted_at_utc.isoformat(),
             },
         )
     )

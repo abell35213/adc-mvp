@@ -154,6 +154,7 @@ class Artifact(Base):
     s3_key = Column(Text, nullable=True)
     sha256 = Column(Text, nullable=True)
     byte_size = Column(BigInteger, nullable=True)
+    uploaded_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     unavailable_reason_code = Column(Text, nullable=True)
     unavailable_reason_detail = Column(Text, nullable=True)
     created_at_utc = Column(

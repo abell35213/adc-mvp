@@ -355,7 +355,6 @@ class DriverInstructionAckResponse(BaseModel):
 
 class DriverTimelineEventWriteRequest(BaseModel):
     event_name: DriverTimelineEventName
-    occurred_at_utc: Optional[datetime] = None
     payload: dict = Field(default_factory=dict)
 
 

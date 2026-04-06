@@ -124,7 +124,7 @@ def test_patch_report_rejects_driver_not_owner(
         json={"narrative": "I saw brake lights and slowed down."},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_patch_parties_rejects_cross_org_write(
@@ -152,7 +152,7 @@ def test_patch_parties_rejects_cross_org_write(
         json={"parties": [{"name": "Witness A"}]},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_submit_driver_report_writes_submission_event(
@@ -180,3 +180,5 @@ def test_submit_driver_report_writes_submission_event(
     assert submission_event is not None
     assert submission_event.event_type == "driver_report_submitted"
     assert submission_event.payload["driver_report_submitted"] is True
+    assert submission_event.payload["submitted_at_utc"] is not None
+    assert submission_event.occurred_at_utc is not None
