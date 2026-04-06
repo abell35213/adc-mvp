@@ -444,6 +444,95 @@ class TestDriverInitiate:
         )
         mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
+    @patch("app.api.routes_driver.notify_safety_manager")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    def test_driver_initiate_retry_returns_existing_without_duplicate_tasks(
+        self,
+        mock_dash,
+        mock_tele,
+        mock_notify_manager,
+        client,
+        db_session,
+        test_driver,
+        driver_headers,
+        test_assignment,
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
+
+        first = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers={**driver_headers, "Idempotency-Key": "idem-001"},
+        )
+        second = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers={**driver_headers, "Idempotency-Key": "idem-001"},
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["incident_id"] == second.json()["incident_id"]
+        assert second.json()["capture_started"] is False
+
+        incidents = db_session.query(Incident).all()
+        assert len(incidents) == 1
+
+        initiated_events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "incident_protocol_initiated")
+            .all()
+        )
+        assert len(initiated_events) == 1
+        assert initiated_events[0].payload["idempotency_key"] == "idem-001"
+
+        mock_dash.delay.assert_called_once()
+        mock_tele.delay.assert_called_once()
+        mock_notify_manager.delay.assert_called_once()
+
+    @patch("app.api.routes_driver.notify_safety_manager")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    def test_driver_initiate_reuses_existing_active_incident_for_driver(
+        self,
+        mock_dash,
+        mock_tele,
+        mock_notify_manager,
+        client,
+        db_session,
+        test_org,
+        test_driver,
+        driver_headers,
+        test_assignment,
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
+
+        existing = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-other",
+            adc_driver_id=str(test_driver.driver_id),
+            status="evidence_capturing",
+        )
+        db_session.add(existing)
+        db_session.commit()
+
+        resp = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers=driver_headers,
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["incident_id"] == str(existing.incident_id)
+        assert db_session.query(Incident).count() == 1
+
+
+
 
 # ── GET /driver/instructions/active ─────────────────────────────────
 
@@ -529,6 +618,89 @@ class TestDriverInstructionAck:
         assert events[0].payload["instruction_set_id"] == str(
             instruction_set.instruction_set_id
         )
+
+
+class TestDriverActiveIncidentAndStatus:
+    def test_get_active_incident_returns_latest_for_driver(
+        self,
+        client,
+        db_session,
+        test_org,
+        test_driver,
+        driver_headers,
+    ):
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-321",
+            adc_driver_id=str(test_driver.driver_id),
+            status="evidence_capturing",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        resp = client.get("/driver/incidents/active", headers=driver_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["incident_id"] == str(incident.incident_id)
+        assert data["adc_vehicle_id"] == "veh-321"
+
+    def test_get_active_incident_returns_404_when_missing(
+        self, client, test_driver, driver_headers
+    ):
+        resp = client.get("/driver/incidents/active", headers=driver_headers)
+        assert resp.status_code == 404
+
+    def test_status_payload_contains_complete_timestamps(
+        self,
+        client,
+        db_session,
+        test_org,
+        test_driver,
+        driver_headers,
+    ):
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-555",
+            adc_driver_id=str(test_driver.driver_id),
+            status="evidence_capturing",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        db_session.add(
+            Event(
+                org_id=test_org.id,
+                incident_id=incident.incident_id,
+                event_type="incident_protocol_initiated",
+                actor_type="driver_app",
+                actor_id=str(test_driver.driver_id),
+            )
+        )
+        db_session.add(
+            Event(
+                org_id=test_org.id,
+                incident_id=incident.incident_id,
+                event_type="evidence_capture_requested",
+                actor_type="system",
+                actor_id="worker",
+            )
+        )
+        db_session.commit()
+
+        resp = client.get(
+            f"/driver/incidents/{incident.incident_id}/status",
+            headers=driver_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["incident_id"] == str(incident.incident_id)
+        assert data["adc_vehicle_id"] == "veh-555"
+        assert data["adc_driver_id"] == str(test_driver.driver_id)
+        assert data["created_at_utc"] is not None
+        assert data["protocol_started_at_utc"] is not None
+        assert data["evidence_requested_at_utc"] is not None
+        assert data["last_evidence_update_utc"] is not None
+
 
 
 # ── GET /admin/vehicles/{vehicle_id}/qr ─────────────────────────────

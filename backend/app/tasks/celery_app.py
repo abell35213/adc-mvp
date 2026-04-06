@@ -3,7 +3,7 @@
 import logging
 
 from celery import Celery
-from celery.signals import task_failure
+from celery.signals import task_failure, task_prerun
 
 from app.core.config import settings
 from app.core.logging import clear_log_context, set_log_context, set_request_id
