@@ -6,7 +6,10 @@ import { Button, Text } from 'react-native-paper';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
+import {
+  emitProtocolAnalyticsEvent,
+  emitTimelineAndAnalyticsEvent,
+} from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SafetyGate'>;
 
@@ -20,6 +23,7 @@ export default function SafetyGateScreen({ navigation }: Props) {
     acknowledgeSafetyGate,
     recordEmergencyCallTap,
     recordSafetyManagerCallTap,
+    protocolContext,
   } = useProtocolFlow();
 
   useProtocolRouteGuard('SafetyGate', navigation);
@@ -69,6 +73,9 @@ export default function SafetyGateScreen({ navigation }: Props) {
         mode="contained"
         onPress={() => {
           acknowledgeSafetyGate();
+          emitProtocolAnalyticsEvent('safety_gate_acknowledged', {
+            workflowCorrelationId: protocolContext.workflowCorrelationId,
+          });
           emitTimelineAndAnalyticsEvent('driver_safety_gate_acknowledged');
           completeRoute('SafetyGate');
           navigation.navigate('IncidentStartLoading');

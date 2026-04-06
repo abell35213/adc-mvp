@@ -12,6 +12,7 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SceneFacts'>;
 
@@ -134,7 +135,7 @@ function YesNoQuestion({
 }
 
 export default function SceneFactsScreen({ navigation }: Props) {
-  const { completeRoute } = useProtocolFlow();
+  const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('SceneFacts', navigation);
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -244,12 +245,25 @@ export default function SceneFactsScreen({ navigation }: Props) {
 
     try {
       await persistDraft(draft, incidentId);
+      emitProtocolAnalyticsEvent('scene_saved', {
+        incidentId,
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+      });
       completeRoute('SceneFacts');
       navigation.navigate('ThirdPartyInfo');
     } finally {
       setIsSaving(false);
     }
-  }, [completeRoute, draft, handleStepChange, incidentId, navigation, persistDraft, stepIndex]);
+  }, [
+    completeRoute,
+    draft,
+    handleStepChange,
+    incidentId,
+    navigation,
+    persistDraft,
+    protocolContext.workflowCorrelationId,
+    stepIndex,
+  ]);
 
   const handleBack = useCallback(async () => {
     if (stepIndex > 0) {

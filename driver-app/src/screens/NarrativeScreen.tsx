@@ -12,6 +12,7 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Narrative'>;
 
@@ -42,7 +43,7 @@ function buildNarrativePayload(draft: NarrativeDraft): DriverNarrativePayload {
 }
 
 export default function NarrativeScreen({ navigation }: Props) {
-  const { completeRoute } = useProtocolFlow();
+  const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('Narrative', navigation);
 
   const [incidentId, setIncidentId] = useState<string | null>(null);
@@ -146,12 +147,23 @@ export default function NarrativeScreen({ navigation }: Props) {
 
       await persistDraft(nextDraft, incidentId);
       setDraft(nextDraft);
+      emitProtocolAnalyticsEvent('narrative_saved', {
+        incidentId,
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+      });
       completeRoute('Narrative');
       navigation.navigate('ReviewSubmit');
     } finally {
       setIsSaving(false);
     }
-  }, [completeRoute, draft.narrativeText, incidentId, navigation, persistDraft]);
+  }, [
+    completeRoute,
+    draft.narrativeText,
+    incidentId,
+    navigation,
+    persistDraft,
+    protocolContext.workflowCorrelationId,
+  ]);
 
   if (isInitializing) {
     return (

@@ -28,6 +28,7 @@ export type VehicleResolutionMethod = 'assigned_vehicle' | 'qr_scan';
 
 export type ProtocolContext = {
   isAuthenticated: boolean;
+  workflowCorrelationId: string | null;
   vehicleResolved: boolean;
   vehicleResolutionMethod: VehicleResolutionMethod | null;
   vehicleId: string | null;
@@ -53,6 +54,7 @@ export const PROTOCOL_PERSISTENCE_VERSION = 1 as const;
 
 export const INITIAL_PROTOCOL_CONTEXT: ProtocolContext = {
   isAuthenticated: false,
+  workflowCorrelationId: null,
   vehicleResolved: false,
   vehicleResolutionMethod: null,
   vehicleId: null,

@@ -25,6 +25,24 @@ export type DriverUploadAnalyticsEventName =
   | 'driver_upload_succeeded'
   | 'driver_upload_failed';
 
+export type ProtocolAnalyticsEventName =
+  | 'protocol_start_tapped'
+  | 'vehicle_confirmed'
+  | 'qr_scan_started'
+  | 'qr_scan_success'
+  | 'qr_scan_failed'
+  | 'safety_gate_acknowledged'
+  | 'incident_initiated'
+  | 'instruction_acknowledged'
+  | 'scene_saved'
+  | 'party_info_saved'
+  | 'artifact_capture_started'
+  | 'artifact_upload_success'
+  | 'artifact_upload_failed'
+  | 'narrative_saved'
+  | 'driver_report_submitted'
+  | 'protocol_resumed';
+
 const PERSISTED_TIMELINE_EVENT_NAMES: Set<DriverTimelineEventName> = new Set([
   'driver_protocol_launch_confirmed',
   'driver_safety_gate_viewed',
@@ -45,31 +63,50 @@ function isPersistedTimelineEventName(
   return PERSISTED_TIMELINE_EVENT_NAMES.has(eventName as DriverTimelineEventName);
 }
 
+async function resolveIncidentCorrelationId(explicitIncidentId?: string | null) {
+  const trimmedIncidentId = explicitIncidentId?.trim();
+  return trimmedIncidentId || (await getDriverActiveIncident())?.incident_id?.trim() || null;
+}
+
+function createCorrelatedPayload(
+  payload: Record<string, unknown> | undefined,
+  correlations: {
+    incidentCorrelationId: string | null;
+    workflowCorrelationId?: string | null;
+  },
+): Record<string, unknown> {
+  return {
+    ...(payload ?? {}),
+    incident_correlation_id: correlations.incidentCorrelationId,
+    workflow_correlation_id: correlations.workflowCorrelationId ?? null,
+  };
+}
+
 export function emitTimelineAndAnalyticsEvent(
   eventName: DriverProtocolEventName,
   options?: {
     incidentId?: string | null;
+    workflowCorrelationId?: string | null;
     payload?: Record<string, unknown>;
   },
 ): void {
   console.info('[driver-protocol-event]', eventName);
-  if (!isPersistedTimelineEventName(eventName)) {
-    return;
-  }
-
   void (async () => {
     try {
-      const explicitIncidentId = options?.incidentId?.trim();
-      const resolvedIncidentId =
-        explicitIncidentId || (await getDriverActiveIncident())?.incident_id?.trim();
-      if (!resolvedIncidentId) {
+      const resolvedIncidentId = await resolveIncidentCorrelationId(options?.incidentId);
+      const correlatedPayload = createCorrelatedPayload(options?.payload, {
+        incidentCorrelationId: resolvedIncidentId,
+        workflowCorrelationId: options?.workflowCorrelationId,
+      });
+
+      if (!isPersistedTimelineEventName(eventName) || !resolvedIncidentId) {
         return;
       }
 
       await postDriverTimelineEvent(resolvedIncidentId, {
         event_name: eventName,
         occurred_at_utc: new Date().toISOString(),
-        payload: options?.payload ?? {},
+        payload: correlatedPayload,
       });
     } catch {
       // Non-blocking telemetry write.
@@ -82,4 +119,26 @@ export function emitUploadAnalyticsEvent(
   payload: Record<string, unknown>,
 ): void {
   console.info('[driver-upload-analytics-event]', eventName, payload);
+}
+
+export function emitProtocolAnalyticsEvent(
+  eventName: ProtocolAnalyticsEventName,
+  options?: {
+    incidentId?: string | null;
+    workflowCorrelationId?: string | null;
+    payload?: Record<string, unknown>;
+  },
+): void {
+  void (async () => {
+    try {
+      const resolvedIncidentId = await resolveIncidentCorrelationId(options?.incidentId);
+      const correlatedPayload = createCorrelatedPayload(options?.payload, {
+        incidentCorrelationId: resolvedIncidentId,
+        workflowCorrelationId: options?.workflowCorrelationId,
+      });
+      console.info('[driver-protocol-analytics-event]', eventName, correlatedPayload);
+    } catch {
+      // Non-blocking analytics emission.
+    }
+  })();
 }

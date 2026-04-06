@@ -9,6 +9,7 @@ import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
 import { resolveVehicleQr } from '../services/incidents';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'VehicleConfirm'>;
 
@@ -81,6 +82,12 @@ export default function VehicleConfirmScreen({ navigation }: Props) {
     setIsResolvingQr(true);
     setQrStatus('idle');
     setQrMessage(null);
+    emitProtocolAnalyticsEvent('qr_scan_started', {
+      workflowCorrelationId: protocolContext.workflowCorrelationId,
+      payload: {
+        source: 'vehicle_confirm_screen',
+      },
+    });
     try {
       const response = await resolveVehicleQr(token);
       resolveVehicle({
@@ -88,10 +95,23 @@ export default function VehicleConfirmScreen({ navigation }: Props) {
         method: 'qr_scan',
         qrToken: token,
       });
+      emitProtocolAnalyticsEvent('qr_scan_success', {
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+        payload: {
+          vehicle_id: response.adc_vehicle_id,
+        },
+      });
       setQrStatus('idle');
       setQrMessage(`QR resolved ${response.display_label}.`);
     } catch (error) {
       const isInvalid = error instanceof ApiRequestError && error.status === 400;
+      emitProtocolAnalyticsEvent('qr_scan_failed', {
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+        payload: {
+          reason: error instanceof Error ? error.message : 'Unable to resolve vehicle QR token.',
+          invalid_token: isInvalid,
+        },
+      });
       setQrStatus(isInvalid ? 'invalid' : 'failed');
       setQrMessage(
         error instanceof Error ? error.message : 'Unable to resolve vehicle QR token.',
@@ -107,6 +127,13 @@ export default function VehicleConfirmScreen({ navigation }: Props) {
     }
 
     completeRoute('VehicleConfirm');
+    emitProtocolAnalyticsEvent('vehicle_confirmed', {
+      workflowCorrelationId: protocolContext.workflowCorrelationId,
+      payload: {
+        vehicle_resolution_method: protocolContext.vehicleResolutionMethod,
+        vehicle_id: protocolContext.vehicleId,
+      },
+    });
     navigation.navigate('SafetyGate');
   };
 

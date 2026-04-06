@@ -12,7 +12,10 @@ import {
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
-import { emitTimelineAndAnalyticsEvent } from '../telemetry/protocolEvents';
+import {
+  emitProtocolAnalyticsEvent,
+  emitTimelineAndAnalyticsEvent,
+} from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'InstructionStep'>;
 
@@ -36,7 +39,7 @@ function normalizeStepOrder(steps: DriverInstructionStepResponse[]) {
 }
 
 export default function InstructionStepScreen({ navigation }: Props) {
-  const { completeRoute } = useProtocolFlow();
+  const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('InstructionStep', navigation);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -184,6 +187,13 @@ export default function InstructionStepScreen({ navigation }: Props) {
     setLoadError(null);
     try {
       await acknowledgeDriverInstructions(activeSet.instruction_set_id);
+      emitProtocolAnalyticsEvent('instruction_acknowledged', {
+        workflowCorrelationId: protocolContext.workflowCorrelationId,
+        payload: {
+          instruction_set_id: activeSet.instruction_set_id,
+          instruction_step_id: currentStep.step_id,
+        },
+      });
       const nextAcknowledgedStepIds = new Set(acknowledgedStepIds);
       nextAcknowledgedStepIds.add(currentStep.step_id);
       setAcknowledgedStepIds(nextAcknowledgedStepIds);
@@ -207,6 +217,7 @@ export default function InstructionStepScreen({ navigation }: Props) {
     currentStepIndex,
     isCurrentStepAcknowledged,
     persistProgress,
+    protocolContext.workflowCorrelationId,
     viewedStepIds,
   ]);
 

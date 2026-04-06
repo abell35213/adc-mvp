@@ -17,6 +17,7 @@ import {
   clearProtocolLocalDraftsAndResumeState,
   resolveProtocolResumeState,
 } from '../store/protocolResumeStore';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DriverHome'>;
 
@@ -66,6 +67,7 @@ export default function DriverHomeScreen({ navigation }: Props) {
 
   const startNewIncidentProtocol = useCallback(() => {
     startProtocol();
+    emitProtocolAnalyticsEvent('protocol_start_tapped');
     navigation.navigate('IncidentConfirm');
   }, [navigation, startProtocol]);
 
@@ -79,9 +81,21 @@ export default function DriverHomeScreen({ navigation }: Props) {
 
   const resumeSavedProtocol = useCallback(() => {
     const nextRoute = getNextActionRoute();
+    emitProtocolAnalyticsEvent('protocol_resumed', {
+      incidentId: activeIncident?.incident_id ?? null,
+      payload: {
+        resume_route: nextRoute,
+      },
+    });
     restoreProtocol(resumeCompletedRoutes);
     navigation.navigate(nextRoute);
-  }, [getNextActionRoute, navigation, restoreProtocol, resumeCompletedRoutes]);
+  }, [
+    activeIncident?.incident_id,
+    getNextActionRoute,
+    navigation,
+    restoreProtocol,
+    resumeCompletedRoutes,
+  ]);
 
   const discardSavedProtocol = useCallback(async () => {
     await clearProtocolLocalDraftsAndResumeState();

@@ -8,6 +8,7 @@ import { getDriverActiveIncident } from '../api';
 import { useProtocolFlow } from '../navigation/ProtocolFlowContext';
 import { RootStackParamList } from '../navigation/types';
 import { useProtocolRouteGuard } from '../navigation/useProtocolRouteGuard';
+import { emitProtocolAnalyticsEvent } from '../telemetry/protocolEvents';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MediaCapture'>;
 
@@ -124,7 +125,7 @@ function mergePromptStatuses(
 }
 
 export default function MediaCaptureScreen({ navigation }: Props) {
-  const { completeRoute } = useProtocolFlow();
+  const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('MediaCapture', navigation);
 
   const [incidentId, setIncidentId] = useState<string | null>(null);
@@ -194,6 +195,17 @@ export default function MediaCaptureScreen({ navigation }: Props) {
       setErrorText(null);
 
       try {
+        if (source != null) {
+          emitProtocolAnalyticsEvent('artifact_capture_started', {
+            incidentId,
+            workflowCorrelationId: protocolContext.workflowCorrelationId,
+            payload: {
+              prompt_type: promptType,
+              capture_source: source,
+            },
+          });
+        }
+
         const gps = source ? await getOptionalGps() : null;
         const nextQueue =
           source == null
@@ -227,7 +239,7 @@ export default function MediaCaptureScreen({ navigation }: Props) {
         setIsSaving(false);
       }
     },
-    [incidentId, persistDraft, prompts, queue],
+    [incidentId, persistDraft, prompts, protocolContext.workflowCorrelationId, queue],
   );
 
   const handleContinue = useCallback(async () => {
