@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, HelperText, Text, TextInput } from 'react-native-paper';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   DriverIncidentPartiesPayload,
@@ -103,7 +103,7 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
         draft: nextDraft,
       };
 
-      await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(payload));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 
       const trimmedIncidentId = currentIncidentId?.trim();
       if (trimmedIncidentId) {
@@ -123,7 +123,7 @@ export default function ThirdPartyInfoScreen({ navigation }: Props) {
       try {
         const [activeIncident, storedRaw] = await Promise.all([
           getDriverActiveIncident(),
-          SecureStore.getItemAsync(STORAGE_KEY),
+          AsyncStorage.getItem(STORAGE_KEY),
         ]);
 
         const nextIncidentId = activeIncident?.incident_id ?? null;

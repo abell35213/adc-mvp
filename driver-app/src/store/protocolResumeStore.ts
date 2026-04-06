@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ProtocolRouteName, PROTOCOL_ROUTE_ORDER } from '../navigation/protocolFlow';
 
@@ -113,7 +113,7 @@ export async function persistProtocolResumeState(
     updatedAt: new Date().toISOString(),
   };
 
-  await SecureStore.setItemAsync(
+  await AsyncStorage.setItem(
     PROTOCOL_RESUME_STORAGE_KEY,
     JSON.stringify(payload),
   );
@@ -126,7 +126,7 @@ export async function resolveProtocolResumeState(
 
   const keyReads = await Promise.all(
     [PROTOCOL_RESUME_STORAGE_KEY, ...PROTOCOL_DRAFT_STORAGE_KEYS].map((key) =>
-      SecureStore.getItemAsync(key),
+      AsyncStorage.getItem(key),
     ),
   );
 
@@ -185,7 +185,7 @@ export async function resolveProtocolResumeState(
 export async function clearProtocolLocalDraftsAndResumeState(): Promise<void> {
   await Promise.all(
     [PROTOCOL_RESUME_STORAGE_KEY, ...PROTOCOL_DRAFT_STORAGE_KEYS].map((key) =>
-      SecureStore.deleteItemAsync(key),
+      AsyncStorage.removeItem(key),
     ),
   );
 }

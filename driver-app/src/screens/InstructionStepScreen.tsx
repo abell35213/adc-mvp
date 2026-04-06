@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   acknowledgeDriverInstructions,
@@ -63,7 +63,7 @@ export default function InstructionStepScreen({ navigation }: Props) {
         viewedStepIds: Array.from(nextViewedStepIds),
         acknowledgedStepIds: Array.from(nextAcknowledgedStepIds),
       };
-      await SecureStore.setItemAsync(
+      await AsyncStorage.setItem(
         INSTRUCTION_PROGRESS_STORAGE_KEY,
         JSON.stringify(payload),
       );
@@ -111,7 +111,7 @@ export default function InstructionStepScreen({ navigation }: Props) {
         steps: normalizedSteps,
       };
 
-      const storedRaw = await SecureStore.getItemAsync(
+      const storedRaw = await AsyncStorage.getItem(
         INSTRUCTION_PROGRESS_STORAGE_KEY,
       );
       let nextStepIndex = 0;
