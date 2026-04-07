@@ -28,6 +28,7 @@ interface ExportPanelProps {
   exports: ExportSummary[];
   onExport: () => void;
   onDownload: (exportId: string) => void;
+  onRetry: (exportId: string) => void;
   exporting?: boolean;
 }
 
@@ -66,6 +67,7 @@ export default function ExportPanel({
   exports: exportList,
   onExport,
   onDownload,
+  onRetry,
   exporting = false,
 }: ExportPanelProps) {
   const latestExport = exportList[0];
@@ -186,6 +188,14 @@ export default function ExportPanel({
                     className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                   >
                     Download ZIP
+                  </button>
+                )}
+                {ex.status === "failed" && (
+                  <button
+                    onClick={() => onRetry(ex.export_id)}
+                    className="rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Retry export
                   </button>
                 )}
               </div>

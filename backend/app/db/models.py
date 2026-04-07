@@ -191,6 +191,12 @@ class Export(Base):
         server_default="court_defense",
     )
     requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    retry_parent_export_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("exports.export_id"),
+        nullable=True,
+        index=True,
+    )
     options_json = Column(JSONB, nullable=False, default=dict)
     status = Column(
         Enum(*EXPORT_STATUSES, name="export_status"),

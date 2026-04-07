@@ -6,6 +6,7 @@ import {
   downloadExport,
   getExport,
   getExportStatus,
+  retryExport,
   type ExportProgressStage,
   type ExportStatus,
   type ExportSummary,
@@ -50,6 +51,10 @@ export default function IncidentDetailExportPanel({
   const [readyExport, setReadyExport] = useState<ExportSummary | null>(null);
 
   const recentExports = exports.slice(0, 5);
+  const latestFailedExportId =
+    activeExportId && (status === "failed" || status === "expired")
+      ? activeExportId
+      : recentExports.find((item) => item.status === "failed")?.export_id ?? null;
   const recentWarnings = useMemo(
     () =>
       recentExports.reduce((count, item) => {
@@ -126,6 +131,23 @@ export default function IncidentDetailExportPanel({
     window.open(result.url, "_blank");
   }
 
+  async function handleRetry(exportId: string) {
+    setSubmitting(true);
+    setErrorMessage("");
+    try {
+      const created = await retryExport(exportId);
+      setActiveExportId(created.export_id);
+      setStatus(created.status);
+      setStage("request_accepted");
+      setReadyExport(null);
+      await onExportsChanged();
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to retry export");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const isProcessing = status === "requested" || status === "queued" || status === "processing";
   const isFailed = status === "failed" || status === "expired";
 
@@ -169,9 +191,10 @@ export default function IncidentDetailExportPanel({
           <p>{errorMessage || "Export did not complete successfully."}</p>
           <button
             className="mt-2 rounded border border-red-300 px-3 py-1 text-xs"
-            onClick={() => setShowModal(true)}
+            onClick={() => latestFailedExportId && handleRetry(latestFailedExportId)}
+            disabled={!latestFailedExportId || submitting}
           >
-            Retry (placeholder)
+            Retry failed export
           </button>
         </div>
       )}
@@ -199,12 +222,13 @@ export default function IncidentDetailExportPanel({
                     Download
                   </button>
                 )}
-                {(item.status === "failed" || item.status === "expired") && (
+                {item.status === "failed" && (
                   <button
-                    onClick={() => setShowModal(true)}
+                    onClick={() => handleRetry(item.export_id)}
+                    disabled={submitting}
                     className="rounded border border-gray-300 px-3 py-1 text-xs"
                   >
-                    Retry placeholder
+                    Retry export
                   </button>
                 )}
               </div>

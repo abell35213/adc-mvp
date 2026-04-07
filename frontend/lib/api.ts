@@ -172,6 +172,7 @@ export interface ExportSummary {
   incident_id?: string | null;
   export_type: ExportType;
   requested_by_user_id?: string | null;
+  retry_parent_export_id?: string | null;
   options_json: Record<string, unknown>;
   status: ExportStatus;
   progress_stage: ExportProgressStage;
@@ -263,6 +264,11 @@ export interface CreateExportEnqueueResponse {
   created_at_utc: string;
 }
 
+export interface RetryExportRequest {
+  export_type?: ExportType;
+  options_json?: Record<string, unknown>;
+}
+
 export interface ExportStatusResponse {
   status: ExportStatus;
   progress_stage: ExportProgressStage;
@@ -306,6 +312,13 @@ export function requestExport(incidentId: string) {
 
 export function createExport(data: CreateExportRequest) {
   return request<CreateExportEnqueueResponse>("/exports/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function retryExport(exportId: string, data: RetryExportRequest = {}) {
+  return request<CreateExportEnqueueResponse>(`/exports/${exportId}/retry`, {
     method: "POST",
     body: JSON.stringify(data),
   });

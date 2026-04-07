@@ -50,6 +50,7 @@ def create_export(
     status: str = "requested",
     export_type: str = "court_defense",
     requested_by_user_id: Optional[_uuid.UUID] = None,
+    retry_parent_export_id: Optional[_uuid.UUID] = None,
     options_json: Optional[dict[str, Any]] = None,
     progress_stage: str = "request_accepted",
     s3_bucket: Optional[str] = None,
@@ -61,6 +62,7 @@ def create_export(
         incident_id=incident_id,
         export_type=export_type,
         requested_by_user_id=requested_by_user_id,
+        retry_parent_export_id=retry_parent_export_id,
         options_json=options_json or {},
         status=status,
         progress_stage=progress_stage,
@@ -71,6 +73,8 @@ def create_export(
     db.commit()
     db.refresh(export)
     return export
+
+
 
 
 def update_export(
