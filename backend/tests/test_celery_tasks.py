@@ -623,16 +623,22 @@ class TestBuildExport:
         zip_bytes = s3_inst.put_bytes.call_args[0][1]
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             names = set(zf.namelist())
+            package_root = next(name.split("/", 1)[0] for name in names if "/" in name)
             expected = {
-                "ADC_Court_Package/00_README.txt",
-                "ADC_Court_Package/02_Evidence_Inventory.csv",
-                "ADC_Court_Package/03_Chain_of_Custody.csv",
-                "ADC_Court_Package/integrity_appendix.csv",
-                "ADC_Court_Package/artifacts/eld_log/eld.json",
+                f"{package_root}/01_Incident_Summary.json",
+                f"{package_root}/02_Evidence_Inventory.csv",
+                f"{package_root}/03_Chain_of_Custody.csv",
+                f"{package_root}/04_Timeline.csv",
+                f"{package_root}/05_Driver_Statement.txt",
+                f"{package_root}/integrity/checksums.sha256",
+                f"{package_root}/metadata/export_manifest.json",
+                f"{package_root}/metadata/package_integrity.json",
+                f"{package_root}/eld/eld.json",
+                f"{package_root}/readme/00_README.txt",
             }
             assert expected.issubset(names)
-            readme = zf.read("ADC_Court_Package/00_README.txt").decode()
-            assert "Capture window (UTC" in readme
+            readme = zf.read(f"{package_root}/readme/00_README.txt").decode()
+            assert "Verification" in readme
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
