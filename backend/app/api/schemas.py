@@ -110,6 +110,11 @@ class LoginResponse(BaseModel):
     role: UserRole
 
 
+class RefreshResponse(BaseModel):
+    access_token: Annotated[str, StringConstraints(min_length=16)]
+    token_type: Literal["bearer"] = "bearer"
+
+
 class RegisterRequest(BaseModel):
     email: EmailStrLike
     password: Annotated[str, StringConstraints(min_length=4, max_length=256)]
@@ -397,11 +402,22 @@ class DriverOtpRequestResponse(BaseModel):
 class DriverOtpVerifyRequest(BaseModel):
     phone_e164: PhoneE164
     otp_code: OtpCode
+    device_descriptor: Optional[ShortText] = None
 
 
 class DriverOtpVerifyResponse(BaseModel):
     access_token: Annotated[str, StringConstraints(min_length=16)]
+    refresh_token: Annotated[str, StringConstraints(min_length=16)]
     token_type: Literal["bearer"] = "bearer"
+
+
+class DriverTokenRefreshRequest(BaseModel):
+    refresh_token: Annotated[str, StringConstraints(min_length=16)]
+    device_descriptor: Optional[ShortText] = None
+
+
+class DriverSessionRevokeRequest(BaseModel):
+    refresh_token: Annotated[str, StringConstraints(min_length=16)]
 
 
 class ResolveQrRequest(BaseModel):

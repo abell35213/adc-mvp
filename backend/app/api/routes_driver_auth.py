@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import time
+import uuid
 from datetime import datetime, timezone
 
 import redis
@@ -15,9 +16,11 @@ from app.api.schemas import (
     DriverOtpRequestResponse,
     DriverOtpVerifyRequest,
     DriverOtpVerifyResponse,
+    DriverTokenRefreshRequest,
+    DriverSessionRevokeRequest,
 )
 from app.core.config import settings
-from app.core.security import create_access_token
+from app.core.security import decode_access_token
 from app.db.repo.drivers import (
     create_otp_challenge,
     get_driver_by_phone,
@@ -26,6 +29,7 @@ from app.db.repo.drivers import (
     mark_otp_verified,
 )
 from app.db.session import get_db
+from app.security.session import create_session, revoke_session, rotate_refresh_token
 from app.services.phone_normalize import normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -116,16 +120,8 @@ def _enforce_rate_limit(bucket_name: str, phone_e164: str, max_calls: int):
         )
 
 
-# ── POST /driver/auth/request-otp ──────────────────────────────────
-
-
 @router.post("/request-otp", response_model=DriverOtpRequestResponse)
 def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
-    """Request an OTP code for driver phone verification.
-
-    Always returns ``{detail: "OTP sent"}`` even if the phone is not known,
-    to prevent phone-number enumeration.
-    """
     try:
         phone_e164 = normalize_phone(body.phone_e164)
     except ValueError:
@@ -135,7 +131,6 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
         )
     _enforce_rate_limit("request", phone_e164, _REQUEST_LIMIT)
 
-    # Try to start Twilio verification; fall back gracefully
     twilio_sid: str | None = None
     try:
         from app.services import twilio_verify
@@ -157,12 +152,8 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
     return DriverOtpRequestResponse()
 
 
-# ── POST /driver/auth/verify-otp ──────────────────────────────────
-
-
 @router.post("/verify-otp", response_model=DriverOtpVerifyResponse)
 def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
-    """Verify an OTP code and issue a driver-scoped JWT on success."""
     try:
         phone_e164 = normalize_phone(body.phone_e164)
     except ValueError:
@@ -172,7 +163,6 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         )
     _enforce_rate_limit("verify", phone_e164, _VERIFY_LIMIT)
 
-    # Find the latest challenge for this phone, then branch by challenge status.
     challenge = get_latest_otp_challenge_by_phone(db, phone_e164)
     if challenge is None:
         raise HTTPException(
@@ -205,7 +195,6 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             detail="Challenge expired",
         )
 
-    # Check OTP via Twilio; on provider failure return 502 without penalising the user
     otp_ok = False
     try:
         from app.services import twilio_verify
@@ -236,7 +225,6 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             detail="Invalid OTP",
         )
 
-    # OTP verified — find existing driver and issue JWT
     driver = get_driver_by_phone(db, phone_e164)
     if driver is None:
         raise HTTPException(
@@ -245,12 +233,17 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         )
     mark_otp_verified(db, challenge)
 
-    token = create_access_token(
-        {
-            "sub": str(driver.driver_id),
+    access_token, refresh_token, _sid = create_session(
+        db,
+        user_id=None,
+        org_id=driver.org_id,
+        client_type="driver_mobile",
+        device_descriptor=body.device_descriptor,
+        token_subject=str(driver.driver_id),
+        token_claims={
             "scope": "driver",
             "phone": driver.phone_e164,
-        }
+        },
     )
 
     logger.info(
@@ -259,4 +252,35 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         driver.driver_id,
     )
 
-    return DriverOtpVerifyResponse(access_token=token)
+    return DriverOtpVerifyResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/refresh", response_model=DriverOtpVerifyResponse)
+def refresh_driver_token(body: DriverTokenRefreshRequest, db: Session = Depends(get_db)):
+    access_token, refresh_token, _session_id = rotate_refresh_token(
+        db,
+        refresh_token_value=body.refresh_token,
+        token_subject="",
+        token_claims={"scope": "driver"},
+        expected_client_type="driver_mobile",
+        expected_device_descriptor=body.device_descriptor,
+    )
+
+    payload = decode_access_token(access_token)
+    if payload is None or not payload.get("sub"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token issuance failed")
+
+    return DriverOtpVerifyResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/revoke")
+def revoke_driver_session(body: DriverSessionRevokeRequest, db: Session = Depends(get_db)):
+    token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+    from app.db.models import RefreshToken
+
+    row = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    revoke_session(db, uuid.UUID(str(row.session_id)))
+    return {"detail": "Session revoked"}

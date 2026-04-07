@@ -12,6 +12,7 @@ from app.db.models import Driver, User
 from app.db.repo.drivers import get_driver_by_id
 from app.db.repo.users import get_user_by_id, get_user_org_ids
 from app.db.session import get_db
+from app.security.session import validate_session
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -64,6 +65,13 @@ def get_current_user(
             detail="Invalid or expired token",
         )
 
+    sid = payload.get("sid")
+    if sid:
+        try:
+            validate_session(db, session_id=uuid.UUID(sid), expected_client_type="web")
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session") from exc
+
     user_id = _decode_subject_uuid(payload)
     user = get_user_by_id(db, user_id)
     if user is None or not user.is_active:
@@ -94,6 +102,13 @@ def get_current_driver(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not a driver token",
         )
+
+    sid = payload.get("sid")
+    if sid:
+        try:
+            validate_session(db, session_id=uuid.UUID(sid), expected_client_type="driver_mobile")
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session") from exc
 
     driver_id = _decode_subject_uuid(payload)
     driver = get_driver_by_id(db, driver_id)
