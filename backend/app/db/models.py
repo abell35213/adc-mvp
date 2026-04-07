@@ -113,6 +113,55 @@ class Event(Base):
     )
 
 
+class AuditEvent(Base):
+    """Immutable audit trail for actor/org/incident/export/artifact actions."""
+
+    __tablename__ = "audit_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=True,
+        index=True,
+    )
+    export_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("exports.export_id"),
+        nullable=True,
+        index=True,
+    )
+    artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id"),
+        nullable=True,
+        index=True,
+    )
+    actor_type = Column(Text, nullable=False)
+    actor_id = Column(Text, nullable=False, index=True)
+    action = Column(Text, nullable=False)
+    event_type = Column(Text, nullable=False, index=True)
+    outcome = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    occurred_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
+    )
+    retention_expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    retention_purged_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_audit_events_org_occurred", "org_id", "occurred_at_utc"),
+        Index("ix_audit_events_org_incident_occurred", "org_id", "incident_id", "occurred_at_utc"),
+        Index("ix_audit_events_org_export_occurred", "org_id", "export_id", "occurred_at_utc"),
+        Index("ix_audit_events_org_actor_occurred", "org_id", "actor_id", "occurred_at_utc"),
+        Index("ix_audit_events_org_event_type_occurred", "org_id", "event_type", "occurred_at_utc"),
+    )
+
+
 class Incident(Base):
     """Summary pointer for an incident."""
 
