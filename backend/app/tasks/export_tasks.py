@@ -425,6 +425,8 @@ def build_export(
                 }
 
         options = dict(export_row.options_json or {})
+        if export_row.profile_id:
+            options["profile_id"] = export_row.profile_id
         options["attempt_id"] = attempt_id
         update_export(
             db,

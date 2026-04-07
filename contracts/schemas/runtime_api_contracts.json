@@ -630,6 +630,11 @@
               "default": null,
               "title": "Processing Started At Utc"
             },
+            "profile_id": {
+              "default": "court_defense_v1",
+              "title": "Profile Id",
+              "type": "string"
+            },
             "progress_stage": {
               "default": "request_accepted",
               "enum": [
@@ -668,6 +673,19 @@
               ],
               "default": null,
               "title": "Requested By User Id"
+            },
+            "retry_parent_export_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Parent Export Id"
             },
             "status": {
               "enum": [

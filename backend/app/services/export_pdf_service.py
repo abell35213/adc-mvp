@@ -23,6 +23,8 @@ class ExportPdfContext:
     incident_severity: str
     export_id: str
     export_type: str
+    profile_id: str
+    summary_style: str
     export_status: str
     artifact_count: int
     timeline_event_count: int
@@ -57,7 +59,7 @@ HTML_TEMPLATE = """<!doctype html>
   </style>
 </head>
 <body>
-  <h1>ADC Export Cover Summary</h1>
+  <h1>{summary_title}</h1>
   <p class=\"muted\">Package: {package_root}</p>
   <p class=\"muted\">Generated: {generated_at_utc}</p>
 
@@ -69,6 +71,7 @@ HTML_TEMPLATE = """<!doctype html>
     <tr><th>Severity</th><td>{incident_severity}</td></tr>
     <tr><th>Export ID</th><td>{export_id}</td></tr>
     <tr><th>Export Type</th><td>{export_type}</td></tr>
+    <tr><th>Profile ID</th><td>{profile_id}</td></tr>
     <tr><th>Export Status</th><td>{export_status}</td></tr>
     <tr><th>Artifact Count</th><td>{artifact_count}</td></tr>
     <tr><th>Timeline Event Count</th><td>{timeline_event_count}</td></tr>
@@ -119,9 +122,13 @@ def build_export_pdf_context(
     events: list[Any],
     warnings: list[dict[str, str]],
     missing_items: list[dict[str, str]],
+    options: dict[str, Any] | None = None,
     verification_instructions: list[str] | None = None,
     generated_at_utc: str | None = None,
 ) -> ExportPdfContext:
+    options = dict(options or {})
+    profile_id = str(options.get("profile_id") or options.get("profile") or "court_defense_v1")
+    summary_style = "claim_focused" if profile_id == "insurer_packet_v1" else "litigation_full"
     counts: dict[str, int] = {}
     for artifact in artifacts:
         kind = str(getattr(artifact, "artifact_type", "unknown") or "unknown")
@@ -163,6 +170,8 @@ def build_export_pdf_context(
         incident_severity=str(getattr(incident, "severity", "unknown") or "unknown"),
         export_id=str(getattr(export, "export_id", "unknown")),
         export_type=str(getattr(export, "export_type", "unknown") or "unknown"),
+        profile_id=profile_id,
+        summary_style=summary_style,
         export_status=str(getattr(export, "status", "unknown") or "unknown"),
         artifact_count=len(artifacts),
         timeline_event_count=len(events),
@@ -174,6 +183,11 @@ def build_export_pdf_context(
 
 
 def render_cover_summary_pdf(context: ExportPdfContext) -> bytes:
+    summary_title = (
+        "ADC Claim Packet Cover Summary"
+        if context.summary_style == "claim_focused"
+        else "ADC Export Cover Summary"
+    )
     key_events_rows = "".join(
         f"<tr><td>{escape(event['occurred_at_utc'])}</td><td>{escape(event['event_type'])}</td><td>{escape(event['actor'])}</td></tr>"
         for event in context.key_events
@@ -195,6 +209,7 @@ def render_cover_summary_pdf(context: ExportPdfContext) -> bytes:
 
     html = HTML_TEMPLATE.format(
         **{k: escape(str(v)) for k, v in asdict(context).items() if not isinstance(v, list)},
+        summary_title=summary_title,
         key_events_rows=key_events_rows,
         evidence_summary_rows=evidence_summary_rows,
         warning_rows=warning_rows,

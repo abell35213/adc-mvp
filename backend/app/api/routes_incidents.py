@@ -32,6 +32,7 @@ from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.repo.users import get_user_org_ids
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
+from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
 
@@ -187,6 +188,7 @@ def get_incident_endpoint(
                 export_id=e.export_id,
                 incident_id=e.incident_id,
                 export_type=e.export_type,
+                profile_id=e.profile_id,
                 requested_by_user_id=e.requested_by_user_id,
                 options_json=e.options_json or {},
                 status=e.status,
@@ -254,6 +256,7 @@ def request_export_endpoint(
         org_id=incident.org_id,
         status="requested",
         export_type="court_defense",
+        profile_id=get_default_packet_profile("court_defense").profile_id,
         requested_by_user_id=current_user.id,
         progress_stage="request_accepted",
     )

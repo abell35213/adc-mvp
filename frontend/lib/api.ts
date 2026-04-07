@@ -171,6 +171,7 @@ export interface ExportSummary {
   export_id: string;
   incident_id?: string | null;
   export_type: ExportType;
+  profile_id: string;
   requested_by_user_id?: string | null;
   retry_parent_export_id?: string | null;
   options_json: Record<string, unknown>;

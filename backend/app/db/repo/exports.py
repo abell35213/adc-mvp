@@ -49,6 +49,7 @@ def create_export(
     org_id: Optional[_uuid.UUID] = None,
     status: str = "requested",
     export_type: str = "court_defense",
+    profile_id: str = "court_defense_v1",
     requested_by_user_id: Optional[_uuid.UUID] = None,
     retry_parent_export_id: Optional[_uuid.UUID] = None,
     options_json: Optional[dict[str, Any]] = None,
@@ -61,6 +62,7 @@ def create_export(
         org_id=org_id,
         incident_id=incident_id,
         export_type=export_type,
+        profile_id=profile_id,
         requested_by_user_id=requested_by_user_id,
         retry_parent_export_id=retry_parent_export_id,
         options_json=options_json or {},
@@ -84,6 +86,7 @@ def update_export(
     progress_stage: Optional[str] = None,
     error_message: Optional[str] = None,
     options_json: Optional[dict[str, Any]] = None,
+    profile_id: Optional[str] = None,
     package_sha256: Optional[str] = None,
     byte_size: Optional[int] = None,
     artifact_count: Optional[int] = None,
@@ -106,6 +109,8 @@ def update_export(
         export.error_message = error_message
     if options_json is not None:
         export.options_json = options_json
+    if profile_id is not None:
+        export.profile_id = profile_id
     if package_sha256 is not None:
         export.package_sha256 = package_sha256
     if byte_size is not None:

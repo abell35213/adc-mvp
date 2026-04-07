@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { ExportType } from "@/lib/api";
 
 interface ExportOptions {
-  profile: "mvp_default";
+  profile_id: "court_defense_v1" | "insurer_packet_v1" | "internal_review_v1" | "compliance_audit_v1";
   include_media: boolean;
   include_raw_telemetry: boolean;
   include_driver_statement: boolean;
@@ -47,7 +47,7 @@ const NON_BLOCKING_WARNINGS = [
 ];
 
 const DEFAULT_OPTIONS: ExportOptions = {
-  profile: "mvp_default",
+  profile_id: "court_defense_v1",
   include_media: true,
   include_raw_telemetry: true,
   include_driver_statement: true,
@@ -79,9 +79,18 @@ export default function GenerateExportModal({
   if (!open) return null;
 
   const isMvpExport = exportType === "court_defense";
+  const isInsurerExport = exportType === "insurer_packet";
 
   async function handleSubmit() {
-    await onSubmit({ exportType, options });
+    const profileId =
+      exportType === "court_defense"
+        ? "court_defense_v1"
+        : exportType === "insurer_packet"
+          ? "insurer_packet_v1"
+          : exportType === "internal_review"
+            ? "internal_review_v1"
+            : "compliance_audit_v1";
+    await onSubmit({ exportType, options: { ...options, profile_id: profileId } });
     setStep("configure");
   }
 
@@ -125,9 +134,11 @@ export default function GenerateExportModal({
               {EXPORT_TYPE_OPTIONS.find((option) => option.value === exportType)?.description}
             </p>
 
-            {isMvpExport ? (
+            {isMvpExport || isInsurerExport ? (
               <div className="rounded border border-blue-100 bg-blue-50 p-3 text-sm">
-                <p className="font-medium text-blue-900">MVP defaults (court defense)</p>
+                <p className="font-medium text-blue-900">
+                  {isMvpExport ? "Court defense profile defaults" : "Insurer packet profile defaults"}
+                </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <label className="flex items-center gap-2">
                     <input
