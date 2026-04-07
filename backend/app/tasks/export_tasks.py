@@ -119,7 +119,12 @@ def _safe_artifact_type(artifact_type):
     soft_time_limit=300,
     time_limit=360,
 )
-def build_export(self, incident_id: str, export_id: str):
+def build_export(
+    self,
+    incident_id: str,
+    export_id: str,
+    attempt_context: dict | None = None,
+):
     """Generate an export package for an incident.
 
     Steps:
@@ -134,6 +139,10 @@ def build_export(self, incident_id: str, export_id: str):
     9. Emit EXPORT_GENERATED
     """
     increment("exports.build.attempts")
+    logger.info(
+        "Starting export build task",
+        extra={"incident_id": incident_id, "export_id": export_id, "attempt_context": attempt_context or {}},
+    )
     from app.core.config import settings
     from app.db.repo.artifacts import get_artifacts_by_incident
     from app.db.repo.events import get_events_by_incident

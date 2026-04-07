@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
 
@@ -217,6 +217,46 @@ class CreateExportResponse(BaseModel):
     export_id: uuid.UUID
     status: ExportStatus
     progress_stage: ExportProgressStage = "request_accepted"
+
+
+class CreateExportRequest(BaseModel):
+    incident_id: uuid.UUID
+    export_type: ExportType = "court_defense"
+    options_json: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_options_for_export_type(self):
+        options = dict(self.options_json or {})
+
+        if self.export_type == "court_defense":
+            profile = options.get("profile", "mvp_default")
+            if profile != "mvp_default":
+                raise ValueError(
+                    "options_json.profile must be 'mvp_default' for court_defense exports"
+                )
+
+            unknown_keys = set(options.keys()) - {"profile"}
+            if unknown_keys:
+                raise ValueError(
+                    "options_json contains unsupported fields for court_defense exports"
+                )
+
+            self.options_json = {"profile": "mvp_default"}
+            return self
+
+        if options:
+            raise ValueError(
+                f"options_json is not supported for export_type '{self.export_type}'"
+            )
+        return self
+
+
+class CreateExportEnqueueResponse(BaseModel):
+    export_id: uuid.UUID
+    incident_id: uuid.UUID
+    export_type: ExportType
+    status: ExportStatus
+    created_at_utc: datetime
 
 
 class DownloadExportResponse(BaseModel):
