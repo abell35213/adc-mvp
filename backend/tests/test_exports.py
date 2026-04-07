@@ -145,7 +145,7 @@ def test_list_exports_filters_by_org_including_legacy_null_org_exports(
 
     for export in [caller_export, legacy_caller_export]:
         row = by_id[str(export.export_id)]
-        assert set(["export_id", "incident_id", "status", "created_at_utc"]).issubset(
+        assert set(["export_id", "incident_id", "export_type", "status", "progress_stage", "artifact_count", "timeline_event_count", "created_at_utc", "updated_at_utc"]).issubset(
             row.keys()
         )
         assert row["incident_id"] == str(export.incident_id)

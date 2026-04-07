@@ -150,7 +150,7 @@ class TestStatusEnums:
         db.commit()
 
         # Test all valid status values
-        for status in ["requested", "processing", "ready", "failed"]:
+        for status in ["requested", "queued", "processing", "ready", "failed", "expired"]:
             export = Export(
                 incident_id=incident.incident_id,
                 status=status,

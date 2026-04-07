@@ -16,7 +16,12 @@ from app.api.schemas import (
     IncidentDetailResponse,
     IncidentListItem,
 )
-from app.core.deps import get_current_user
+from app.core.deps import (
+    enforce_resource_org_ownership,
+    get_current_user,
+    get_current_user_org_ids,
+    get_current_user_primary_org_id,
+)
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
@@ -180,10 +185,29 @@ def get_incident_endpoint(
         export_status=[
             ExportSummary(
                 export_id=e.export_id,
+                incident_id=e.incident_id,
+                export_type=e.export_type,
+                requested_by_user_id=e.requested_by_user_id,
+                options_json=e.options_json or {},
                 status=e.status,
-                created_at_utc=e.created_at_utc.isoformat()
-                if e.created_at_utc
+                progress_stage=e.progress_stage,
+                error_message=e.error_message,
+                package_sha256=e.package_sha256,
+                byte_size=e.byte_size,
+                artifact_count=e.artifact_count,
+                timeline_event_count=e.timeline_event_count,
+                requested_at_utc=e.requested_at_utc.isoformat()
+                if e.requested_at_utc
                 else None,
+                processing_started_at_utc=e.processing_started_at_utc.isoformat()
+                if e.processing_started_at_utc
+                else None,
+                completed_at_utc=e.completed_at_utc.isoformat()
+                if e.completed_at_utc
+                else None,
+                expires_at_utc=e.expires_at_utc.isoformat() if e.expires_at_utc else None,
+                created_at_utc=e.created_at_utc.isoformat() if e.created_at_utc else None,
+                updated_at_utc=e.updated_at_utc.isoformat() if e.updated_at_utc else None,
             )
             for e in exports
         ],
@@ -229,6 +253,9 @@ def request_export_endpoint(
         incident_id=incident_id,
         org_id=incident.org_id,
         status="requested",
+        export_type="court_defense",
+        requested_by_user_id=current_user.id,
+        progress_stage="request_accepted",
     )
 
     create_event(
@@ -243,4 +270,4 @@ def request_export_endpoint(
     logger.info("Queueing export build task", extra={"request_id": get_request_id()})
     build_export.delay(str(incident_id), str(export.export_id))
 
-    return CreateExportResponse(export_id=export.export_id, status=export.status)
+    return CreateExportResponse(export_id=export.export_id, status=export.status, progress_stage=export.progress_stage)

@@ -106,6 +106,29 @@ export function getMe() {
 
 /* ── Incidents ─────────────────────────────────────────────────── */
 
+
+export type ExportType =
+  | "court_defense"
+  | "insurer_packet"
+  | "internal_review"
+  | "compliance_audit";
+
+export type ExportStatus =
+  | "requested"
+  | "queued"
+  | "processing"
+  | "ready"
+  | "failed"
+  | "expired";
+
+export type ExportProgressStage =
+  | "request_accepted"
+  | "gathering_incident_data"
+  | "assembling_documents"
+  | "packaging_evidence"
+  | "uploading_export"
+  | "ready_for_download";
+
 export interface Incident {
   incident_id: string;
   status: string;
@@ -146,11 +169,25 @@ export interface ArtifactSummary {
 
 export interface ExportSummary {
   export_id: string;
-  status: string;
+  incident_id?: string | null;
+  export_type: ExportType;
+  requested_by_user_id?: string | null;
+  options_json: Record<string, unknown>;
+  status: ExportStatus;
+  progress_stage: ExportProgressStage;
+  error_message?: string | null;
+  package_sha256?: string | null;
+  byte_size?: number | null;
+  artifact_count: number;
+  timeline_event_count: number;
+  requested_at_utc?: string | null;
+  processing_started_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  expires_at_utc?: string | null;
   created_at_utc?: string | null;
+  updated_at_utc?: string | null;
   generated_by?: string | null;
   generation_duration_seconds?: number | null;
-  artifact_count?: number | null;
   failure_count?: number | null;
   failure_reason?: string | null;
   retry_guidance?: string | null;
@@ -211,14 +248,14 @@ export function getIncident(id: string) {
 }
 
 export function requestExport(incidentId: string) {
-  return request<{ export_id: string; status: string }>(
+  return request<{ export_id: string; status: ExportStatus; progress_stage: ExportProgressStage }>(
     `/incidents/${incidentId}/exports`,
     { method: "POST" }
   );
 }
 
 export function downloadExport(exportId: string) {
-  return request<{ export_id: string; url: string; status: string }>(
+  return request<{ export_id: string; url: string; status: ExportStatus; progress_stage: ExportProgressStage }>(
     `/exports/${exportId}/download`
   );
 }

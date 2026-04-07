@@ -6,8 +6,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas import DownloadExportResponse
-from app.core.deps import get_current_user
+from app.api.schemas import DownloadExportResponse, ExportSummary
+from app.core.deps import get_current_user, get_current_user_org_ids
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.db.repo.exports import get_export, list_exports_for_org_ids
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
+from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.services.vault_s3 import (
@@ -39,7 +40,32 @@ def _get_export_owner_org_id(db: Session, export):
     return incident.org_id
 
 
-@router.get("/")
+def _serialize_export(export):
+    return {
+        "export_id": str(export.export_id),
+        "incident_id": str(export.incident_id),
+        "export_type": export.export_type,
+        "requested_by_user_id": (
+            str(export.requested_by_user_id) if export.requested_by_user_id else None
+        ),
+        "options_json": export.options_json or {},
+        "status": export.status,
+        "progress_stage": export.progress_stage,
+        "error_message": export.error_message,
+        "package_sha256": export.package_sha256,
+        "byte_size": export.byte_size,
+        "artifact_count": export.artifact_count,
+        "timeline_event_count": export.timeline_event_count,
+        "requested_at_utc": export.requested_at_utc,
+        "processing_started_at_utc": export.processing_started_at_utc,
+        "completed_at_utc": export.completed_at_utc,
+        "expires_at_utc": export.expires_at_utc,
+        "created_at_utc": export.created_at_utc,
+        "updated_at_utc": export.updated_at_utc,
+    }
+
+
+@router.get("/", response_model=list[ExportSummary])
 def list_exports_endpoint(
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
@@ -50,18 +76,10 @@ def list_exports_endpoint(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
     exports = list_exports_for_org_ids(db, org_ids)
-    return [
-        {
-            "export_id": str(export.export_id),
-            "incident_id": str(export.incident_id),
-            "status": export.status,
-            "created_at_utc": export.created_at_utc,
-        }
-        for export in exports
-    ]
+    return [_serialize_export(export) for export in exports]
 
 
-@router.get("/{export_id}")
+@router.get("/{export_id}", response_model=ExportSummary)
 def get_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -82,11 +100,7 @@ def get_export_endpoint(
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return {
-        "export_id": str(export.export_id),
-        "incident_id": str(export.incident_id),
-        "status": export.status,
-    }
+    return _serialize_export(export)
 
 
 @router.get("/{export_id}/download", response_model=DownloadExportResponse)
@@ -150,4 +164,5 @@ def download_export_endpoint(
         export_id=export.export_id,
         url=presigned_url,
         status="ready",
+        progress_stage="ready_for_download",
     )

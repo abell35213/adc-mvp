@@ -8,6 +8,7 @@ import {
   downloadExport,
   type ExportListItem,
 } from "@/lib/api";
+import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 
 /**
  * Exports listing page.  Displays all exports available to the current
@@ -139,16 +140,8 @@ export default function ExportsPage() {
                         : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          ex.status === "ready"
-                            ? "bg-green-100 text-green-800"
-                            : ex.status === "failed"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {ex.status}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getExportStatusBadgeClass(ex.status)}`}>
+                        {getExportStatusLabel(ex.status)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">

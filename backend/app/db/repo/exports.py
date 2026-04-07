@@ -1,7 +1,7 @@
 """Repository layer for exports."""
 
 import uuid as _uuid
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -48,6 +48,10 @@ def create_export(
     incident_id: _uuid.UUID,
     org_id: Optional[_uuid.UUID] = None,
     status: str = "requested",
+    export_type: str = "court_defense",
+    requested_by_user_id: Optional[_uuid.UUID] = None,
+    options_json: Optional[dict[str, Any]] = None,
+    progress_stage: str = "request_accepted",
     s3_bucket: Optional[str] = None,
     s3_key: Optional[str] = None,
 ) -> Export:
@@ -55,7 +59,11 @@ def create_export(
     export = Export(
         org_id=org_id,
         incident_id=incident_id,
+        export_type=export_type,
+        requested_by_user_id=requested_by_user_id,
+        options_json=options_json or {},
         status=status,
+        progress_stage=progress_stage,
         s3_bucket=s3_bucket,
         s3_key=s3_key,
     )
@@ -69,6 +77,12 @@ def update_export(
     db: Session,
     export_id: _uuid.UUID,
     status: Optional[str] = None,
+    progress_stage: Optional[str] = None,
+    error_message: Optional[str] = None,
+    package_sha256: Optional[str] = None,
+    byte_size: Optional[int] = None,
+    artifact_count: Optional[int] = None,
+    timeline_event_count: Optional[int] = None,
     s3_bucket: Optional[str] = None,
     s3_key: Optional[str] = None,
 ) -> Optional[Export]:
@@ -81,6 +95,18 @@ def update_export(
     # Only update fields that are provided
     if status is not None:
         export.status = status
+    if progress_stage is not None:
+        export.progress_stage = progress_stage
+    if error_message is not None:
+        export.error_message = error_message
+    if package_sha256 is not None:
+        export.package_sha256 = package_sha256
+    if byte_size is not None:
+        export.byte_size = byte_size
+    if artifact_count is not None:
+        export.artifact_count = artifact_count
+    if timeline_event_count is not None:
+        export.timeline_event_count = timeline_event_count
     if s3_bucket is not None:
         export.s3_bucket = s3_bucket
     if s3_key is not None:
