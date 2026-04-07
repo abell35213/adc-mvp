@@ -40,14 +40,14 @@ def main():
             db,
             email=email,
             password_hash=pw_hash,
-            role=Role.ADMIN.value,
+            role=Role.ORG_ADMIN.value,
         )
         org = create_org(db, name=org_name)
         link_user_org(db, user_id=user.id, org_id=org.id)
 
         print(f"Created admin user:")
         print(f"  email   : {email}")
-        print(f"  role    : {Role.ADMIN.value}")
+        print(f"  role    : {Role.ORG_ADMIN.value}")
         print(f"  user_id : {user.id}")
         print(f"  org_id  : {org.id}")
         print(f"  org_name: {org_name}")

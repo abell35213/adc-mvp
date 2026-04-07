@@ -41,7 +41,7 @@ class TestCreateAdmin:
 
         user = db_session.query(User).filter(User.email == "admin@adc.local").first()
         assert user is not None
-        assert user.role == "admin"
+        assert user.role == "org_admin"
 
         org = db_session.query(Org).first()
         assert org is not None
