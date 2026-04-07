@@ -19,11 +19,10 @@ from app.api.schemas import (
     RotateQrResponse,
 )
 from app.core.config import settings
-from app.core.deps import (
-    get_current_user_org_ids,
-    require_capabilities,
-)
+from app.core.deps import get_current_user
 from app.security.permissions import Capability
+from app.security.authn import build_user_auth_context
+from app.security.authz import can_access_admin_org, require_policy
 from app.db.models import (
     DriverInstructionSet,
     DriverInstructionStep as DriverInstructionStepModel,
@@ -142,10 +141,11 @@ def _serialize_instruction_steps(
 )
 def get_driver_protocol_settings(
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_READ)),
+    admin: User = Depends(get_current_user),
 ):
-    org = _get_admin_org(db, admin_org_ids[0])
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    org = _get_admin_org(db, context.org_ids[0])
     return DriverProtocolSettingsResponse(
         instruction_source=org.instruction_source,
         require_ack=org.require_driver_ack,
@@ -162,10 +162,11 @@ def get_driver_protocol_settings(
 def update_driver_protocol_settings(
     body: DriverProtocolSettingsRequest,
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
+    admin: User = Depends(get_current_user),
 ):
-    org = _get_admin_org(db, admin_org_ids[0])
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    org = _get_admin_org(db, context.org_ids[0])
     org.instruction_source = _normalize_instruction_scope(body.instruction_source)
     org.require_driver_ack = body.require_ack
     org.sms_enabled = body.sms_enabled
@@ -188,10 +189,11 @@ def update_driver_protocol_settings(
 def get_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_READ)),
+    admin: User = Depends(get_current_user),
 ):
-    org = _get_admin_org(db, admin_org_ids[0])
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ))
+    org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     steps = (
@@ -220,10 +222,11 @@ def get_driver_protocol_instructions(
 def update_driver_protocol_instructions(
     body: DriverInstructionSetRequest,
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
+    admin: User = Depends(get_current_user),
 ):
-    org = _get_admin_org(db, admin_org_ids[0])
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(body.scope)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
@@ -256,10 +259,11 @@ def update_driver_protocol_instructions(
 def reset_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
+    admin: User = Depends(get_current_user),
 ):
-    org = _get_admin_org(db, admin_org_ids[0])
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
     db.query(DriverInstructionStepModel).filter(
@@ -277,8 +281,11 @@ def reset_driver_protocol_instructions(
 
 @router.get("/vehicles", response_model=list[AdminVehicleSummary])
 def list_admin_vehicles(
-    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_READ)),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
 ):
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ))
     return [AdminVehicleSummary(**vehicle) for vehicle in ADMIN_VEHICLES]
 
 
@@ -290,17 +297,19 @@ def list_admin_vehicles(
 def rotate_qr(
     vehicle_id: str,
     db: Session = Depends(get_db),
-    admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_WRITE)),
+    admin: User = Depends(get_current_user),
 ):
     """Revoke the current active QR token for a vehicle and issue a new one."""
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE))
+
     # Revoke existing active token(s)
     active_tokens = (
         db.query(VehicleQrToken)
         .filter(
             VehicleQrToken.adc_vehicle_id == vehicle_id,
             VehicleQrToken.status == "active",
-            VehicleQrToken.org_id.in_(admin_org_ids),
+            VehicleQrToken.org_id.in_(context.org_ids),
         )
         .all()
     )
@@ -311,7 +320,7 @@ def rotate_qr(
     new_token = secrets.token_urlsafe(32)
 
     # Determine org_id from the admin's org membership
-    org_id = admin_org_ids[0]
+    org_id = context.org_ids[0]
 
     qr = VehicleQrToken(
         qr_token=new_token,
@@ -350,9 +359,12 @@ def rotate_qr(
 @router.get("/vehicles/{vehicle_id}/qr", response_model=QrPayloadResponse)
 def get_qr_payload(
     vehicle_id: str,
-    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_READ)),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
 ):
     """Return the deep link string for QR code generation."""
+    context = build_user_auth_context(db, admin)
+    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ))
     scheme = settings.DRIVER_APP_DEEPLINK_SCHEME
     deep_link = f"{scheme}://vehicle/{vehicle_id}"
     return QrPayloadResponse(deep_link=deep_link)
