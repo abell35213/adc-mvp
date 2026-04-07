@@ -17,6 +17,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 
+from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
+
 Base = declarative_base()
 
 
@@ -182,15 +184,44 @@ class Export(Base):
         nullable=False,
         index=True,
     )
+    export_type = Column(
+        Enum(*EXPORT_TYPES, name="export_type"),
+        nullable=False,
+        default="court_defense",
+        server_default="court_defense",
+    )
+    requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    options_json = Column(JSONB, nullable=False, default=dict)
     status = Column(
-        Enum("requested", "processing", "ready", "failed", name="export_status"),
+        Enum(*EXPORT_STATUSES, name="export_status"),
         nullable=False,
         default="requested",
+        server_default="requested",
     )
+    progress_stage = Column(
+        Enum(*EXPORT_PROGRESS_STAGES, name="export_progress_stage"),
+        nullable=False,
+        default="request_accepted",
+        server_default="request_accepted",
+    )
+    error_message = Column(Text, nullable=True)
+    package_sha256 = Column(Text, nullable=True)
+    byte_size = Column(BigInteger, nullable=True)
+    artifact_count = Column(Integer, nullable=False, default=0, server_default="0")
+    timeline_event_count = Column(Integer, nullable=False, default=0, server_default="0")
+    requested_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    processing_started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     s3_bucket = Column(Text, nullable=True)
     s3_key = Column(Text, nullable=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
     __table_args__ = (Index("ix_exports_org_incident", "org_id", "incident_id"),)

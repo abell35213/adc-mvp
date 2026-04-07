@@ -10,6 +10,7 @@
 "use client";
 
 import { type ExportSummary } from "@/lib/api";
+import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -162,16 +163,8 @@ export default function ExportPanel({
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    ex.status === "ready"
-                      ? "bg-green-100 text-green-800"
-                      : ex.status === "failed"
-                      ? "bg-red-100 text-red-800"
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}
-                >
-                  {ex.status}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getExportStatusBadgeClass(ex.status)}`}>
+                  {getExportStatusLabel(ex.status)}
                 </span>
                 {ex.status === "ready" && (
                   <button

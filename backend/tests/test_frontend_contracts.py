@@ -223,7 +223,15 @@ def test_export_response_contract_matches_frontend(
     assert export_resp.status_code == 201
     payload = export_resp.json()
 
-    for field in ("export_id", "status"):
+    for field in ("export_id", "status", "progress_stage"):
         assert field in payload
     _assert_uuid(payload["export_id"])
-    assert payload["status"] in {"requested", "processing", "ready", "failed"}
+    assert payload["status"] in {"requested", "queued", "processing", "ready", "failed", "expired"}
+    assert payload["progress_stage"] in {
+        "request_accepted",
+        "gathering_incident_data",
+        "assembling_documents",
+        "packaging_evidence",
+        "uploading_export",
+        "ready_for_download",
+    }

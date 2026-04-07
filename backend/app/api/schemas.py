@@ -2,9 +2,11 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
 
 EmailStrLike = Annotated[
     str,
@@ -51,7 +53,13 @@ InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
 IncidentStatus = Literal["open", "evidence_capturing", "closed"]
 ArtifactStatus = Literal["pending", "captured", "unavailable"]
-ExportStatus = Literal["requested", "processing", "ready", "failed"]
+ExportType = Literal["court_defense", "insurer_packet", "internal_review", "compliance_audit"]
+ExportStatus = Literal["requested", "queued", "processing", "ready", "failed", "expired"]
+ExportProgressStage = Literal["request_accepted", "gathering_incident_data", "assembling_documents", "packaging_evidence", "uploading_export", "ready_for_download"]
+
+assert set(EXPORT_TYPES) == {"court_defense", "insurer_packet", "internal_review", "compliance_audit"}
+assert set(EXPORT_STATUSES) == {"requested", "queued", "processing", "ready", "failed", "expired"}
+assert set(EXPORT_PROGRESS_STAGES) == {"request_accepted", "gathering_incident_data", "assembling_documents", "packaging_evidence", "uploading_export", "ready_for_download"}
 VehicleStrategy = Literal["qr", "last_assigned"]
 CaptureState = Literal[
     "failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"
@@ -151,8 +159,23 @@ class ArtifactSummary(BaseModel):
 
 class ExportSummary(BaseModel):
     export_id: uuid.UUID
+    incident_id: Optional[uuid.UUID] = None
+    export_type: ExportType = "court_defense"
+    requested_by_user_id: Optional[uuid.UUID] = None
+    options_json: dict[str, Any] = Field(default_factory=dict)
     status: ExportStatus
+    progress_stage: ExportProgressStage = "request_accepted"
+    error_message: Optional[str] = None
+    package_sha256: Optional[str] = None
+    byte_size: Optional[int] = None
+    artifact_count: int = Field(default=0, ge=0)
+    timeline_event_count: int = Field(default=0, ge=0)
+    requested_at_utc: Optional[datetime] = None
+    processing_started_at_utc: Optional[datetime] = None
+    completed_at_utc: Optional[datetime] = None
+    expires_at_utc: Optional[datetime] = None
     created_at_utc: Optional[datetime] = None
+    updated_at_utc: Optional[datetime] = None
 
 
 class EventSummary(BaseModel):
@@ -193,12 +216,14 @@ class IncidentDetailResponse(BaseModel):
 class CreateExportResponse(BaseModel):
     export_id: uuid.UUID
     status: ExportStatus
+    progress_stage: ExportProgressStage = "request_accepted"
 
 
 class DownloadExportResponse(BaseModel):
     export_id: uuid.UUID
     url: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
     status: ExportStatus
+    progress_stage: ExportProgressStage = "ready_for_download"
 
 
 # ── Driver ──────────────────────────────────────────────────────────
