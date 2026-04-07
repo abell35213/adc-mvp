@@ -12,6 +12,7 @@ from app.db.models import Driver, User
 from app.db.repo.drivers import get_driver_by_id
 from app.db.repo.users import get_user_by_id, get_user_org_ids
 from app.db.session import get_db
+from app.security.permissions import Capability, get_user_capabilities, normalize_role
 from app.security.session import validate_session
 
 _bearer = HTTPBearer(auto_error=False)
@@ -122,11 +123,10 @@ def get_current_driver(
 
 def require_user_role(*allowed_roles: str) -> Callable[[User], User]:
     """Create a dependency that enforces a user's role."""
-
-    allowed = set(allowed_roles)
+    allowed = {normalize_role(role) for role in allowed_roles}
 
     def _require_role(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role not in allowed:
+        if normalize_role(current_user.role) not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient role",
@@ -134,6 +134,28 @@ def require_user_role(*allowed_roles: str) -> Callable[[User], User]:
         return current_user
 
     return _require_role
+
+
+def require_capabilities(*required_capabilities: Capability | str) -> Callable[[User], User]:
+    """Create a dependency that enforces a user's capabilities."""
+
+    required = {
+        capability
+        if isinstance(capability, Capability)
+        else Capability(capability)
+        for capability in required_capabilities
+    }
+
+    def _require_capabilities(current_user: User = Depends(get_current_user)) -> User:
+        granted = get_user_capabilities(current_user.role)
+        if not required.issubset(granted):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+
+    return _require_capabilities
 
 
 def get_current_user_org_ids(

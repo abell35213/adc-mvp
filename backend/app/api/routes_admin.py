@@ -21,8 +21,9 @@ from app.api.schemas import (
 from app.core.config import settings
 from app.core.deps import (
     get_current_user_org_ids,
-    require_user_role,
+    require_capabilities,
 )
+from app.security.permissions import Capability
 from app.db.models import (
     DriverInstructionSet,
     DriverInstructionStep as DriverInstructionStepModel,
@@ -142,7 +143,7 @@ def _serialize_instruction_steps(
 def get_driver_protocol_settings(
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_READ)),
 ):
     org = _get_admin_org(db, admin_org_ids[0])
     return DriverProtocolSettingsResponse(
@@ -162,7 +163,7 @@ def update_driver_protocol_settings(
     body: DriverProtocolSettingsRequest,
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
 ):
     org = _get_admin_org(db, admin_org_ids[0])
     org.instruction_source = _normalize_instruction_scope(body.instruction_source)
@@ -188,7 +189,7 @@ def get_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_READ)),
 ):
     org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
@@ -220,7 +221,7 @@ def update_driver_protocol_instructions(
     body: DriverInstructionSetRequest,
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
 ):
     org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(body.scope)
@@ -256,7 +257,7 @@ def reset_driver_protocol_instructions(
     scope: str | None = None,
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.DRIVER_PROTOCOL_WRITE)),
 ):
     org = _get_admin_org(db, admin_org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
@@ -275,7 +276,9 @@ def reset_driver_protocol_instructions(
 
 
 @router.get("/vehicles", response_model=list[AdminVehicleSummary])
-def list_admin_vehicles(admin: User = Depends(require_user_role("admin"))):
+def list_admin_vehicles(
+    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_READ)),
+):
     return [AdminVehicleSummary(**vehicle) for vehicle in ADMIN_VEHICLES]
 
 
@@ -288,7 +291,7 @@ def rotate_qr(
     vehicle_id: str,
     db: Session = Depends(get_db),
     admin_org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_WRITE)),
 ):
     """Revoke the current active QR token for a vehicle and issue a new one."""
     # Revoke existing active token(s)
@@ -347,7 +350,7 @@ def rotate_qr(
 @router.get("/vehicles/{vehicle_id}/qr", response_model=QrPayloadResponse)
 def get_qr_payload(
     vehicle_id: str,
-    admin: User = Depends(require_user_role("admin")),
+    admin: User = Depends(require_capabilities(Capability.VEHICLE_QR_READ)),
 ):
     """Return the deep link string for QR code generation."""
     scheme = settings.DRIVER_APP_DEEPLINK_SCHEME
