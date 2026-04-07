@@ -768,6 +768,13 @@ class TestBuildExport:
             .all()
         )
         assert len(events) == 1
+        updated_export = (
+            db_session.query(Export)
+            .filter(Export.export_id == export_row.export_id)
+            .first()
+        )
+        assert updated_export.status == "failed"
+        assert "S3 down" in (updated_export.error_message or "")
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
@@ -793,6 +800,41 @@ class TestBuildExport:
         )
         assert first["duplicate"] is False
         assert second["duplicate"] is True
+
+    @patch("app.tasks.export_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    def test_export_soft_fail_persists_warnings(
+        self, MockS3, mock_get_db, db_session, incident, export_row
+    ):
+        mock_get_db.return_value = db_session
+        art = Artifact(
+            incident_id=incident.incident_id,
+            artifact_type="eld_log",
+            status="captured",
+            s3_key="incidents/x/telematics/eld.json",
+            sha256="abc",
+            byte_size=100,
+        )
+        db_session.add(art)
+        db_session.commit()
+
+        s3_inst = MagicMock()
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        s3_inst.download.side_effect = RuntimeError("artifact missing")
+        MockS3.return_value = s3_inst
+
+        from app.tasks.export_tasks import build_export
+
+        result = build_export(str(incident.incident_id), str(export_row.export_id))
+        assert result["status"] == "ready"
+        assert result["warnings"]
+        updated_export = (
+            db_session.query(Export)
+            .filter(Export.export_id == export_row.export_id)
+            .first()
+        )
+        assert updated_export.options_json.get("warnings")
+        assert updated_export.options_json.get("missing_items")
 
 
 # ── repo_exports.update_export ──────────────────────────────────────
