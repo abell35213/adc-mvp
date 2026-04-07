@@ -79,6 +79,7 @@ def update_export(
     status: Optional[str] = None,
     progress_stage: Optional[str] = None,
     error_message: Optional[str] = None,
+    options_json: Optional[dict[str, Any]] = None,
     package_sha256: Optional[str] = None,
     byte_size: Optional[int] = None,
     artifact_count: Optional[int] = None,
@@ -99,6 +100,8 @@ def update_export(
         export.progress_stage = progress_stage
     if error_message is not None:
         export.error_message = error_message
+    if options_json is not None:
+        export.options_json = options_json
     if package_sha256 is not None:
         export.package_sha256 = package_sha256
     if byte_size is not None:

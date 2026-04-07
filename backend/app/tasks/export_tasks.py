@@ -7,8 +7,10 @@ import logging
 import re
 import uuid as _uuid
 import zipfile
+from dataclasses import dataclass
+from typing import Any
 
-from app.core.metrics import MetricNames, increment
+from app.core.metrics import increment
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,33 @@ Verification:
 2. Compare the result with integrity_appendix.csv.
 3. Matching hashes confirm the file integrity.
 """
+
+
+@dataclass
+class ExportRuntimeContext:
+    db: Any
+    incident_uuid: _uuid.UUID
+    export_uuid: _uuid.UUID
+    incident_id: str
+    export_id: str
+    workflow_key: str
+    org_id: str
+    settings: Any
+    system_event_type: Any
+    s3_key_builder: Any
+    s3: Any
+    export_row: Any
+    warnings: list[dict[str, str]]
+    missing_items: list[dict[str, str]]
+    artifacts: list[Any]
+    events: list[Any]
+    exportable_artifacts: list[tuple[Any, str]]
+    inventory_csv_bytes: bytes
+    coc_csv_bytes: bytes
+    appendix_csv_bytes: bytes
+    readme_content: str
+    zip_bytes: bytes
+    zip_key: str | None
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -112,6 +141,195 @@ def _safe_artifact_type(artifact_type):
     return sanitized or "unknown"
 
 
+def _set_progress_stage(ctx: ExportRuntimeContext, stage: str, status: str = "processing"):
+    from app.db.repo.exports import update_export
+
+    update_export(ctx.db, export_id=ctx.export_uuid, status=status, progress_stage=stage)
+
+
+def _emit_stage(ctx: ExportRuntimeContext, phase: str, stage: str):
+    _emit(
+        ctx.db,
+        ctx.incident_uuid,
+        "export_stage",
+        {
+            "idempotency_key": ctx.workflow_key,
+            "export_id": ctx.export_id,
+            "stage": stage,
+            "phase": phase,
+        },
+    )
+
+
+def _persist_warnings(ctx: ExportRuntimeContext):
+    from app.db.repo.exports import update_export
+
+    options = dict(ctx.export_row.options_json or {})
+    options["warnings"] = ctx.warnings
+    options["missing_items"] = ctx.missing_items
+    update_export(ctx.db, export_id=ctx.export_uuid, options_json=options)
+    ctx.export_row.options_json = options
+
+
+def _load_context(ctx: ExportRuntimeContext):
+    from app.db.repo.artifacts import get_artifacts_by_incident
+    from app.db.repo.events import get_events_by_incident
+
+    ctx.artifacts = get_artifacts_by_incident(ctx.db, ctx.incident_uuid)
+    ctx.events = get_events_by_incident(ctx.db, ctx.incident_uuid)
+
+    exportable_artifacts: list[tuple[Any, str]] = []
+    for artifact in ctx.artifacts:
+        filename = _artifact_filename(artifact.s3_key)
+        extension = _artifact_extension(filename)
+        if (
+            artifact.status == "captured"
+            and artifact.s3_key
+            and extension in ALLOWED_ARTIFACT_EXTENSIONS
+        ):
+            exportable_artifacts.append((artifact, filename))
+        elif artifact.status == "captured" and artifact.s3_key:
+            ctx.warnings.append(
+                {
+                    "kind": "artifact_skipped_extension",
+                    "item": artifact.s3_key,
+                    "reason": "extension_not_allowed",
+                }
+            )
+            ctx.missing_items.append(
+                {"kind": _safe_artifact_type(artifact.artifact_type), "item": filename}
+            )
+    ctx.exportable_artifacts = exportable_artifacts
+
+
+def _build_machine_readable_docs(ctx: ExportRuntimeContext):
+    appendix_buf = io.StringIO()
+    appendix_writer = csv.writer(appendix_buf)
+    appendix_writer.writerow(
+        ["artifact_id", "artifact_type", "file_name", "sha256", "byte_size", "included", "note"]
+    )
+    for artifact, filename in ctx.exportable_artifacts:
+        appendix_writer.writerow(
+            [
+                str(artifact.artifact_id),
+                artifact.artifact_type,
+                filename,
+                artifact.sha256 or "",
+                artifact.byte_size or "",
+                "true",
+                "",
+            ]
+        )
+    for warning in ctx.warnings:
+        if warning.get("kind") != "artifact_missing_from_s3":
+            continue
+        appendix_writer.writerow(["", "optional", warning.get("item", ""), "", "", "false", warning.get("reason", "")])
+    ctx.appendix_csv_bytes = appendix_buf.getvalue().encode()
+
+
+def _render_human_readable_docs(ctx: ExportRuntimeContext):
+    inv_buf = io.StringIO()
+    inv_writer = csv.writer(inv_buf)
+    inv_writer.writerow(["artifact_id", "artifact_type", "status", "s3_key", "sha256", "byte_size"])
+    for artifact in ctx.artifacts:
+        inv_writer.writerow(
+            [
+                str(artifact.artifact_id),
+                artifact.artifact_type,
+                artifact.status,
+                artifact.s3_key or "",
+                artifact.sha256 or "",
+                artifact.byte_size or "",
+            ]
+        )
+    ctx.inventory_csv_bytes = inv_buf.getvalue().encode()
+
+    sorted_events = sorted(ctx.events, key=lambda event: str(event.occurred_at_utc))
+    coc_buf = io.StringIO()
+    coc_writer = csv.writer(coc_buf)
+    coc_writer.writerow(["event_id", "event_type", "occurred_at_utc", "actor_type", "actor_id"])
+    for event in sorted_events:
+        coc_writer.writerow([str(event.id), event.event_type, str(event.occurred_at_utc), event.actor_type, event.actor_id])
+    ctx.coc_csv_bytes = coc_buf.getvalue().encode()
+
+    capture_start = None
+    capture_end = None
+    for artifact, _ in ctx.exportable_artifacts:
+        if artifact.capture_window_start_utc is not None and (
+            capture_start is None or artifact.capture_window_start_utc < capture_start
+        ):
+            capture_start = artifact.capture_window_start_utc
+        if artifact.capture_window_end_utc is not None and (
+            capture_end is None or artifact.capture_window_end_utc > capture_end
+        ):
+            capture_end = artifact.capture_window_end_utc
+    ctx.readme_content = README_TEMPLATE.format(
+        incident_id=ctx.incident_id,
+        export_id=ctx.export_id,
+        capture_start=capture_start.isoformat() if capture_start else "Unavailable",
+        capture_end=capture_end.isoformat() if capture_end else "Unavailable",
+    )
+
+
+def _assemble_zip(ctx: ExportRuntimeContext):
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        package_root = "ADC_Court_Package"
+        zf.writestr(f"{package_root}/00_README.txt", ctx.readme_content)
+        zf.writestr(f"{package_root}/02_Evidence_Inventory.csv", ctx.inventory_csv_bytes)
+        zf.writestr(f"{package_root}/03_Chain_of_Custody.csv", ctx.coc_csv_bytes)
+        zf.writestr(f"{package_root}/integrity_appendix.csv", ctx.appendix_csv_bytes)
+
+        for artifact, filename in ctx.exportable_artifacts:
+            safe_artifact_type = _safe_artifact_type(artifact.artifact_type)
+            try:
+                artifact_data = ctx.s3.download(artifact.s3_key)
+                zf.writestr(f"{package_root}/artifacts/{safe_artifact_type}/{filename}", artifact_data)
+            except Exception as exc:
+                logger.warning("Could not include artifact %s in export", artifact.s3_key, exc_info=True)
+                ctx.warnings.append(
+                    {"kind": "artifact_missing_from_s3", "item": artifact.s3_key or filename, "reason": str(exc)}
+                )
+                ctx.missing_items.append({"kind": safe_artifact_type, "item": filename})
+    ctx.zip_bytes = zip_buffer.getvalue()
+    if not ctx.zip_bytes:
+        raise RuntimeError("ZIP finalization failed: empty package")
+
+
+def _generate_integrity(ctx: ExportRuntimeContext):
+    if not ctx.appendix_csv_bytes:
+        raise RuntimeError("Manifest generation failed: integrity appendix missing")
+    if not ctx.zip_bytes:
+        raise RuntimeError("ZIP finalization failed: zip bytes missing")
+
+
+def _upload_and_finalize(ctx: ExportRuntimeContext):
+    from app.db.repo.exports import update_export
+
+    if ctx.zip_bytes is None:
+        raise RuntimeError("ZIP finalization failed: missing bytes before upload")
+    ctx.zip_key = ctx.s3_key_builder.export_key(
+        org_id=ctx.org_id,
+        incident_id=ctx.incident_id,
+        export_id=ctx.export_id,
+    )
+    if not ctx.zip_key:
+        raise RuntimeError("Manifest generation failed: export key missing")
+    ctx.s3.put_bytes(ctx.zip_key, ctx.zip_bytes)
+    update_export(
+        ctx.db,
+        export_id=ctx.export_uuid,
+        status="ready",
+        progress_stage="ready_for_download",
+        s3_bucket=ctx.settings.S3_BUCKET,
+        s3_key=ctx.zip_key,
+        package_sha256=_hash_bytes(ctx.zip_bytes),
+        byte_size=len(ctx.zip_bytes),
+        artifact_count=len(ctx.exportable_artifacts),
+        timeline_event_count=len(ctx.events),
+    )
+
+
 @celery_app.task(
     bind=True,
     acks_late=True,
@@ -144,8 +362,6 @@ def build_export(
         extra={"incident_id": incident_id, "export_id": export_id, "attempt_context": attempt_context or {}},
     )
     from app.core.config import settings
-    from app.db.repo.artifacts import get_artifacts_by_incident
-    from app.db.repo.events import get_events_by_incident
     from app.db.repo.exports import get_export, update_export
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
@@ -155,10 +371,76 @@ def build_export(
     exp_uuid = _uuid.UUID(export_id)
     workflow_key = _idempotency_key("export", incident_id, export_id)
     db = _get_db()
+    inc_uuid = _uuid.UUID(incident_id)
+    ctx = None
 
     try:
         org_id = _get_org_id(db, inc_uuid)
+        export_row = get_export(db, exp_uuid)
+        if export_row is None:
+            raise ValueError(f"Export {export_id} not found")
+
+        attempt_id = str((attempt_context or {}).get("attempt_id") or workflow_key)
+        if export_row.status == "ready" and export_row.s3_key:
+            return {
+                "export_id": export_id,
+                "incident_id": incident_id,
+                "status": "ready",
+                "idempotency_key": workflow_key,
+                "s3_key": export_row.s3_key,
+                "duplicate": True,
+            }
+
+        if export_row.status == "processing":
+            existing_attempt = (export_row.options_json or {}).get("attempt_id")
+            if existing_attempt and existing_attempt != attempt_id:
+                return {
+                    "export_id": export_id,
+                    "incident_id": incident_id,
+                    "status": export_row.status,
+                    "idempotency_key": workflow_key,
+                    "duplicate": True,
+                }
+
+        options = dict(export_row.options_json or {})
+        options["attempt_id"] = attempt_id
+        update_export(
+            db,
+            export_id=exp_uuid,
+            status="processing",
+            progress_stage="gathering_incident_data",
+            error_message=None,
+            options_json=options,
+        )
+        export_row.options_json = options
+        ctx = ExportRuntimeContext(
+            db=db,
+            incident_uuid=inc_uuid,
+            export_uuid=exp_uuid,
+            incident_id=incident_id,
+            export_id=export_id,
+            workflow_key=workflow_key,
+            org_id=org_id,
+            settings=settings,
+            system_event_type=SystemEventType,
+            s3_key_builder=s3_key_builder,
+            s3=VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION),
+            export_row=export_row,
+            warnings=[],
+            missing_items=[],
+            artifacts=[],
+            events=[],
+            exportable_artifacts=[],
+            inventory_csv_bytes=b"",
+            coc_csv_bytes=b"",
+            appendix_csv_bytes=b"",
+            readme_content="",
+            zip_bytes=b"",
+            zip_key=None,
+        )
         # 1. Emit EXPORT_REQUESTED if not already recorded
+        from app.db.repo.events import get_events_by_incident
+
         existing_events = get_events_by_incident(db, inc_uuid)
         already_requested = any(
             e.event_type == SystemEventType.EXPORT_REQUESTED
@@ -176,194 +458,43 @@ def build_export(
                     "export_id": export_id,
                 },
             )
-        export_row = get_export(db, exp_uuid)
-        if (
-            export_row is not None
-            and export_row.status == "ready"
-            and export_row.s3_key
-            and _event_exists(
-                db, inc_uuid, SystemEventType.EXPORT_GENERATED, workflow_key
-            )
-        ):
-            return {
-                "export_id": export_id,
-                "incident_id": incident_id,
-                "status": "ready",
-                "idempotency_key": workflow_key,
-                "s3_key": export_row.s3_key,
-                "duplicate": True,
-            }
+        # 2. Load context
+        _emit_stage(ctx, "before", "gathering_incident_data")
+        _set_progress_stage(ctx, "gathering_incident_data")
+        _load_context(ctx)
+        _persist_warnings(ctx)
+        _emit_stage(ctx, "after", "gathering_incident_data")
 
-        # 2. Read artifacts and events
-        artifacts = get_artifacts_by_incident(db, inc_uuid)
-        events = get_events_by_incident(db, inc_uuid)
+        # 3. Build machine-readable docs
+        _emit_stage(ctx, "before", "assembling_documents")
+        _set_progress_stage(ctx, "assembling_documents")
+        _build_machine_readable_docs(ctx)
+        _emit_stage(ctx, "after", "assembling_documents")
 
-        s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
+        # 4. Render human-readable docs
+        _emit_stage(ctx, "before", "assembling_documents")
+        _render_human_readable_docs(ctx)
+        _emit_stage(ctx, "after", "assembling_documents")
 
-        exportable_artifacts = []
-        for artifact in artifacts:
-            filename = _artifact_filename(artifact.s3_key)
-            extension = _artifact_extension(filename)
+        # 5. Assemble ZIP
+        _emit_stage(ctx, "before", "packaging_evidence")
+        _set_progress_stage(ctx, "packaging_evidence")
+        _assemble_zip(ctx)
+        _persist_warnings(ctx)
+        _emit_stage(ctx, "after", "packaging_evidence")
 
-            if (
-                artifact.status == "captured"
-                and artifact.s3_key
-                and extension in ALLOWED_ARTIFACT_EXTENSIONS
-            ):
-                exportable_artifacts.append((artifact, filename))
+        # 6. Integrity generation
+        _emit_stage(ctx, "before", "packaging_evidence")
+        _generate_integrity(ctx)
+        _emit_stage(ctx, "after", "packaging_evidence")
 
-        # 3. Generate Evidence Inventory CSV
-        inv_buf = io.StringIO()
-        inv_writer = csv.writer(inv_buf)
-        inv_writer.writerow(
-            [
-                "artifact_id",
-                "artifact_type",
-                "status",
-                "s3_key",
-                "sha256",
-                "byte_size",
-            ]
-        )
-        for a in artifacts:
-            inv_writer.writerow(
-                [
-                    str(a.artifact_id),
-                    a.artifact_type,
-                    a.status,
-                    a.s3_key or "",
-                    a.sha256 or "",
-                    a.byte_size or "",
-                ]
-            )
-        inventory_csv_bytes = inv_buf.getvalue().encode()
+        # 7. Upload + finalize
+        _emit_stage(ctx, "before", "uploading_export")
+        _set_progress_stage(ctx, "uploading_export")
+        _upload_and_finalize(ctx)
+        _emit_stage(ctx, "after", "uploading_export")
 
-        # 4. Generate Chain-of-Custody CSV (derived from events timeline)
-        sorted_events = sorted(events, key=lambda e: str(e.occurred_at_utc))
-
-        coc_buf = io.StringIO()
-        coc_writer = csv.writer(coc_buf)
-        coc_writer.writerow(
-            [
-                "event_id",
-                "event_type",
-                "occurred_at_utc",
-                "actor_type",
-                "actor_id",
-            ]
-        )
-        for ev in sorted_events:
-            coc_writer.writerow(
-                [
-                    str(ev.id),
-                    ev.event_type,
-                    str(ev.occurred_at_utc),
-                    ev.actor_type,
-                    ev.actor_id,
-                ]
-            )
-        coc_csv_bytes = coc_buf.getvalue().encode()
-
-        # 5. Generate Integrity Appendix CSV + README
-        appendix_buf = io.StringIO()
-        appendix_writer = csv.writer(appendix_buf)
-        appendix_writer.writerow(
-            [
-                "artifact_id",
-                "artifact_type",
-                "file_name",
-                "sha256",
-                "byte_size",
-            ]
-        )
-        for artifact, filename in exportable_artifacts:
-            appendix_writer.writerow(
-                [
-                    str(artifact.artifact_id),
-                    artifact.artifact_type,
-                    filename,
-                    artifact.sha256 or "",
-                    artifact.byte_size or "",
-                ]
-            )
-        appendix_csv_bytes = appendix_buf.getvalue().encode()
-
-        capture_start = None
-        capture_end = None
-        for artifact, _ in exportable_artifacts:
-            start_time = artifact.capture_window_start_utc
-            end_time = artifact.capture_window_end_utc
-            if start_time is not None and (
-                capture_start is None or start_time < capture_start
-            ):
-                capture_start = start_time
-            if end_time is not None and (capture_end is None or end_time > capture_end):
-                capture_end = end_time
-        capture_start_str = (
-            capture_start.isoformat() if capture_start else "Unavailable"
-        )
-        capture_end_str = capture_end.isoformat() if capture_end else "Unavailable"
-        readme_content = README_TEMPLATE.format(
-            incident_id=incident_id,
-            export_id=export_id,
-            capture_start=capture_start_str,
-            capture_end=capture_end_str,
-        )
-
-        # 6. Create ZIP
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            package_root = "ADC_Court_Package"
-            zf.writestr(f"{package_root}/00_README.txt", readme_content)
-            zf.writestr(
-                f"{package_root}/02_Evidence_Inventory.csv",
-                inventory_csv_bytes,
-            )
-            zf.writestr(
-                f"{package_root}/03_Chain_of_Custody.csv",
-                coc_csv_bytes,
-            )
-            zf.writestr(
-                f"{package_root}/integrity_appendix.csv",
-                appendix_csv_bytes,
-            )
-
-            # Include stored artifact files
-            for artifact, filename in exportable_artifacts:
-                try:
-                    artifact_data = s3.download(artifact.s3_key)
-                    safe_artifact_type = _safe_artifact_type(artifact.artifact_type)
-                    zf.writestr(
-                        (f"{package_root}/artifacts/{safe_artifact_type}/{filename}"),
-                        artifact_data,
-                    )
-                except Exception:
-                    logger.warning(
-                        "Could not include artifact %s in export",
-                        artifact.s3_key,
-                        exc_info=True,
-                    )
-
-        zip_bytes = zip_buffer.getvalue()
-
-        # 7. Upload ZIP to S3
-        zip_key = s3_key_builder.export_key(
-            org_id=org_id,
-            incident_id=incident_id,
-            export_id=export_id,
-        )
-        s3.put_bytes(zip_key, zip_bytes)
-
-        # 8. Update export row to ready
-        update_export(
-            db,
-            export_id=exp_uuid,
-            status="ready",
-            s3_bucket=settings.S3_BUCKET,
-            s3_key=zip_key,
-        )
-
-        # 9. Emit EXPORT_GENERATED
+        # 8. Emit EXPORT_GENERATED
         _emit_once(
             db,
             inc_uuid,
@@ -371,9 +502,11 @@ def build_export(
             workflow_key,
             {
                 "export_id": export_id,
-                "s3_key": zip_key,
-                "sha256": _hash_bytes(zip_bytes),
-                "byte_size": len(zip_bytes),
+                "s3_key": ctx.zip_key,
+                "sha256": _hash_bytes(ctx.zip_bytes),
+                "byte_size": len(ctx.zip_bytes),
+                "warnings_count": len(ctx.warnings),
+                "missing_items_count": len(ctx.missing_items),
             },
         )
 
@@ -382,11 +515,23 @@ def build_export(
             "incident_id": incident_id,
             "status": "ready",
             "idempotency_key": workflow_key,
+            "warnings": ctx.warnings,
+            "missing_items": ctx.missing_items,
             "duplicate": False,
         }
 
-    except Exception:
+    except Exception as exc:
+        from app.db.repo.exports import update_export
+
         logger.exception("Export %s failed for incident %s", export_id, incident_id)
+        if ctx is not None:
+            _persist_warnings(ctx)
+        update_export(
+            db,
+            export_id=exp_uuid,
+            status="failed",
+            error_message=str(exc)[:4000],
+        )
         _emit_once(
             db,
             inc_uuid,
@@ -394,12 +539,9 @@ def build_export(
             workflow_key,
             {
                 "export_id": export_id,
+                "error_message": str(exc),
             },
         )
-        raise
-
-    except Exception:
-        increment(MetricNames.CELERY_TASK_FAILURES)
         raise
     finally:
         db.close()
