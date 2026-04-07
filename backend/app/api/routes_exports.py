@@ -2,6 +2,8 @@
 
 import uuid
 import logging
+from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -183,6 +185,26 @@ def _resolve_authorized_export(
     if export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
     return export
+
+
+def _is_presigned_https_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.netloc or "").lower()
+    query = parse_qs(parsed.query)
+    has_signature = any(
+        token in query
+        for token in (
+            "X-Amz-Signature",
+            "x-amz-signature",
+            "Signature",
+            "signature",
+        )
+    )
+    if has_signature:
+        return True
+    return "amazonaws.com" not in host
 
 
 def _normalize_manifest_rows(rows) -> list[dict]:
@@ -384,10 +406,17 @@ def download_export_endpoint(
     if export.status != "ready":
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=409, detail="Export is not ready")
+    now = datetime.now(timezone.utc)
+    expires_at = export.expires_at_utc
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at <= now:
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+        raise HTTPException(status_code=410, detail="Export is expired")
 
     bucket = export.s3_bucket or settings.S3_BUCKET
     key = export.s3_key or f"exports/{export.export_id}.zip"
-    expires_in_seconds = 3600
+    expires_in_seconds = settings.EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS
 
     try:
         presigned_url = generate_presigned_download_url(
@@ -405,22 +434,24 @@ def download_export_endpoint(
             status_code=502,
             detail="Unable to generate export download URL",
         ) from exc
+    if not _is_presigned_https_url(presigned_url):
+        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+        raise HTTPException(status_code=502, detail="Invalid presigned download URL")
 
     create_event(
         db,
         incident_id=export.incident_id,
         event_type=SystemEventType.EXPORT_DOWNLOADED,
-        actor_type="system",
-        actor_id="api",
+        actor_type="user",
+        actor_id=str(current_user.id),
         payload={
             "export_id": str(export.export_id),
             "incident_id": str(export.incident_id),
             "export_type": export.export_type,
             "status": "ready",
-            "s3_bucket": bucket,
-            "s3_key": key,
             "download_url_expires_in_seconds": expires_in_seconds,
-            "actor": {"type": "system", "id": "api"},
+            "downloaded_at_utc": now.isoformat(),
+            "actor": {"type": "user", "id": str(current_user.id)},
         },
     )
 
