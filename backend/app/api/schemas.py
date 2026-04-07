@@ -266,6 +266,29 @@ class DownloadExportResponse(BaseModel):
     progress_stage: ExportProgressStage = "ready_for_download"
 
 
+ExportContentKind = Literal["summary_pdf", "raw_telemetry", "photo"]
+
+
+class ExportStatusResponse(BaseModel):
+    status: ExportStatus
+    progress_stage: ExportProgressStage
+    error_message: Optional[str] = None
+
+
+class ExportContentsItem(BaseModel):
+    kind: ExportContentKind
+    included: bool
+    byte_size: Optional[int] = None
+
+
+class ExportContentsResponse(BaseModel):
+    export_id: uuid.UUID
+    status: ExportStatus
+    progress_stage: ExportProgressStage
+    file_manifest: list[ExportContentsItem] = Field(default_factory=list)
+    missing_items: list[ExportContentKind] = Field(default_factory=list)
+
+
 # ── Driver ──────────────────────────────────────────────────────────
 
 

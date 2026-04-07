@@ -10,6 +10,8 @@ from app.api.schemas import (
     CreateExportEnqueueResponse,
     CreateExportRequest,
     DownloadExportResponse,
+    ExportContentsResponse,
+    ExportStatusResponse,
     ExportSummary,
 )
 from app.core.deps import (
@@ -23,6 +25,7 @@ from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import create_export, get_export, list_exports_for_org_ids, update_export
+from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
@@ -38,6 +41,7 @@ from app.services.vault_s3 import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+STABLE_EXPORT_CONTENT_KINDS: tuple[str, ...] = ("summary_pdf", "raw_telemetry", "photo")
 
 
 @router.post("/", response_model=CreateExportEnqueueResponse, status_code=201)
@@ -155,6 +159,90 @@ def _serialize_export(export):
     }
 
 
+def _resolve_authorized_export(
+    db: Session,
+    export_id: uuid.UUID,
+    org_ids: list[uuid.UUID],
+):
+    export = get_export(db, export_id)
+    if not export:
+        raise HTTPException(status_code=404, detail="Export not found")
+
+    export_org_id = _get_export_owner_org_id(db, export)
+    if export_org_id is None or export_org_id not in org_ids:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return export
+
+
+def _normalize_manifest_rows(rows) -> list[dict]:
+    normalized: dict[str, dict] = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        kind = row.get("kind")
+        if kind not in STABLE_EXPORT_CONTENT_KINDS:
+            continue
+        byte_size = row.get("byte_size")
+        normalized[kind] = {
+            "kind": kind,
+            "included": bool(row.get("included", False)),
+            "byte_size": byte_size if isinstance(byte_size, int) and byte_size >= 0 else None,
+        }
+    return [normalized.get(kind, {"kind": kind, "included": False, "byte_size": None}) for kind in STABLE_EXPORT_CONTENT_KINDS]
+
+
+def _reconstruct_manifest(db: Session, export) -> list[dict]:
+    artifacts = get_artifacts_by_incident(db, export.incident_id)
+    has_captured_photos = any(
+        a.status == "captured" and (a.artifact_type or "").lower() == "photo"
+        for a in artifacts
+    )
+    raw_telemetry_bytes = sum(
+        int(a.byte_size)
+        for a in artifacts
+        if a.status == "captured"
+        and (a.artifact_type or "").lower() in {"eld_log", "gps_trail", "safety_event", "vehicle_state"}
+        and isinstance(a.byte_size, int)
+        and a.byte_size >= 0
+    )
+
+    return [
+        {
+            "kind": "summary_pdf",
+            "included": export.status in {"ready", "processing", "failed"},
+            "byte_size": None,
+        },
+        {
+            "kind": "raw_telemetry",
+            "included": raw_telemetry_bytes > 0,
+            "byte_size": raw_telemetry_bytes or None,
+        },
+        {
+            "kind": "photo",
+            "included": has_captured_photos,
+            "byte_size": sum(
+                int(a.byte_size)
+                for a in artifacts
+                if a.status == "captured"
+                and (a.artifact_type or "").lower() == "photo"
+                and isinstance(a.byte_size, int)
+                and a.byte_size >= 0
+            )
+            or None,
+        },
+    ]
+
+
+def _build_contents_manifest(db: Session, export) -> list[dict]:
+    options = export.options_json or {}
+    manifest_rows = options.get("contents_manifest") if isinstance(options, dict) else None
+    if isinstance(manifest_rows, list):
+        normalized = _normalize_manifest_rows(manifest_rows)
+        if normalized:
+            return normalized
+    return _reconstruct_manifest(db, export)
+
+
 @router.get("/", response_model=list[ExportSummary])
 def list_exports_endpoint(
     db: Session = Depends(get_db),
@@ -180,17 +268,49 @@ def get_export_endpoint(
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
-    export = get_export(db, export_id)
-    if not export:
+    try:
+        export = _resolve_authorized_export(db, export_id, org_ids)
+    except HTTPException:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=404, detail="Export not found")
-
-    export_org_id = _get_export_owner_org_id(db, export)
-    if export_org_id is None or export_org_id not in org_ids:
-        increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise
 
     return _serialize_export(export)
+
+
+@router.get("/{export_id}/status", response_model=ExportStatusResponse)
+def get_export_status_endpoint(
+    export_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    current_user: User = Depends(get_current_user),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    export = _resolve_authorized_export(db, export_id, org_ids)
+    return ExportStatusResponse(
+        status=export.status,
+        progress_stage=export.progress_stage,
+        error_message=export.error_message,
+    )
+
+
+@router.get("/{export_id}/contents", response_model=ExportContentsResponse)
+def get_export_contents_endpoint(
+    export_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    current_user: User = Depends(get_current_user),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    export = _resolve_authorized_export(db, export_id, org_ids)
+    manifest = _build_contents_manifest(db, export)
+    missing_items = [row["kind"] for row in manifest if not row["included"]]
+    return ExportContentsResponse(
+        export_id=export.export_id,
+        status=export.status,
+        progress_stage=export.progress_stage,
+        file_manifest=manifest,
+        missing_items=missing_items,
+    )
 
 
 @router.get("/{export_id}/download", response_model=DownloadExportResponse)
