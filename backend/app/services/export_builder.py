@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 
 from app.services.export_content_resolver import resolve_export_content
 from app.services.export_manifest import build_export_manifest
+from app.services.export_pdf_service import (
+    build_export_pdf_context,
+    render_cover_summary_pdf,
+)
 from app.services.export_zip_service import (
     build_checksums_sha256,
     build_export_zip,
@@ -34,6 +38,8 @@ def build_export_package(
     events: list,
     s3,
     options: dict,
+    incident=None,
+    export=None,
 ) -> ExportBuildResult:
     package_root = f"ADC_Export_{incident_id}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
     resolved = resolve_export_content(
@@ -46,6 +52,18 @@ def build_export_package(
     )
 
     files = dict(resolved.files)
+
+    pdf_context = build_export_pdf_context(
+        package_root=package_root,
+        incident=incident,
+        export=export,
+        artifacts=artifacts,
+        events=events,
+        warnings=resolved.warnings,
+        missing_items=resolved.missing_items,
+    )
+    files[f"{package_root}/00_Cover_Summary.pdf"] = render_cover_summary_pdf(pdf_context)
+
     checksums = build_checksums_sha256(files, package_root)
     files[f"{package_root}/integrity/checksums.sha256"] = checksums
 

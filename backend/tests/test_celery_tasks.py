@@ -625,6 +625,7 @@ class TestBuildExport:
             names = set(zf.namelist())
             package_root = next(name.split("/", 1)[0] for name in names if "/" in name)
             expected = {
+                f"{package_root}/00_Cover_Summary.pdf",
                 f"{package_root}/01_Incident_Summary.json",
                 f"{package_root}/02_Evidence_Inventory.csv",
                 f"{package_root}/03_Chain_of_Custody.csv",
