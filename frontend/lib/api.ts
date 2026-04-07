@@ -224,6 +224,26 @@ export interface ExportDownloadAuditResponse {
   downloads: EventSummary[];
 }
 
+export interface CreateExportRequest {
+  incident_id: string;
+  export_type: ExportType;
+  options_json?: Record<string, unknown>;
+}
+
+export interface CreateExportEnqueueResponse {
+  export_id: string;
+  incident_id: string;
+  export_type: ExportType;
+  status: ExportStatus;
+  created_at_utc: string;
+}
+
+export interface ExportStatusResponse {
+  status: ExportStatus;
+  progress_stage: ExportProgressStage;
+  error_message?: string | null;
+}
+
 export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
@@ -257,6 +277,21 @@ export function requestExport(incidentId: string) {
     `/incidents/${incidentId}/exports`,
     { method: "POST" }
   );
+}
+
+export function createExport(data: CreateExportRequest) {
+  return request<CreateExportEnqueueResponse>("/exports/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getExport(exportId: string) {
+  return request<ExportSummary>(`/exports/${exportId}`);
+}
+
+export function getExportStatus(exportId: string) {
+  return request<ExportStatusResponse>(`/exports/${exportId}/status`);
 }
 
 export function downloadExport(exportId: string) {
