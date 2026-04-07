@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint guard-duplicates
+.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates
 
 ## Start all services (infra + backend + worker + frontend) from repo root
 ## Uses docker compose (plugin-style command)
@@ -23,3 +23,7 @@ lint:
 ## Ensure no stale duplicate runtime modules reappear
 guard-duplicates:
 	python scripts/check_no_duplicate_modules.py
+
+## Enforce Priority-1 production hardening gates for production tags
+check-prod-hardening-gates:
+	python scripts/check_release_hardening_gates.py
