@@ -862,6 +862,130 @@ class TestGetExport:
         assert resp.status_code == 403
 
 
+class TestExportStatusAndContents:
+    @pytest.mark.parametrize(
+        ("status", "progress_stage", "error_message"),
+        [
+            ("ready", "ready_for_download", None),
+            ("processing", "assembling_documents", None),
+            ("failed", "packaging_evidence", "zip generation failed"),
+        ],
+    )
+    def test_get_export_status_returns_expected_states(
+        self,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
+        status,
+        progress_stage,
+        error_message,
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=test_org.id,
+            status=status,
+            progress_stage=progress_stage,
+            error_message=error_message,
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/status", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": status,
+            "progress_stage": progress_stage,
+            "error_message": error_message,
+        }
+
+    def test_get_export_contents_returns_manifest_with_stable_kinds(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        db_session.add_all(
+            [
+                Artifact(
+                    incident_id=inc.incident_id,
+                    org_id=test_org.id,
+                    artifact_type="photo",
+                    status="captured",
+                    byte_size=2048,
+                ),
+                Artifact(
+                    incident_id=inc.incident_id,
+                    org_id=test_org.id,
+                    artifact_type="eld_log",
+                    status="captured",
+                    byte_size=4096,
+                ),
+            ]
+        )
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=test_org.id,
+            status="ready",
+            progress_stage="ready_for_download",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/contents", headers=auth_headers)
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["export_id"] == str(exp.export_id)
+        assert payload["status"] == "ready"
+        manifest_by_kind = {row["kind"]: row for row in payload["file_manifest"]}
+        assert set(manifest_by_kind.keys()) == {"summary_pdf", "raw_telemetry", "photo"}
+        assert manifest_by_kind["summary_pdf"]["included"] is True
+        assert manifest_by_kind["raw_telemetry"]["included"] is True
+        assert manifest_by_kind["raw_telemetry"]["byte_size"] == 4096
+        assert manifest_by_kind["photo"]["included"] is True
+        assert manifest_by_kind["photo"]["byte_size"] == 2048
+        assert payload["missing_items"] == []
+
+    def test_export_status_and_contents_forbidden_for_other_org(
+        self, client, db_session, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=other_org.id,
+            status="processing",
+            progress_stage="assembling_documents",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        status_resp = client.get(f"/exports/{exp.export_id}/status", headers=auth_headers)
+        contents_resp = client.get(
+            f"/exports/{exp.export_id}/contents", headers=auth_headers
+        )
+        assert status_resp.status_code == 403
+        assert contents_resp.status_code == 403
+
+
 class TestListExports:
     def test_list_exports_no_org_links_returns_empty(self, client, no_org_auth_headers):
         resp = client.get("/exports/", headers=no_org_auth_headers)
