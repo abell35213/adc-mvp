@@ -619,6 +619,10 @@ class TestDownloadExport:
         assert data["status"] == "ready"
         assert "url" in data
         assert "signed.example.com" in data["url"]
+        mock_generate_presigned_download_url.assert_called_once()
+        assert (
+            mock_generate_presigned_download_url.call_args.kwargs["expires_in"] == 300
+        )
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_logs_event(
@@ -654,8 +658,9 @@ class TestDownloadExport:
         download_event = next(e for e in events if e.event_type == "export_downloaded")
         assert download_event.payload["export_id"] == str(exp.export_id)
         assert download_event.payload["status"] == "ready"
-        assert download_event.payload["s3_bucket"] == "b"
-        assert download_event.payload["s3_key"] == "k"
+        assert download_event.payload["actor"]["type"] == "user"
+        assert download_event.payload["actor"]["id"]
+        assert download_event.payload["downloaded_at_utc"]
 
     def test_download_export_no_auth_returns_401(self, client):
         fake_id = str(uuid.uuid4())
@@ -798,6 +803,75 @@ class TestDownloadExport:
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 403
 
+    def test_download_export_expired_returns_410(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=test_org.id,
+            status="ready",
+            s3_bucket="b",
+            s3_key="exports/expired.zip",
+            expires_at_utc=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 410
+        assert resp.json()["detail"] == "Export is expired"
+
+    @pytest.mark.parametrize("status", ["requested", "queued", "processing", "failed"])
+    def test_download_export_not_ready_statuses_return_409(
+        self, client, db_session, test_org, auth_headers, status
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(incident_id=inc.incident_id, org_id=test_org.id, status=status)
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 409
+
+    @patch("app.api.routes_exports.generate_presigned_download_url")
+    def test_download_export_rejects_non_presigned_url(
+        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=test_org.id,
+            status="ready",
+            s3_bucket="b",
+            s3_key="exports/raw.zip",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        mock_generate_presigned_download_url.return_value = (
+            "https://bucket.s3.amazonaws.com/exports/raw.zip"
+        )
+
+        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
+        assert resp.status_code == 502
+        assert resp.json()["detail"] == "Invalid presigned download URL"
+
 
 # ── GET /exports/{export_id} ───────────────────────────────────────
 
@@ -856,6 +930,28 @@ class TestGetExport:
         assert payload["export_id"] == str(exp.export_id)
         assert len(payload["downloads"]) == 1
         assert payload["downloads"][0]["event_type"] == "export_downloaded"
+        assert payload["downloads"][0]["actor_type"] == "system"
+
+    def test_get_export_downloads_forbidden_for_other_org(
+        self, client, db_session, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        inc = Incident(status="open", org_id=other_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(incident_id=inc.incident_id, org_id=other_org.id, status="ready")
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        resp = client.get(f"/exports/{exp.export_id}/downloads", headers=auth_headers)
+        assert resp.status_code == 403
 
     def test_get_export_no_auth_returns_401(self, client):
         fake_id = str(uuid.uuid4())
@@ -1048,6 +1144,31 @@ class TestExportStatusAndContents:
         )
         assert status_resp.status_code == 403
         assert contents_resp.status_code == 403
+
+    def test_export_status_and_contents_legacy_null_org_fallback_to_incident_org(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(
+            incident_id=inc.incident_id,
+            org_id=None,
+            status="processing",
+            progress_stage="assembling_documents",
+        )
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        status_resp = client.get(f"/exports/{exp.export_id}/status", headers=auth_headers)
+        contents_resp = client.get(
+            f"/exports/{exp.export_id}/contents", headers=auth_headers
+        )
+        assert status_resp.status_code == 200
+        assert contents_resp.status_code == 200
 
 
 class TestListExports:

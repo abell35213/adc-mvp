@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = 300
 
     @classmethod
     def settings_customise_sources(
@@ -194,6 +195,11 @@ class Settings(BaseSettings):
         self.SECRET_PROVIDER = self.SECRET_PROVIDER.strip().lower()
         if self.SECRET_PROVIDER not in {"env", "aws_secrets_manager"}:
             raise ValueError("SECRET_PROVIDER must be one of: env, aws_secrets_manager")
+
+        if not 60 <= self.EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS <= 900:
+            raise ValueError(
+                "EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS must be between 60 and 900"
+            )
 
         return self
 
