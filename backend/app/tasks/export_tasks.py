@@ -365,6 +365,7 @@ def build_export(
     from app.db.repo.exports import get_export, update_export
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
+    from app.services.export_builder import build_export_package
     from app.services.vault_s3 import VaultS3
 
     inc_uuid = _uuid.UUID(incident_id)
@@ -465,33 +466,37 @@ def build_export(
         _persist_warnings(ctx)
         _emit_stage(ctx, "after", "gathering_incident_data")
 
-        # 3. Build machine-readable docs
+        # 3-6. Build export content, manifest, and ZIP package
         _emit_stage(ctx, "before", "assembling_documents")
         _set_progress_stage(ctx, "assembling_documents")
-        _build_machine_readable_docs(ctx)
+        build_result = build_export_package(
+            incident_id=ctx.incident_id,
+            export_id=ctx.export_id,
+            artifacts=ctx.artifacts,
+            events=ctx.events,
+            s3=ctx.s3,
+            options=dict(ctx.export_row.options_json or {}),
+        )
+        ctx.zip_bytes = build_result.zip_bytes
+        ctx.warnings.extend(build_result.warnings)
+        ctx.missing_items.extend(build_result.missing_items)
+        _persist_warnings(ctx)
         _emit_stage(ctx, "after", "assembling_documents")
 
-        # 4. Render human-readable docs
-        _emit_stage(ctx, "before", "assembling_documents")
-        _render_human_readable_docs(ctx)
-        _emit_stage(ctx, "after", "assembling_documents")
-
-        # 5. Assemble ZIP
         _emit_stage(ctx, "before", "packaging_evidence")
         _set_progress_stage(ctx, "packaging_evidence")
-        _assemble_zip(ctx)
-        _persist_warnings(ctx)
-        _emit_stage(ctx, "after", "packaging_evidence")
-
-        # 6. Integrity generation
-        _emit_stage(ctx, "before", "packaging_evidence")
-        _generate_integrity(ctx)
         _emit_stage(ctx, "after", "packaging_evidence")
 
         # 7. Upload + finalize
         _emit_stage(ctx, "before", "uploading_export")
         _set_progress_stage(ctx, "uploading_export")
         _upload_and_finalize(ctx)
+        update_export(
+            ctx.db,
+            export_id=ctx.export_uuid,
+            package_sha256=build_result.package_sha256,
+            byte_size=build_result.byte_size,
+        )
         _emit_stage(ctx, "after", "uploading_export")
 
         # 8. Emit EXPORT_GENERATED
