@@ -47,6 +47,7 @@ class ExportRuntimeContext:
     s3_key_builder: Any
     s3: Any
     export_row: Any
+    incident_row: Any
     warnings: list[dict[str, str]]
     missing_items: list[dict[str, str]]
     artifacts: list[Any]
@@ -363,6 +364,7 @@ def build_export(
     )
     from app.core.config import settings
     from app.db.repo.exports import get_export, update_export
+    from app.db.repo.incidents import get_incident
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.export_builder import build_export_package
@@ -380,6 +382,7 @@ def build_export(
         export_row = get_export(db, exp_uuid)
         if export_row is None:
             raise ValueError(f"Export {export_id} not found")
+        incident_row = get_incident(db, inc_uuid)
 
         attempt_id = str((attempt_context or {}).get("attempt_id") or workflow_key)
         if export_row.status == "ready" and export_row.s3_key:
@@ -427,6 +430,7 @@ def build_export(
             s3_key_builder=s3_key_builder,
             s3=VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION),
             export_row=export_row,
+            incident_row=incident_row,
             warnings=[],
             missing_items=[],
             artifacts=[],
@@ -476,6 +480,8 @@ def build_export(
             events=ctx.events,
             s3=ctx.s3,
             options=dict(ctx.export_row.options_json or {}),
+            incident=ctx.incident_row,
+            export=ctx.export_row,
         )
         ctx.zip_bytes = build_result.zip_bytes
         ctx.warnings.extend(build_result.warnings)
