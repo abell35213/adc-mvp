@@ -6,8 +6,6 @@ import Link from "next/link";
 import {
   getIncident,
   getDriverProtocolSettings,
-  requestExport,
-  downloadExport,
   type IncidentDetail,
   type DriverProtocolSummary,
   type DriverResponseSummary,
@@ -15,7 +13,7 @@ import {
 import { useAuth } from "@/lib/useAuth";
 import EvidenceTable, { EVIDENCE_TYPES } from "@/components/EvidenceTable";
 import Timeline from "@/components/Timeline";
-import ExportPanel from "@/components/ExportPanel";
+import IncidentDetailExportPanel from "@/components/IncidentDetailExportPanel";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -37,7 +35,6 @@ export default function IncidentDetailClient() {
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [exporting, setExporting] = useState(false);
   const [driverProtocolSettings, setDriverProtocolSettings] =
     useState<DriverProtocolSummary | null>(null);
 
@@ -127,28 +124,6 @@ export default function IncidentDetailClient() {
     }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [isCapturing, refreshIncident, user]);
-
-  async function handleExport() {
-    setExporting(true);
-    try {
-      await requestExport(id);
-      const updated = await getIncident(id);
-      setIncident(updated);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function handleDownload(exportId: string) {
-    try {
-      const data = await downloadExport(exportId);
-      window.open(data.url, "_blank");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Download failed");
-    }
-  }
 
   if (loading || authLoading) {
     return (
@@ -278,11 +253,10 @@ export default function IncidentDetailClient() {
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
             C) Export Actions
           </h2>
-          <ExportPanel
+          <IncidentDetailExportPanel
+            incidentId={id}
             exports={incident.export_status}
-            onExport={handleExport}
-            onDownload={handleDownload}
-            exporting={exporting}
+            onExportsChanged={refreshIncident}
           />
         </div>
 
