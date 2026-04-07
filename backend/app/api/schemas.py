@@ -162,6 +162,7 @@ class ExportSummary(BaseModel):
     incident_id: Optional[uuid.UUID] = None
     export_type: ExportType = "court_defense"
     requested_by_user_id: Optional[uuid.UUID] = None
+    retry_parent_export_id: Optional[uuid.UUID] = None
     options_json: dict[str, Any] = Field(default_factory=dict)
     status: ExportStatus
     progress_stage: ExportProgressStage = "request_accepted"
@@ -268,6 +269,11 @@ class CreateExportEnqueueResponse(BaseModel):
     export_type: ExportType
     status: ExportStatus
     created_at_utc: datetime
+
+
+class RetryExportRequest(BaseModel):
+    export_type: Optional[ExportType] = None
+    options_json: Optional[dict[str, Any]] = None
 
 
 class DownloadExportResponse(BaseModel):

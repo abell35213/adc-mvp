@@ -16,6 +16,7 @@ from app.api.schemas import (
     ExportContentsResponse,
     ExportStatusResponse,
     ExportSummary,
+    RetryExportRequest,
 )
 from app.core.deps import (
     enforce_resource_org_ownership,
@@ -27,7 +28,13 @@ from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo.exports import create_export, get_export, list_exports_for_org_ids, update_export
+from app.db.repo.exports import (
+    create_export,
+    get_export,
+    get_exports_by_incident,
+    list_exports_for_org_ids,
+    update_export,
+)
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.incidents import get_incident
@@ -136,6 +143,90 @@ def create_export_endpoint(
     )
 
 
+@router.post("/{export_id}/retry", response_model=CreateExportEnqueueResponse, status_code=201)
+def retry_export_endpoint(
+    export_id: uuid.UUID,
+    body: RetryExportRequest,
+    db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    current_user: User = Depends(require_user_role("admin", "safety_manager")),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    failed_export = _resolve_authorized_export(db, export_id, org_ids)
+    if failed_export.status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed exports can be retried")
+
+    new_export = create_export(
+        db,
+        incident_id=failed_export.incident_id,
+        org_id=failed_export.org_id,
+        status="requested",
+        export_type=body.export_type or failed_export.export_type,
+        requested_by_user_id=current_user.id,
+        retry_parent_export_id=failed_export.export_id,
+        options_json=body.options_json
+        if body.options_json is not None
+        else (failed_export.options_json or {}),
+        progress_stage="request_accepted",
+    )
+
+    attempt_number = _get_retry_attempt_number(db, new_export)
+    create_event(
+        db,
+        incident_id=failed_export.incident_id,
+        event_type=SystemEventType.EXPORT_RETRY_REQUESTED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload={
+            "export_id": str(new_export.export_id),
+            "prior_export_id": str(failed_export.export_id),
+            "incident_id": str(failed_export.incident_id),
+            "export_type": new_export.export_type,
+            "status": "requested",
+            "attempt_number": attempt_number,
+            "actor": {"type": "user", "id": str(current_user.id)},
+        },
+    )
+
+    try:
+        task_result = build_export.delay(
+            str(failed_export.incident_id),
+            str(new_export.export_id),
+            {"attempt_number": attempt_number, "trigger": "retry_api"},
+        )
+    except Exception as exc:
+        logger.exception("Failed to enqueue retry export task")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to enqueue export generation",
+        ) from exc
+    new_export = update_export(db, new_export.export_id, status="queued") or new_export
+    task_id = getattr(task_result, "id", None)
+    create_event(
+        db,
+        incident_id=failed_export.incident_id,
+        event_type=SystemEventType.EXPORT_QUEUED,
+        actor_type="system",
+        actor_id="api",
+        payload={
+            "export_id": str(new_export.export_id),
+            "incident_id": str(failed_export.incident_id),
+            "export_type": new_export.export_type,
+            "status": "queued",
+            "task_id": str(task_id) if isinstance(task_id, (str, uuid.UUID)) else None,
+            "attempt_number": attempt_number,
+            "actor": {"type": "system", "id": "api"},
+        },
+    )
+    return CreateExportEnqueueResponse(
+        export_id=new_export.export_id,
+        incident_id=new_export.incident_id,
+        export_type=new_export.export_type,
+        status=new_export.status,
+        created_at_utc=new_export.created_at_utc,
+    )
+
+
 def _get_export_owner_org_id(db: Session, export):
     """Resolve org ownership for an export, including legacy null-org rows."""
     if export.org_id is not None:
@@ -154,6 +245,9 @@ def _serialize_export(export):
         "export_type": export.export_type,
         "requested_by_user_id": (
             str(export.requested_by_user_id) if export.requested_by_user_id else None
+        ),
+        "retry_parent_export_id": (
+            str(export.retry_parent_export_id) if export.retry_parent_export_id else None
         ),
         "options_json": export.options_json or {},
         "status": export.status,
@@ -185,6 +279,25 @@ def _resolve_authorized_export(
     if export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
     return export
+
+
+def _get_retry_attempt_number(db: Session, retry_export) -> int:
+    chain_exports = get_exports_by_incident(db, retry_export.incident_id)
+    by_id = {item.export_id: item for item in chain_exports}
+    root_id = retry_export.export_id
+    cursor = retry_export
+    while cursor.retry_parent_export_id and cursor.retry_parent_export_id in by_id:
+        root_id = cursor.retry_parent_export_id
+        cursor = by_id[cursor.retry_parent_export_id]
+
+    attempts = 0
+    for item in chain_exports:
+        candidate = item
+        while candidate.retry_parent_export_id and candidate.retry_parent_export_id in by_id:
+            candidate = by_id[candidate.retry_parent_export_id]
+        if candidate.export_id == root_id:
+            attempts += 1
+    return attempts
 
 
 def _is_presigned_https_url(url: str) -> bool:

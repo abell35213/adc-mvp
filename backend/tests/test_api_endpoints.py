@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base, Incident, Artifact, Export, User, Org, UserOrg
+from app.db.models import Base, Incident, Artifact, Event, Export, User, Org, UserOrg
 from app.db.session import get_db
 from app.core.security import hash_password, create_access_token
 from app.main import app
@@ -561,6 +561,115 @@ class TestRequestExport:
             headers=auth_headers,
         )
         assert resp.status_code == 201
+
+    @patch("app.api.routes_exports.build_export")
+    def test_retry_failed_export_creates_linked_attempt_and_reuses_config(
+        self, mock_gen, client, db_session, test_org, test_user, auth_headers
+    ):
+        mock_gen.delay = MagicMock()
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        failed = Export(
+            incident_id=incident.incident_id,
+            org_id=test_org.id,
+            export_type="court_defense",
+            requested_by_user_id=test_user.id,
+            options_json={"profile": "mvp_default", "include_media": False},
+            status="failed",
+            progress_stage="packaging_evidence",
+            error_message="zip failed",
+        )
+        db_session.add(failed)
+        db_session.commit()
+        db_session.refresh(failed)
+
+        resp = client.post(f"/exports/{failed.export_id}/retry", json={}, headers=auth_headers)
+        assert resp.status_code == 201
+        payload = resp.json()
+        assert payload["status"] == "queued"
+        assert payload["incident_id"] == str(incident.incident_id)
+
+        created = (
+            db_session.query(Export)
+            .filter(Export.export_id == uuid.UUID(payload["export_id"]))
+            .first()
+        )
+        assert created is not None
+        assert created.retry_parent_export_id == failed.export_id
+        assert created.export_type == failed.export_type
+        assert created.options_json == failed.options_json
+        refreshed_failed = db_session.query(Export).filter(Export.export_id == failed.export_id).first()
+        assert refreshed_failed.status == "failed"
+        retry_event = (
+            db_session.query(Event)
+            .filter(Event.event_type == "export_retry_requested")
+            .order_by(Event.created_at_utc.desc())
+            .first()
+        )
+        assert retry_event is not None
+        assert retry_event.payload["prior_export_id"] == str(failed.export_id)
+
+        mock_gen.delay.assert_called_once_with(
+            str(incident.incident_id),
+            str(created.export_id),
+            {"attempt_number": 2, "trigger": "retry_api"},
+        )
+
+    @patch("app.api.routes_exports.build_export")
+    def test_retry_failed_export_accepts_overrides(self, mock_gen, client, db_session, test_org, auth_headers):
+        mock_gen.delay = MagicMock()
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+        failed = Export(
+            incident_id=incident.incident_id,
+            org_id=test_org.id,
+            export_type="internal_review",
+            options_json={},
+            status="failed",
+        )
+        db_session.add(failed)
+        db_session.commit()
+        db_session.refresh(failed)
+
+        resp = client.post(
+            f"/exports/{failed.export_id}/retry",
+            json={"export_type": "court_defense", "options_json": {"profile": "mvp_default"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        created = db_session.query(Export).filter(Export.export_id == uuid.UUID(resp.json()["export_id"])).first()
+        assert created.export_type == "court_defense"
+        assert created.options_json == {"profile": "mvp_default"}
+
+    def test_retry_export_rejects_non_failed_and_preserves_ready_export(
+        self, client, db_session, test_org, auth_headers
+    ):
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+        ready = Export(
+            incident_id=incident.incident_id,
+            org_id=test_org.id,
+            export_type="court_defense",
+            options_json={"profile": "mvp_default"},
+            status="ready",
+            package_sha256="abc123",
+        )
+        db_session.add(ready)
+        db_session.commit()
+        db_session.refresh(ready)
+
+        resp = client.post(f"/exports/{ready.export_id}/retry", json={}, headers=auth_headers)
+        assert resp.status_code == 409
+        db_session.refresh(ready)
+        assert ready.status == "ready"
+        assert ready.package_sha256 == "abc123"
 
 
 # ── GET /exports/{export_id}/download ───────────────────────────────
