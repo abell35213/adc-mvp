@@ -18,11 +18,7 @@ from app.api.schemas import (
     ExportSummary,
     RetryExportRequest,
 )
-from app.core.deps import (
-    enforce_resource_org_ownership,
-    get_current_user_org_ids,
-    require_capabilities,
-)
+from app.core.deps import get_current_user
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
@@ -37,12 +33,12 @@ from app.db.repo.exports import (
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.incidents import get_incident
-from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.tasks.export_tasks import build_export
 from app.domain.packet_profiles import get_default_packet_profile
-from app.security.permissions import Capability
+from app.security.authn import UserAuthContext, build_user_auth_context
+from app.security.authz import can_download_export, can_request_export, require_policy
 from app.services.vault_s3 import (
     S3PresignConfigurationError,
     S3PresignGenerationError,
@@ -59,17 +55,16 @@ STABLE_EXPORT_CONTENT_KINDS: tuple[str, ...] = ("summary_pdf", "raw_telemetry", 
 def create_export_endpoint(
     body: CreateExportRequest,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_WRITE)),
+    current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
 
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
     incident = get_incident(db, body.incident_id)
     if incident is None:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         raise HTTPException(status_code=404, detail="Incident not found")
-    enforce_resource_org_ownership(incident.org_id, org_ids)
+    require_policy(can_request_export(context, incident))
 
     set_log_context(
         user_id=str(current_user.id),
@@ -150,11 +145,10 @@ def retry_export_endpoint(
     export_id: uuid.UUID,
     body: RetryExportRequest,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_WRITE)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    failed_export = _resolve_authorized_export(db, export_id, org_ids)
+    context = build_user_auth_context(db, current_user)
+    failed_export = _resolve_authorized_export(db, export_id, list(context.org_ids), context=context)
     if failed_export.status != "failed":
         raise HTTPException(status_code=409, detail="Only failed exports can be retried")
 
@@ -282,13 +276,16 @@ def _resolve_authorized_export(
     db: Session,
     export_id: uuid.UUID,
     org_ids: list[uuid.UUID],
+    context: UserAuthContext | None = None,
 ):
     export = get_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    if export_org_id is None or export_org_id not in org_ids:
+    if context is not None:
+        require_policy(can_download_export(context, export, export_org_id=export_org_id))
+    elif export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
     return export
 
@@ -435,10 +432,10 @@ def _build_contents_manifest(db: Session, export) -> list[dict]:
 @router.get("/", response_model=list[ExportSummary])
 def list_exports_endpoint(
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
@@ -450,15 +447,15 @@ def list_exports_endpoint(
 def get_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
     try:
-        export = _resolve_authorized_export(db, export_id, org_ids)
+        export = _resolve_authorized_export(db, export_id, org_ids, context=context)
     except HTTPException:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise
@@ -470,11 +467,11 @@ def get_export_endpoint(
 def get_export_status_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    export = _resolve_authorized_export(db, export_id, org_ids)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    export = _resolve_authorized_export(db, export_id, org_ids, context=context)
     return ExportStatusResponse(
         status=export.status,
         progress_stage=export.progress_stage,
@@ -486,11 +483,11 @@ def get_export_status_endpoint(
 def get_export_contents_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    export = _resolve_authorized_export(db, export_id, org_ids)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    export = _resolve_authorized_export(db, export_id, org_ids, context=context)
     manifest = _build_contents_manifest(db, export)
     options = export.options_json or {}
     missing_items = options.get("missing_items") if isinstance(options, dict) else []
@@ -509,12 +506,12 @@ def get_export_contents_endpoint(
 def download_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     with timed(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS):
-        org_ids = get_user_org_ids(db, current_user.id)
         set_log_context(
             user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
         )
@@ -524,7 +521,7 @@ def download_export_endpoint(
         raise HTTPException(status_code=404, detail="Export not found")
 
     export_org_id = _get_export_owner_org_id(db, export)
-    if export_org_id is None or export_org_id not in org_ids:
+    if not can_download_export(context, export, export_org_id=export_org_id):
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -592,11 +589,11 @@ def download_export_endpoint(
 def get_export_downloads_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
-    export = _resolve_authorized_export(db, export_id, org_ids)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    export = _resolve_authorized_export(db, export_id, org_ids, context=context)
     events = get_events_by_incident(db, export.incident_id)
     download_events = [
         event

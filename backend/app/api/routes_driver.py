@@ -51,6 +51,8 @@ from app.services.incident_workflow_service import (
     incident_status_summary,
     initiate_driver_incident,
 )
+from app.security.authn import build_driver_auth_context
+from app.security.authz import can_access_driver_incident, require_policy
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.notification_tasks import notify_safety_manager
 
@@ -410,6 +412,7 @@ def _get_driver_incident(
     incident_id: uuid.UUID,
     driver: Driver,
 ) -> Incident:
+    context = build_driver_auth_context(driver)
     incident = (
         db.query(Incident)
         .filter(
@@ -421,6 +424,7 @@ def _get_driver_incident(
     )
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_access_driver_incident(context, incident))
     return incident
 
 

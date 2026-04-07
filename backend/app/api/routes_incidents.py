@@ -16,12 +16,7 @@ from app.api.schemas import (
     IncidentDetailResponse,
     IncidentListItem,
 )
-from app.core.deps import (
-    enforce_resource_org_ownership,
-    get_current_user,
-    get_current_user_org_ids,
-    get_current_user_primary_org_id,
-)
+from app.core.deps import get_current_user
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
@@ -29,12 +24,18 @@ from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
 from app.db.repo.incidents import create_incident, get_incident, list_incidents
-from app.db.repo.users import get_user_org_ids
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
+from app.security.authn import build_user_auth_context
+from app.security.authz import (
+    can_create_incident,
+    can_request_export,
+    can_view_incident,
+    require_policy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,10 @@ router = APIRouter()
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
@@ -78,14 +79,14 @@ def list_incidents_endpoint(
 def create_incident_endpoint(
     body: CreateIncidentRequest,
     db: Session = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_user_primary_org_id),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.INCIDENT_CREATE_ATTEMPTS)
 
     with timed(MetricNames.INCIDENT_CREATE_ATTEMPTS):
-        org_ids = get_user_org_ids(db, current_user.id)
-        org_id = org_ids[0] if org_ids else None
+        context = build_user_auth_context(db, current_user)
+        require_policy(can_create_incident(context))
+        org_id = context.org_ids[0]
         set_log_context(
             user_id=str(current_user.id), org_id=str(org_id) if org_id else None
         )
@@ -142,10 +143,10 @@ def create_incident_endpoint(
 def get_incident_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
@@ -153,7 +154,7 @@ def get_incident_endpoint(
     incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
-    enforce_resource_org_ownership(incident.org_id, org_ids)
+    require_policy(can_view_incident(context, incident))
 
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
@@ -233,17 +234,17 @@ def get_incident_endpoint(
 def request_export_endpoint(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
-    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
 
-    org_ids = get_user_org_ids(db, current_user.id)
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
     incident = get_incident(db, incident_id, org_ids=org_ids)
     if not incident:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         raise HTTPException(status_code=404, detail="Incident not found")
-    enforce_resource_org_ownership(incident.org_id, org_ids)
+    require_policy(can_request_export(context, incident))
 
     set_log_context(
         user_id=str(current_user.id),

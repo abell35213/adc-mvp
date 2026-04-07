@@ -59,3 +59,8 @@ def normalize_role(raw_role: str | None) -> Role:
 
 def get_user_capabilities(raw_role: str | None) -> frozenset[Capability]:
     return ROLE_CAPABILITIES[normalize_role(raw_role)]
+
+
+def has_capability(raw_role: str | None, capability: Capability | str) -> bool:
+    resolved = capability if isinstance(capability, Capability) else Capability(capability)
+    return resolved in get_user_capabilities(raw_role)
