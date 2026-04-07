@@ -162,6 +162,24 @@ def _emit_stage(ctx: ExportRuntimeContext, phase: str, stage: str):
     )
 
 
+def _export_event_payload(
+    ctx: ExportRuntimeContext,
+    status: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "idempotency_key": ctx.workflow_key,
+        "export_id": ctx.export_id,
+        "incident_id": ctx.incident_id,
+        "export_type": ctx.export_row.export_type,
+        "status": status,
+        "actor": {"type": "system", "id": "celery"},
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
 def _persist_warnings(ctx: ExportRuntimeContext):
     from app.db.repo.exports import update_export
 
@@ -459,10 +477,18 @@ def build_export(
                 inc_uuid,
                 SystemEventType.EXPORT_REQUESTED,
                 workflow_key,
-                {
-                    "export_id": export_id,
-                },
+                _export_event_payload(
+                    ctx,
+                    "requested",
+                ),
             )
+        _emit_once(
+            db,
+            inc_uuid,
+            SystemEventType.EXPORT_PROCESSING_STARTED,
+            workflow_key,
+            _export_event_payload(ctx, "processing"),
+        )
         # 2. Load context
         _emit_stage(ctx, "before", "gathering_incident_data")
         _set_progress_stage(ctx, "gathering_incident_data")
@@ -492,6 +518,19 @@ def build_export(
         update_export(ctx.db, export_id=ctx.export_uuid, options_json=options)
         ctx.export_row.options_json = options
         _emit_stage(ctx, "after", "assembling_documents")
+        _emit(
+            ctx.db,
+            ctx.incident_uuid,
+            SystemEventType.EXPORT_SECTION_GENERATED,
+            _export_event_payload(
+                ctx,
+                "processing",
+                {
+                    "section": "document_bundle",
+                    "file_manifest_count": len(build_result.file_manifest),
+                },
+            ),
+        )
 
         _emit_stage(ctx, "before", "packaging_evidence")
         _set_progress_stage(ctx, "packaging_evidence")
@@ -508,6 +547,23 @@ def build_export(
             byte_size=build_result.byte_size,
         )
         _emit_stage(ctx, "after", "uploading_export")
+        _emit(
+            ctx.db,
+            ctx.incident_uuid,
+            SystemEventType.EXPORT_PACKAGE_UPLOADED,
+            _export_event_payload(
+                ctx,
+                "ready",
+                {
+                    "package": {
+                        "s3_bucket": ctx.settings.S3_BUCKET,
+                        "s3_key": ctx.zip_key,
+                        "sha256": build_result.package_sha256,
+                        "byte_size": build_result.byte_size,
+                    }
+                },
+            ),
+        )
 
         # 8. Emit EXPORT_GENERATED
         _emit_once(
@@ -515,14 +571,22 @@ def build_export(
             inc_uuid,
             SystemEventType.EXPORT_GENERATED,
             workflow_key,
-            {
-                "export_id": export_id,
-                "s3_key": ctx.zip_key,
-                "sha256": _hash_bytes(ctx.zip_bytes),
-                "byte_size": len(ctx.zip_bytes),
-                "warnings_count": len(ctx.warnings),
-                "missing_items_count": len(ctx.missing_items),
-            },
+            _export_event_payload(
+                ctx,
+                "ready",
+                {
+                    "package": {
+                        "s3_bucket": ctx.settings.S3_BUCKET,
+                        "s3_key": ctx.zip_key,
+                        "sha256": _hash_bytes(ctx.zip_bytes),
+                        "byte_size": len(ctx.zip_bytes),
+                    },
+                    "sha256": _hash_bytes(ctx.zip_bytes),
+                    "byte_size": len(ctx.zip_bytes),
+                    "warnings_count": len(ctx.warnings),
+                    "missing_items_count": len(ctx.missing_items),
+                },
+            ),
         )
 
         return {
@@ -553,7 +617,11 @@ def build_export(
             SystemEventType.EXPORT_FAILED,
             workflow_key,
             {
+                "idempotency_key": workflow_key,
                 "export_id": export_id,
+                "incident_id": incident_id,
+                "status": "failed",
+                "actor": {"type": "system", "id": "celery"},
                 "error_message": str(exc),
             },
         )

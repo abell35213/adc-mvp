@@ -311,6 +311,11 @@ class ExportContentsResponse(BaseModel):
     warnings: list[dict[str, str]] = Field(default_factory=list)
 
 
+class ExportDownloadAuditResponse(BaseModel):
+    export_id: uuid.UUID
+    downloads: list[EventSummary] = Field(default_factory=list)
+
+
 # ── Driver ──────────────────────────────────────────────────────────
 
 

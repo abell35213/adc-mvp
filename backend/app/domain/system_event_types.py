@@ -31,6 +31,9 @@ class SystemEventType(str, Enum):
     # ── Exports ─────────────────────────────────────────────────────
     EXPORT_REQUESTED = "export_requested"
     EXPORT_QUEUED = "export_queued"
+    EXPORT_PROCESSING_STARTED = "export_processing_started"
+    EXPORT_SECTION_GENERATED = "export_section_generated"
+    EXPORT_PACKAGE_UPLOADED = "export_package_uploaded"
     EXPORT_GENERATED = "export_generated"
     EXPORT_FAILED = "export_failed"
     EXPORT_DOWNLOADED = "export_downloaded"
