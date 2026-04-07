@@ -234,6 +234,39 @@ class Export(Base):
     __table_args__ = (Index("ix_exports_org_incident", "org_id", "incident_id"),)
 
 
+class SessionRecord(Base):
+    """Server-side authenticated session state."""
+
+    __tablename__ = "sessions"
+
+    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
+    client_type = Column(Text, nullable=False)
+    device_descriptor = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    last_seen_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+
+class RefreshToken(Base):
+    """Refresh token lineage bound to a session."""
+
+    __tablename__ = "refresh_tokens"
+
+    token_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.session_id"), nullable=False, index=True)
+    refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    parent_token_id = Column(UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id"), nullable=True)
+    token_hash = Column(Text, nullable=False, unique=True, index=True)
+    issued_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    consumed_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+
+
+
 # ── Driver protocol models ────────────────────────────────────────────
 
 

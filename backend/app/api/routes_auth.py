@@ -1,13 +1,15 @@
 """Auth API routes — login, register, logout, and me."""
 
 import logging
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
     LoginRequest,
     LoginResponse,
+    RefreshResponse,
     RegisterRequest,
     RegisterResponse,
     MeResponse,
@@ -17,7 +19,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import decode_access_token, hash_password, verify_password, create_access_token
 from app.db.models import User
 from app.db.repo.users import (
     create_org,
@@ -27,6 +29,7 @@ from app.db.repo.users import (
     link_user_org,
 )
 from app.db.session import get_db
+from app.security.session import create_session, revoke_session, rotate_refresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     increment(MetricNames.AUTH_LOGIN_ATTEMPTS)
     with timed(MetricNames.AUTH_LOGIN_ATTEMPTS):
         user = get_user_by_email(db, body.email)
@@ -58,19 +61,80 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         set_log_context(
             user_id=str(user.id), org_id=str(org_ids[0]) if org_ids else None
         )
-        token = create_access_token({"sub": str(user.id), "role": user.role})
+        access_token, refresh_token, _session_id = create_session(
+            db,
+            user_id=user.id,
+            org_id=org_ids[0] if org_ids else None,
+            client_type="web",
+            device_descriptor=request.headers.get("user-agent"),
+            token_subject=str(user.id),
+            token_claims={"role": user.role},
+        )
 
-    # Set httpOnly cookie for browser-based dashboard access
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+    )
+
+    return LoginResponse(access_token=access_token, role=user.role)
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+    refresh_cookie = request.cookies.get("refresh_token")
+    if not refresh_cookie:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
+
+    access_token, next_refresh, _sid = rotate_refresh_token(
+        db,
+        refresh_token_value=refresh_cookie,
+        token_subject="",
+        token_claims={},
+        expected_client_type="web",
+        expected_device_descriptor=request.headers.get("user-agent"),
+    )
+    payload = decode_access_token(access_token)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token issuance failed")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token issuance failed")
+
+    user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    token = create_access_token({"sub": str(user.id), "sid": payload.get("sid"), "typ": "access", "role": user.role})
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite="lax",
-        max_age=30 * 60,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
-
-    return LoginResponse(access_token=token, role=user.role)
+    response.set_cookie(
+        key="refresh_token",
+        value=next_refresh,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+    )
+    return RefreshResponse(access_token=token)
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
@@ -88,7 +152,6 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         pw_hash = hash_password(body.password)
         user = create_user(db, email=body.email, password_hash=pw_hash, role=body.role)
 
-        # Auto-create org and link
         org = create_org(db, name=body.org_name)
         link_user_org(db, user_id=user.id, org_id=org.id)
 
@@ -105,11 +168,20 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(response: Response, current_user: User = Depends(get_current_user)):
-    # Stateless JWT — the client discards the token.
-    # Clear the httpOnly cookie as well.
+def logout(response: Response, current_user: User = Depends(get_current_user), request: Request = None, db: Session = Depends(get_db)):
+    token = request.cookies.get("access_token") if request else None
+    sid = None
+    if token:
+        payload = decode_access_token(token)
+        sid = payload.get("sid") if payload else None
+    if sid:
+        revoke_session(db, uuid.UUID(sid))
+
     response.delete_cookie(
         key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
+    )
+    response.delete_cookie(
+        key="refresh_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
     )
     set_log_context(user_id=str(current_user.id))
     return LogoutResponse()
