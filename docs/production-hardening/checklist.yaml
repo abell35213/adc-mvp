@@ -1,0 +1,172 @@
+[
+  {
+    "section": 5,
+    "requirement": "Identity and authorization gate",
+    "priority": 1,
+    "status": "incomplete",
+    "owner": "Security Engineering",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/jwt-key-rotation-runbook.md",
+    "gate": "identity_authz"
+  },
+  {
+    "section": 6,
+    "requirement": "Audit logging gate",
+    "priority": 1,
+    "status": "incomplete",
+    "owner": "Backend Platform",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/release-readiness-checklist.md",
+    "gate": "audit_logging"
+  },
+  {
+    "section": 7,
+    "requirement": "Observability gate",
+    "priority": 1,
+    "status": "incomplete",
+    "owner": "SRE",
+    "target_sprint": "Sprint-25",
+    "evidence_link": "docs/reliability-and-incident-response-runbook.md",
+    "gate": "observability"
+  },
+  {
+    "section": 8,
+    "requirement": "Backup and restore gate",
+    "priority": 1,
+    "status": "incomplete",
+    "owner": "SRE",
+    "target_sprint": "Sprint-25",
+    "evidence_link": "docs/reliability-and-incident-response-runbook.md",
+    "gate": "backups"
+  },
+  {
+    "section": 9,
+    "requirement": "Release flow gate",
+    "priority": 1,
+    "status": "incomplete",
+    "owner": "Release Management",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/release-readiness-checklist.md",
+    "gate": "release_flow"
+  },
+  {
+    "section": 10,
+    "requirement": "Secrets management",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Security Engineering",
+    "target_sprint": "Sprint-25",
+    "evidence_link": "docs/api-keys-rotation-runbook.md",
+    "gate": "secrets_management"
+  },
+  {
+    "section": 11,
+    "requirement": "Data encryption",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Platform Security",
+    "target_sprint": "Sprint-25",
+    "evidence_link": "docs/db-credentials-rotation-runbook.md",
+    "gate": "data_encryption"
+  },
+  {
+    "section": 12,
+    "requirement": "Dependency and vulnerability management",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Platform Engineering",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/release-readiness-checklist.md",
+    "gate": "dependency_vulnerability"
+  },
+  {
+    "section": 13,
+    "requirement": "API contract governance",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Backend Platform",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "contracts/schemas/README.md",
+    "gate": "api_contract_governance"
+  },
+  {
+    "section": 14,
+    "requirement": "Infrastructure as code conformance",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Infrastructure Engineering",
+    "target_sprint": "Sprint-26",
+    "evidence_link": "infra/production/backend-deployment.yaml",
+    "gate": "iac_conformance"
+  },
+  {
+    "section": 15,
+    "requirement": "Access lifecycle management",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "IT Security",
+    "target_sprint": "Sprint-26",
+    "evidence_link": "docs/jwt-key-rotation-runbook.md",
+    "gate": "access_lifecycle"
+  },
+  {
+    "section": 16,
+    "requirement": "Data retention and legal hold",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Compliance",
+    "target_sprint": "Sprint-27",
+    "evidence_link": "docs/reliability-and-incident-response-runbook.md",
+    "gate": "retention_legal_hold"
+  },
+  {
+    "section": 17,
+    "requirement": "Incident response readiness",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "SRE",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/reliability-and-incident-response-runbook.md",
+    "gate": "incident_response"
+  },
+  {
+    "section": 18,
+    "requirement": "Business continuity and disaster recovery",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "SRE",
+    "target_sprint": "Sprint-26",
+    "evidence_link": "docs/reliability-and-incident-response-runbook.md",
+    "gate": "business_continuity_dr"
+  },
+  {
+    "section": 19,
+    "requirement": "Performance and capacity engineering",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Platform Engineering",
+    "target_sprint": "Sprint-27",
+    "evidence_link": "docs/driver-protocol-test-matrix.md",
+    "gate": "performance_capacity"
+  },
+  {
+    "section": 20,
+    "requirement": "Privacy and compliance evidence",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Compliance",
+    "target_sprint": "Sprint-27",
+    "evidence_link": "docs/release-readiness-checklist.md",
+    "gate": "privacy_compliance"
+  },
+  {
+    "section": 21,
+    "requirement": "Change management and post-release verification",
+    "priority": 2,
+    "status": "incomplete",
+    "owner": "Release Management",
+    "target_sprint": "Sprint-24",
+    "evidence_link": "docs/release-readiness-checklist.md",
+    "gate": "change_management"
+  }
+]
