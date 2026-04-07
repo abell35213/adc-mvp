@@ -5,6 +5,7 @@ import uuid as _uuid
 from sqlalchemy.orm import Session
 
 from app.db.models import User, Org, UserOrg
+from app.security.permissions import Role, normalize_role
 
 
 # ── Users ──────────────────────────────────────────────────────────
@@ -22,9 +23,13 @@ def create_user(
     db: Session,
     email: str,
     password_hash: str,
-    role: str = "safety_manager",
+    role: str = Role.SAFETY_MANAGER.value,
 ) -> User:
-    user = User(email=email, password_hash=password_hash, role=role)
+    user = User(
+        email=email,
+        password_hash=password_hash,
+        role=normalize_role(role).value,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)

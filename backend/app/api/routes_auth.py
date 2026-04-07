@@ -29,6 +29,7 @@ from app.db.repo.users import (
     link_user_org,
 )
 from app.db.session import get_db
+from app.security.permissions import get_user_capabilities, normalize_role
 from app.security.session import create_session, revoke_session, rotate_refresh_token
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             client_type="web",
             device_descriptor=request.headers.get("user-agent"),
             token_subject=str(user.id),
-            token_claims={"role": user.role},
+            token_claims={"role": normalize_role(user.role).value},
         )
 
     response.set_cookie(
@@ -88,7 +89,11 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return LoginResponse(access_token=access_token, role=user.role)
+    return LoginResponse(
+        access_token=access_token,
+        role=normalize_role(user.role).value,
+        capabilities=sorted(cap.value for cap in get_user_capabilities(user.role)),
+    )
 
 
 @router.post("/refresh", response_model=RefreshResponse)
@@ -117,7 +122,14 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    token = create_access_token({"sub": str(user.id), "sid": payload.get("sid"), "typ": "access", "role": user.role})
+    token = create_access_token(
+        {
+            "sub": str(user.id),
+            "sid": payload.get("sid"),
+            "typ": "access",
+            "role": normalize_role(user.role).value,
+        }
+    )
     response.set_cookie(
         key="access_token",
         value=token,
@@ -150,18 +162,26 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
             )
 
         pw_hash = hash_password(body.password)
-        user = create_user(db, email=body.email, password_hash=pw_hash, role=body.role)
+        user = create_user(
+            db,
+            email=body.email,
+            password_hash=pw_hash,
+            role=normalize_role(body.role).value,
+        )
 
         org = create_org(db, name=body.org_name)
         link_user_org(db, user_id=user.id, org_id=org.id)
 
         set_log_context(user_id=str(user.id), org_id=str(org.id))
-        token = create_access_token({"sub": str(user.id), "role": user.role})
+        token = create_access_token(
+            {"sub": str(user.id), "role": normalize_role(user.role).value}
+        )
 
     return RegisterResponse(
         user_id=user.id,
         email=user.email,
-        role=user.role,
+        role=normalize_role(user.role).value,
+        capabilities=sorted(cap.value for cap in get_user_capabilities(user.role)),
         org_id=org.id,
         access_token=token,
     )
@@ -199,7 +219,10 @@ def me(
     return MeResponse(
         user_id=current_user.id,
         email=current_user.email,
-        role=current_user.role,
+        role=normalize_role(current_user.role).value,
+        capabilities=sorted(
+            cap.value for cap in get_user_capabilities(current_user.role)
+        ),
         org_ids=org_ids,
         active_org_id=org_ids[0] if org_ids else None,
     )

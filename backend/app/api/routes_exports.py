@@ -20,9 +20,8 @@ from app.api.schemas import (
 )
 from app.core.deps import (
     enforce_resource_org_ownership,
-    get_current_user,
     get_current_user_org_ids,
-    require_user_role,
+    require_capabilities,
 )
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
@@ -43,6 +42,7 @@ from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.tasks.export_tasks import build_export
 from app.domain.packet_profiles import get_default_packet_profile
+from app.security.permissions import Capability
 from app.services.vault_s3 import (
     S3PresignConfigurationError,
     S3PresignGenerationError,
@@ -60,7 +60,7 @@ def create_export_endpoint(
     body: CreateExportRequest,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_user_role("admin", "safety_manager")),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_WRITE)),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
 
@@ -151,7 +151,7 @@ def retry_export_endpoint(
     body: RetryExportRequest,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(require_user_role("admin", "safety_manager")),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_WRITE)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     failed_export = _resolve_authorized_export(db, export_id, org_ids)
@@ -436,7 +436,7 @@ def _build_contents_manifest(db: Session, export) -> list[dict]:
 def list_exports_endpoint(
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     set_log_context(
@@ -451,7 +451,7 @@ def get_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     set_log_context(
@@ -471,7 +471,7 @@ def get_export_status_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     export = _resolve_authorized_export(db, export_id, org_ids)
@@ -487,7 +487,7 @@ def get_export_contents_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     export = _resolve_authorized_export(db, export_id, org_ids)
@@ -510,7 +510,7 @@ def download_export_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     increment(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS)
     with timed(MetricNames.EXPORT_DOWNLOAD_ATTEMPTS):
@@ -593,7 +593,7 @@ def get_export_downloads_endpoint(
     export_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capabilities(Capability.EXPORT_READ)),
 ):
     org_ids = get_user_org_ids(db, current_user.id)
     export = _resolve_authorized_export(db, export_id, org_ids)

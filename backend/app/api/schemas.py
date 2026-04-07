@@ -12,6 +12,7 @@ from app.domain.packet_profiles import (
     get_default_packet_profile,
     get_packet_profile,
 )
+from app.security.permissions import ALL_RECOMMENDED_CAPABILITIES, CANONICAL_ROLES, Role
 
 EmailStrLike = Annotated[
     str,
@@ -54,6 +55,27 @@ QrToken = Annotated[
 ]
 
 UserRole = Literal["admin", "safety_manager"]
+CapabilityName = Literal[
+    "incident:read",
+    "incident:write",
+    "export:read",
+    "export:write",
+    "driver_protocol:read",
+    "driver_protocol:write",
+    "vehicle_qr:read",
+    "vehicle_qr:write",
+]
+assert set(CANONICAL_ROLES) == {"admin", "safety_manager"}
+assert set(ALL_RECOMMENDED_CAPABILITIES) == {
+    "incident:read",
+    "incident:write",
+    "export:read",
+    "export:write",
+    "driver_protocol:read",
+    "driver_protocol:write",
+    "vehicle_qr:read",
+    "vehicle_qr:write",
+}
 InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
 IncidentStatus = Literal["open", "evidence_capturing", "closed"]
@@ -108,6 +130,7 @@ class LoginResponse(BaseModel):
     access_token: Annotated[str, StringConstraints(min_length=16)]
     token_type: Literal["bearer"] = "bearer"
     role: UserRole
+    capabilities: list[CapabilityName] = Field(default_factory=list)
 
 
 class RefreshResponse(BaseModel):
@@ -118,7 +141,7 @@ class RefreshResponse(BaseModel):
 class RegisterRequest(BaseModel):
     email: EmailStrLike
     password: Annotated[str, StringConstraints(min_length=4, max_length=256)]
-    role: UserRole = "safety_manager"
+    role: UserRole = Role.SAFETY_MANAGER.value
     org_name: ShortText = "Default"
 
 
@@ -126,6 +149,7 @@ class RegisterResponse(BaseModel):
     user_id: uuid.UUID
     email: EmailStrLike
     role: UserRole
+    capabilities: list[CapabilityName] = Field(default_factory=list)
     org_id: uuid.UUID
     access_token: Annotated[str, StringConstraints(min_length=16)]
 
@@ -134,6 +158,7 @@ class MeResponse(BaseModel):
     user_id: uuid.UUID
     email: EmailStrLike
     role: UserRole
+    capabilities: list[CapabilityName] = Field(default_factory=list)
     org_ids: list[uuid.UUID] = Field(default_factory=list)
     active_org_id: Optional[uuid.UUID] = None
 

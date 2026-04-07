@@ -19,6 +19,7 @@ from app.db.models import (
 )
 from app.db.repo.users import create_org
 from app.db.session import SessionLocal
+from app.security.permissions import Role
 
 
 def main():
@@ -39,7 +40,7 @@ def main():
             user = User(
                 email=admin_email,
                 password_hash=hash_password(admin_password),
-                role="admin",
+                role=Role.ADMIN.value,
             )
             db.add(user)
             db.commit()

@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import declarative_base
 
 from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
+from app.security.permissions import Role
 
 Base = declarative_base()
 
@@ -47,7 +48,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(Text, nullable=False, unique=True, index=True)
     password_hash = Column(Text, nullable=False)
-    role = Column(Text, nullable=False, default="safety_manager")
+    role = Column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

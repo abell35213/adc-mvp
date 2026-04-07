@@ -995,6 +995,23 @@
           "default": null,
           "title": "Active Org Id"
         },
+        "capabilities": {
+          "items": {
+            "enum": [
+              "incident:read",
+              "incident:write",
+              "export:read",
+              "export:write",
+              "driver_protocol:read",
+              "driver_protocol:write",
+              "vehicle_qr:read",
+              "vehicle_qr:write"
+            ],
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
         "email": {
           "maxLength": 254,
           "minLength": 6,
