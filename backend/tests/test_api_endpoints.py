@@ -398,11 +398,11 @@ class TestListIncidents:
         assert "created_at_utc" in inc
 
 
-# ── POST /incidents/{incident_id}/exports ───────────────────────────
+# ── POST /exports ────────────────────────────────────────────────────
 
 
 class TestRequestExport:
-    @patch("app.api.routes_incidents.build_export")
+    @patch("app.api.routes_exports.build_export")
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_request_export_returns_201(
@@ -424,13 +424,20 @@ class TestRequestExport:
         )
         incident_id = create_resp.json()["incident_id"]
 
-        resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": incident_id, "export_type": "court_defense"},
+            headers=auth_headers,
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert "export_id" in data
-        assert data["status"] == "requested"
+        assert data["status"] == "queued"
+        assert data["incident_id"] == incident_id
+        assert data["export_type"] == "court_defense"
+        assert data["created_at_utc"] is not None
 
-    @patch("app.api.routes_incidents.build_export")
+    @patch("app.api.routes_exports.build_export")
     @patch("app.api.routes_incidents.capture_telematics_bundle")
     @patch("app.api.routes_incidents.capture_dashcam")
     def test_request_export_enqueues_task(
@@ -452,13 +459,25 @@ class TestRequestExport:
         )
         incident_id = create_resp.json()["incident_id"]
 
-        resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": incident_id, "export_type": "court_defense"},
+            headers=auth_headers,
+        )
         export_id = resp.json()["export_id"]
-        mock_gen.delay.assert_called_once_with(incident_id, export_id)
+        mock_gen.delay.assert_called_once_with(
+            incident_id,
+            export_id,
+            {"attempt_number": 1, "trigger": "api"},
+        )
 
     def test_request_export_incident_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
-        resp = client.post(f"/incidents/{fake_id}/exports", headers=auth_headers)
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": fake_id, "export_type": "court_defense"},
+            headers=auth_headers,
+        )
         assert resp.status_code == 404
 
     def test_request_export_forbidden_for_other_org_incident(
@@ -473,8 +492,49 @@ class TestRequestExport:
         db_session.commit()
         db_session.refresh(inc)
 
-        resp = client.post(f"/incidents/{inc.incident_id}/exports", headers=auth_headers)
+        resp = client.post(
+            "/exports/",
+            json={
+                "incident_id": str(inc.incident_id),
+                "export_type": "court_defense",
+            },
+            headers=auth_headers,
+        )
         assert resp.status_code == 403
+
+    def test_request_export_invalid_type(self, client, db_session, test_org, auth_headers):
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+        incident_id = str(incident.incident_id)
+
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": incident_id, "export_type": "invalid_type"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    def test_request_export_invalid_options_for_court_defense(
+        self, client, db_session, test_org, auth_headers
+    ):
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+        incident_id = str(incident.incident_id)
+
+        resp = client.post(
+            "/exports/",
+            json={
+                "incident_id": incident_id,
+                "export_type": "court_defense",
+                "options_json": {"profile": "advanced"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
 
 
 # ── GET /exports/{export_id}/download ───────────────────────────────

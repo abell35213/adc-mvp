@@ -49,12 +49,27 @@
           "title": "Export Id",
           "type": "string"
         },
+        "progress_stage": {
+          "default": "request_accepted",
+          "enum": [
+            "request_accepted",
+            "gathering_incident_data",
+            "assembling_documents",
+            "packaging_evidence",
+            "uploading_export",
+            "ready_for_download"
+          ],
+          "title": "Progress Stage",
+          "type": "string"
+        },
         "status": {
           "enum": [
             "requested",
+            "queued",
             "processing",
             "ready",
-            "failed"
+            "failed",
+            "expired"
           ],
           "title": "Status",
           "type": "string"
@@ -166,12 +181,27 @@
           "title": "Export Id",
           "type": "string"
         },
+        "progress_stage": {
+          "default": "ready_for_download",
+          "enum": [
+            "request_accepted",
+            "gathering_incident_data",
+            "assembling_documents",
+            "packaging_evidence",
+            "uploading_export",
+            "ready_for_download"
+          ],
+          "title": "Progress Stage",
+          "type": "string"
+        },
         "status": {
           "enum": [
             "requested",
+            "queued",
             "processing",
             "ready",
-            "failed"
+            "failed",
+            "expired"
           ],
           "title": "Status",
           "type": "string"
@@ -472,6 +502,37 @@
         },
         "ExportSummary": {
           "properties": {
+            "artifact_count": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Artifact Count",
+              "type": "integer"
+            },
+            "byte_size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Byte Size"
+            },
+            "completed_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Completed At Utc"
+            },
             "created_at_utc": {
               "anyOf": [
                 {
@@ -485,20 +546,159 @@
               "default": null,
               "title": "Created At Utc"
             },
+            "error_message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Message"
+            },
+            "expires_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expires At Utc"
+            },
             "export_id": {
               "format": "uuid",
               "title": "Export Id",
               "type": "string"
             },
+            "export_type": {
+              "default": "court_defense",
+              "enum": [
+                "court_defense",
+                "insurer_packet",
+                "internal_review",
+                "compliance_audit"
+              ],
+              "title": "Export Type",
+              "type": "string"
+            },
+            "incident_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Incident Id"
+            },
+            "options_json": {
+              "additionalProperties": true,
+              "title": "Options Json",
+              "type": "object"
+            },
+            "package_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Package Sha256"
+            },
+            "processing_started_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Processing Started At Utc"
+            },
+            "progress_stage": {
+              "default": "request_accepted",
+              "enum": [
+                "request_accepted",
+                "gathering_incident_data",
+                "assembling_documents",
+                "packaging_evidence",
+                "uploading_export",
+                "ready_for_download"
+              ],
+              "title": "Progress Stage",
+              "type": "string"
+            },
+            "requested_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Requested At Utc"
+            },
+            "requested_by_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Requested By User Id"
+            },
             "status": {
               "enum": [
                 "requested",
+                "queued",
                 "processing",
                 "ready",
-                "failed"
+                "failed",
+                "expired"
               ],
               "title": "Status",
               "type": "string"
+            },
+            "timeline_event_count": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Timeline Event Count",
+              "type": "integer"
+            },
+            "updated_at_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Updated At Utc"
             }
           },
           "required": [

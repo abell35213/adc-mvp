@@ -193,7 +193,7 @@ def test_incident_detail_contract_matches_frontend(
     assert isinstance(detail["timeline"], list)
 
 
-@patch("app.api.routes_incidents.build_export")
+@patch("app.api.routes_exports.build_export")
 @patch("app.api.routes_incidents.capture_telematics_bundle")
 @patch("app.api.routes_incidents.capture_dashcam")
 def test_export_response_contract_matches_frontend(
@@ -219,19 +219,18 @@ def test_export_response_contract_matches_frontend(
     )
     incident_id = create_resp.json()["incident_id"]
 
-    export_resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
+    export_resp = client.post(
+        "/exports/",
+        json={"incident_id": incident_id, "export_type": "court_defense"},
+        headers=auth_headers,
+    )
     assert export_resp.status_code == 201
     payload = export_resp.json()
 
-    for field in ("export_id", "status", "progress_stage"):
+    for field in ("export_id", "incident_id", "export_type", "status", "created_at_utc"):
         assert field in payload
     _assert_uuid(payload["export_id"])
+    _assert_uuid(payload["incident_id"])
+    assert payload["export_type"] == "court_defense"
     assert payload["status"] in {"requested", "queued", "processing", "ready", "failed", "expired"}
-    assert payload["progress_stage"] in {
-        "request_accepted",
-        "gathering_incident_data",
-        "assembling_documents",
-        "packaging_evidence",
-        "uploading_export",
-        "ready_for_download",
-    }
+    assert isinstance(payload["created_at_utc"], str)

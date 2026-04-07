@@ -6,18 +6,29 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas import DownloadExportResponse, ExportSummary
-from app.core.deps import get_current_user, get_current_user_org_ids
+from app.api.schemas import (
+    CreateExportEnqueueResponse,
+    CreateExportRequest,
+    DownloadExportResponse,
+    ExportSummary,
+)
+from app.core.deps import (
+    enforce_resource_org_ownership,
+    get_current_user,
+    get_current_user_org_ids,
+    require_user_role,
+)
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.db.models import User
 from app.db.session import get_db
-from app.db.repo.exports import get_export, list_exports_for_org_ids
+from app.db.repo.exports import create_export, get_export, list_exports_for_org_ids, update_export
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
+from app.tasks.export_tasks import build_export
 from app.services.vault_s3 import (
     S3PresignConfigurationError,
     S3PresignGenerationError,
@@ -27,6 +38,85 @@ from app.services.vault_s3 import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/", response_model=CreateExportEnqueueResponse, status_code=201)
+def create_export_endpoint(
+    body: CreateExportRequest,
+    db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    current_user: User = Depends(require_user_role("admin", "safety_manager")),
+):
+    increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
+
+    org_ids = get_user_org_ids(db, current_user.id)
+    incident = get_incident(db, body.incident_id)
+    if incident is None:
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
+        raise HTTPException(status_code=404, detail="Incident not found")
+    enforce_resource_org_ownership(incident.org_id, org_ids)
+
+    set_log_context(
+        user_id=str(current_user.id),
+        org_id=str(incident.org_id) if incident.org_id else None,
+    )
+
+    export = create_export(
+        db,
+        incident_id=body.incident_id,
+        org_id=incident.org_id,
+        status="requested",
+        export_type=body.export_type,
+        requested_by_user_id=current_user.id,
+        options_json=body.options_json,
+        progress_stage="request_accepted",
+    )
+
+    create_event(
+        db,
+        incident_id=body.incident_id,
+        event_type=SystemEventType.EXPORT_REQUESTED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload={"export_id": str(export.export_id), "export_type": body.export_type},
+    )
+
+    try:
+        task_result = build_export.delay(
+            str(body.incident_id),
+            str(export.export_id),
+            {"attempt_number": 1, "trigger": "api"},
+        )
+    except Exception as exc:
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
+        logger.exception("Failed to enqueue export task")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to enqueue export generation",
+        ) from exc
+
+    export = update_export(db, export.export_id, status="queued") or export
+    task_id = getattr(task_result, "id", None)
+    create_event(
+        db,
+        incident_id=body.incident_id,
+        event_type=SystemEventType.EXPORT_QUEUED,
+        actor_type="system",
+        actor_id="api",
+        payload={
+            "export_id": str(export.export_id),
+            "task_id": str(task_id) if isinstance(task_id, (str, uuid.UUID)) else None,
+            "attempt_number": 1,
+        },
+    )
+
+    return CreateExportEnqueueResponse(
+        export_id=export.export_id,
+        incident_id=export.incident_id,
+        export_type=export.export_type,
+        status=export.status,
+        created_at_utc=export.created_at_utc,
+    )
 
 
 def _get_export_owner_org_id(db: Session, export):

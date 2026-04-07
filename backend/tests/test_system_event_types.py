@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 23 system event types."""
-        assert len(SystemEventType) == 23
+        """There must be exactly 35 system event types."""
+        assert len(SystemEventType) == 35
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -74,6 +74,9 @@ class TestSystemEventType:
     def test_export_generated(self):
         assert SystemEventType.EXPORT_GENERATED == "export_generated"
 
+    def test_export_queued(self):
+        assert SystemEventType.EXPORT_QUEUED == "export_queued"
+
     def test_export_failed(self):
         assert SystemEventType.EXPORT_FAILED == "export_failed"
 
@@ -137,6 +140,7 @@ class TestSystemEventType:
         """All export types must be present."""
         expected = {
             "export_requested",
+            "export_queued",
             "export_generated",
             "export_failed",
             "export_downloaded",
