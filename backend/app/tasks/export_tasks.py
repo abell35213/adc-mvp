@@ -487,6 +487,10 @@ def build_export(
         ctx.warnings.extend(build_result.warnings)
         ctx.missing_items.extend(build_result.missing_items)
         _persist_warnings(ctx)
+        options = dict(ctx.export_row.options_json or {})
+        options["file_manifest"] = build_result.file_manifest
+        update_export(ctx.db, export_id=ctx.export_uuid, options_json=options)
+        ctx.export_row.options_json = options
         _emit_stage(ctx, "after", "assembling_documents")
 
         _emit_stage(ctx, "before", "packaging_evidence")

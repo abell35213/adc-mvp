@@ -180,15 +180,32 @@ def _normalize_manifest_rows(rows) -> list[dict]:
         if not isinstance(row, dict):
             continue
         kind = row.get("kind")
-        if kind not in STABLE_EXPORT_CONTENT_KINDS:
+        if not isinstance(kind, str):
             continue
         byte_size = row.get("byte_size")
-        normalized[kind] = {
+        normalized[str(kind)] = {
             "kind": kind,
+            "item": row.get("item"),
+            "path": row.get("path"),
+            "classification": row.get("classification") or ("included" if row.get("included") else "unavailable"),
             "included": bool(row.get("included", False)),
+            "reason": row.get("reason"),
             "byte_size": byte_size if isinstance(byte_size, int) and byte_size >= 0 else None,
         }
-    return [normalized.get(kind, {"kind": kind, "included": False, "byte_size": None}) for kind in STABLE_EXPORT_CONTENT_KINDS]
+    if normalized:
+        return list(normalized.values())
+    return [
+        {
+            "kind": kind,
+            "item": kind,
+            "path": None,
+            "classification": "unavailable",
+            "included": False,
+            "reason": "not_recorded",
+            "byte_size": None,
+        }
+        for kind in STABLE_EXPORT_CONTENT_KINDS
+    ]
 
 
 def _reconstruct_manifest(db: Session, export) -> list[dict]:
@@ -209,17 +226,29 @@ def _reconstruct_manifest(db: Session, export) -> list[dict]:
     return [
         {
             "kind": "summary_pdf",
+            "item": "00_Cover_Summary.pdf",
+            "path": None,
+            "classification": "included" if export.status in {"ready", "processing", "failed"} else "unavailable",
             "included": export.status in {"ready", "processing", "failed"},
+            "reason": None,
             "byte_size": None,
         },
         {
             "kind": "raw_telemetry",
+            "item": "raw_telemetry",
+            "path": None,
+            "classification": "included" if raw_telemetry_bytes > 0 else "unavailable",
             "included": raw_telemetry_bytes > 0,
+            "reason": None if raw_telemetry_bytes > 0 else "no_captured_telemetry",
             "byte_size": raw_telemetry_bytes or None,
         },
         {
             "kind": "photo",
+            "item": "photo",
+            "path": None,
+            "classification": "included" if has_captured_photos else "unavailable",
             "included": has_captured_photos,
+            "reason": None if has_captured_photos else "no_captured_photos",
             "byte_size": sum(
                 int(a.byte_size)
                 for a in artifacts
@@ -235,7 +264,9 @@ def _reconstruct_manifest(db: Session, export) -> list[dict]:
 
 def _build_contents_manifest(db: Session, export) -> list[dict]:
     options = export.options_json or {}
-    manifest_rows = options.get("contents_manifest") if isinstance(options, dict) else None
+    manifest_rows = options.get("file_manifest") if isinstance(options, dict) else None
+    if not isinstance(manifest_rows, list):
+        manifest_rows = options.get("contents_manifest") if isinstance(options, dict) else None
     if isinstance(manifest_rows, list):
         normalized = _normalize_manifest_rows(manifest_rows)
         if normalized:
@@ -303,13 +334,16 @@ def get_export_contents_endpoint(
     org_ids = get_user_org_ids(db, current_user.id)
     export = _resolve_authorized_export(db, export_id, org_ids)
     manifest = _build_contents_manifest(db, export)
-    missing_items = [row["kind"] for row in manifest if not row["included"]]
+    options = export.options_json or {}
+    missing_items = options.get("missing_items") if isinstance(options, dict) else []
+    warnings = options.get("warnings") if isinstance(options, dict) else []
     return ExportContentsResponse(
         export_id=export.export_id,
         status=export.status,
         progress_stage=export.progress_stage,
         file_manifest=manifest,
-        missing_items=missing_items,
+        missing_items=missing_items if isinstance(missing_items, list) else [],
+        warnings=warnings if isinstance(warnings, list) else [],
     )
 
 

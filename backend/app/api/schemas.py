@@ -235,13 +235,24 @@ class CreateExportRequest(BaseModel):
                     "options_json.profile must be 'mvp_default' for court_defense exports"
                 )
 
-            unknown_keys = set(options.keys()) - {"profile"}
+            allowed_keys = {
+                "profile",
+                "include_media",
+                "include_raw_telemetry",
+                "include_driver_statement",
+            }
+            unknown_keys = set(options.keys()) - allowed_keys
             if unknown_keys:
                 raise ValueError(
                     "options_json contains unsupported fields for court_defense exports"
                 )
 
-            self.options_json = {"profile": "mvp_default"}
+            self.options_json = {
+                "profile": "mvp_default",
+                "include_media": bool(options.get("include_media", True)),
+                "include_raw_telemetry": bool(options.get("include_raw_telemetry", True)),
+                "include_driver_statement": bool(options.get("include_driver_statement", True)),
+            }
             return self
 
         if options:
@@ -266,7 +277,13 @@ class DownloadExportResponse(BaseModel):
     progress_stage: ExportProgressStage = "ready_for_download"
 
 
-ExportContentKind = Literal["summary_pdf", "raw_telemetry", "photo"]
+ExportContentKind = str
+ExportContentClassification = Literal[
+    "included",
+    "unavailable",
+    "excluded_by_option",
+    "failed_to_retrieve",
+]
 
 
 class ExportStatusResponse(BaseModel):
@@ -277,7 +294,11 @@ class ExportStatusResponse(BaseModel):
 
 class ExportContentsItem(BaseModel):
     kind: ExportContentKind
+    item: Optional[str] = None
+    path: Optional[str] = None
+    classification: ExportContentClassification = "included"
     included: bool
+    reason: Optional[str] = None
     byte_size: Optional[int] = None
 
 
@@ -286,7 +307,8 @@ class ExportContentsResponse(BaseModel):
     status: ExportStatus
     progress_stage: ExportProgressStage
     file_manifest: list[ExportContentsItem] = Field(default_factory=list)
-    missing_items: list[ExportContentKind] = Field(default_factory=list)
+    missing_items: list[dict[str, str]] = Field(default_factory=list)
+    warnings: list[dict[str, str]] = Field(default_factory=list)
 
 
 # ── Driver ──────────────────────────────────────────────────────────
