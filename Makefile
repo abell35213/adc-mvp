@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates
+.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix
 
 ## Start all services (infra + backend + worker + frontend) from repo root
 ## Uses docker compose (plugin-style command)
@@ -19,6 +19,7 @@ fmt:
 ## Lint only (no auto-fix) from repo root
 lint:
 	cd backend && pip install -q ruff && ruff check app/ tests/
+	python scripts/check_hardening_matrix_updates.py
 
 ## Ensure no stale duplicate runtime modules reappear
 guard-duplicates:
@@ -27,3 +28,7 @@ guard-duplicates:
 ## Enforce Priority-1 production hardening gates for production tags
 check-prod-hardening-gates:
 	python scripts/check_release_hardening_gates.py
+
+## Enforce control-matrix updates when hardening files change
+check-hardening-matrix:
+	python scripts/check_hardening_matrix_updates.py
