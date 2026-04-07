@@ -264,3 +264,47 @@ class TestLoginCookie:
         assert resp.status_code == 200
         cookies = resp.cookies
         assert "access_token" in cookies
+        assert "csrf_token" in cookies
+        set_cookie_header = ",".join(resp.headers.get_list("set-cookie"))
+        assert "HttpOnly" in set_cookie_header
+        assert "SameSite=lax" in set_cookie_header
+
+
+class TestCsrfProtection:
+    def test_cookie_authenticated_refresh_requires_csrf_header(self, client):
+        client.post(
+            "/auth/register",
+            json={"email": "csrf-refresh@example.com", "password": "secret"},
+        )
+        login = client.post(
+            "/auth/login",
+            json={"email": "csrf-refresh@example.com", "password": "secret"},
+        )
+        assert login.status_code == 200
+
+        refresh_without_csrf = client.post("/auth/refresh")
+        assert refresh_without_csrf.status_code == 403
+
+        refresh_with_invalid_csrf = client.post(
+            "/auth/refresh",
+            headers={"x-csrf-token": "invalid-token"},
+        )
+        assert refresh_with_invalid_csrf.status_code == 403
+
+    def test_cookie_authenticated_logout_requires_csrf_header(self, client):
+        client.post(
+            "/auth/register",
+            json={"email": "csrf-logout@example.com", "password": "secret"},
+        )
+        login = client.post(
+            "/auth/login",
+            json={"email": "csrf-logout@example.com", "password": "secret"},
+        )
+        assert login.status_code == 200
+
+        logout_without_csrf = client.post("/auth/logout")
+        assert logout_without_csrf.status_code == 403
+
+        csrf_token = client.cookies.get("csrf_token")
+        logout_with_csrf = client.post("/auth/logout", headers={"x-csrf-token": csrf_token})
+        assert logout_with_csrf.status_code == 200

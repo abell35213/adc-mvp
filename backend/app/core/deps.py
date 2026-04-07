@@ -12,6 +12,7 @@ from app.db.models import Driver, User
 from app.db.repo.drivers import get_driver_by_id
 from app.db.repo.users import get_user_by_id, get_user_org_ids
 from app.db.session import get_db
+from app.security.csrf import validate_csrf_request
 from app.security.permissions import Capability, get_user_capabilities, normalize_role
 from app.security.session import validate_session
 
@@ -57,6 +58,7 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     """Decode a user JWT and return the active User row."""
+    validate_csrf_request(request)
     token = _read_access_token(request, creds)
 
     payload = decode_access_token(token)
@@ -89,6 +91,7 @@ def get_current_driver(
     db: Session = Depends(get_db),
 ) -> Driver:
     """Decode a driver-scoped JWT and return the active Driver row."""
+    validate_csrf_request(request)
     token = _read_access_token(request, creds)
 
     payload = decode_access_token(token)

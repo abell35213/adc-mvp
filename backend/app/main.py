@@ -13,6 +13,7 @@ from app.api.routes.routes_driver_report import router as driver_report_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_twilio import router as twilio_router
 from app.core.config import settings
+from app.config.validation import validate_startup_config
 from app.core.logging import RequestContextMiddleware, setup_logging
 
 app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
@@ -47,7 +48,7 @@ async def health_check():
 
 
 @app.on_event("startup")
-async def validate_startup_config() -> None:
+async def validate_startup_configuration() -> None:
     """Fail fast if environment invariants are broken."""
 
-    settings.validate_production_invariants()
+    validate_startup_config(settings)

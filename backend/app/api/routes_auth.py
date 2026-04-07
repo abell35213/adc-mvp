@@ -29,6 +29,7 @@ from app.db.repo.users import (
     link_user_org,
 )
 from app.db.session import get_db
+from app.security.csrf import CSRF_COOKIE_NAME, issue_csrf_token, validate_csrf_request
 from app.security.permissions import get_user_capabilities, normalize_role
 from app.security.session import create_session, revoke_session, rotate_refresh_token
 
@@ -72,20 +73,29 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             token_claims={"role": normalize_role(user.role).value},
         )
 
+    csrf_token = issue_csrf_token()
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=True,
+        httponly=settings.COOKIE_HTTPONLY,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
-        httponly=True,
+        httponly=settings.COOKIE_HTTPONLY,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.cookie_samesite,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
@@ -98,6 +108,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
 @router.post("/refresh", response_model=RefreshResponse)
 def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+    validate_csrf_request(request)
     refresh_cookie = request.cookies.get("refresh_token")
     if not refresh_cookie:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
@@ -133,17 +144,17 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     response.set_cookie(
         key="access_token",
         value=token,
-        httponly=True,
+        httponly=settings.COOKIE_HTTPONLY,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token",
         value=next_refresh,
-        httponly=True,
+        httponly=settings.COOKIE_HTTPONLY,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
     return RefreshResponse(access_token=token)
@@ -189,6 +200,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/logout", response_model=LogoutResponse)
 def logout(response: Response, current_user: User = Depends(get_current_user), request: Request = None, db: Session = Depends(get_db)):
+    if request is not None:
+        validate_csrf_request(request)
     token = request.cookies.get("access_token") if request else None
     sid = None
     if token:
@@ -198,10 +211,13 @@ def logout(response: Response, current_user: User = Depends(get_current_user), r
         revoke_session(db, uuid.UUID(sid))
 
     response.delete_cookie(
-        key="access_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
+        key="access_token", httponly=settings.COOKIE_HTTPONLY, secure=settings.COOKIE_SECURE, samesite=settings.cookie_samesite
     )
     response.delete_cookie(
-        key="refresh_token", httponly=True, secure=settings.COOKIE_SECURE, samesite="lax"
+        key="refresh_token", httponly=settings.COOKIE_HTTPONLY, secure=settings.COOKIE_SECURE, samesite=settings.cookie_samesite
+    )
+    response.delete_cookie(
+        key=CSRF_COOKIE_NAME, httponly=False, secure=settings.COOKIE_SECURE, samesite=settings.cookie_samesite
     )
     set_log_context(user_id=str(current_user.id))
     return LogoutResponse()

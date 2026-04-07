@@ -89,7 +89,9 @@ class Settings(BaseSettings):
 
     # CORS / Cookies
     FRONTEND_ORIGIN: str = "http://localhost:3000"
+    COOKIE_HTTPONLY: bool = True
     COOKIE_SECURE: bool = False
+    COOKIE_DEPLOYMENT_TOPOLOGY: str = "same_site"
 
     # Vault (filesystem)
     STORAGE_BACKEND: str = "s3"
@@ -139,6 +141,11 @@ class Settings(BaseSettings):
         )
 
     @property
+    def cookie_samesite(self) -> str:
+        """Return the SameSite policy implied by deployment topology."""
+        return "none" if self.COOKIE_DEPLOYMENT_TOPOLOGY == "cross_site" else "lax"
+
+    @property
     def is_prod(self) -> bool:
         return self.APP_ENV == "prod"
 
@@ -164,8 +171,14 @@ class Settings(BaseSettings):
             if normalized == insecure_defaults[key]:
                 errors.append(f"{key} cannot use development default in prod")
 
+        if not self.COOKIE_HTTPONLY:
+            errors.append("COOKIE_HTTPONLY must be true in prod")
+
         if not self.COOKIE_SECURE:
             errors.append("COOKIE_SECURE must be true in prod")
+
+        if self.COOKIE_DEPLOYMENT_TOPOLOGY == "cross_site" and not self.COOKIE_SECURE:
+            errors.append("cross_site cookies require COOKIE_SECURE=true")
 
         for key, value in (
             ("FRONTEND_ORIGIN", self.FRONTEND_ORIGIN),
@@ -196,6 +209,10 @@ class Settings(BaseSettings):
         self.SECRET_PROVIDER = self.SECRET_PROVIDER.strip().lower()
         if self.SECRET_PROVIDER not in {"env", "aws_secrets_manager"}:
             raise ValueError("SECRET_PROVIDER must be one of: env, aws_secrets_manager")
+
+        self.COOKIE_DEPLOYMENT_TOPOLOGY = self.COOKIE_DEPLOYMENT_TOPOLOGY.strip().lower()
+        if self.COOKIE_DEPLOYMENT_TOPOLOGY not in {"same_site", "cross_site"}:
+            raise ValueError("COOKIE_DEPLOYMENT_TOPOLOGY must be one of: same_site, cross_site")
 
         if not 60 <= self.EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS <= 900:
             raise ValueError(
