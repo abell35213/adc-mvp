@@ -536,6 +536,32 @@ class TestRequestExport:
         )
         assert resp.status_code == 422
 
+    @patch("app.api.routes_exports.build_export")
+    def test_request_export_accepts_supported_content_options_for_court_defense(
+        self, mock_gen, client, db_session, test_org, auth_headers
+    ):
+        mock_gen.delay = MagicMock()
+        incident = Incident(status="open", org_id=test_org.id)
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+        incident_id = str(incident.incident_id)
+
+        resp = client.post(
+            "/exports/",
+            json={
+                "incident_id": incident_id,
+                "export_type": "court_defense",
+                "options_json": {
+                    "profile": "mvp_default",
+                    "include_media": False,
+                    "include_raw_telemetry": True,
+                },
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+
 
 # ── GET /exports/{export_id}/download ───────────────────────────────
 
@@ -949,11 +975,13 @@ class TestExportStatusAndContents:
         manifest_by_kind = {row["kind"]: row for row in payload["file_manifest"]}
         assert set(manifest_by_kind.keys()) == {"summary_pdf", "raw_telemetry", "photo"}
         assert manifest_by_kind["summary_pdf"]["included"] is True
+        assert manifest_by_kind["summary_pdf"]["classification"] == "included"
         assert manifest_by_kind["raw_telemetry"]["included"] is True
         assert manifest_by_kind["raw_telemetry"]["byte_size"] == 4096
         assert manifest_by_kind["photo"]["included"] is True
         assert manifest_by_kind["photo"]["byte_size"] == 2048
         assert payload["missing_items"] == []
+        assert payload["warnings"] == []
 
     def test_export_status_and_contents_forbidden_for_other_org(
         self, client, db_session, auth_headers

@@ -10,6 +10,7 @@ def build_export_manifest(
     *,
     options: dict[str, Any],
     included_files: list[str],
+    file_manifest: list[dict[str, Any]],
     missing_items: list[dict[str, str]],
     status_metadata: dict[str, Any],
 ) -> dict[str, Any]:
@@ -17,6 +18,7 @@ def build_export_manifest(
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "options": options,
         "included_files": sorted(included_files),
+        "file_manifest": file_manifest,
         "missing_items": missing_items,
         "status_metadata": status_metadata,
     }

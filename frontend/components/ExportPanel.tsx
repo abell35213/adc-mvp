@@ -82,6 +82,12 @@ export default function ExportPanel({
   const readyCount = checklistSummary.filter((item) => item.ready).length;
   const unknownCount = checklistSummary.filter((item) => item.unknown).length;
   const allReady = readyCount === checklistSummary.length;
+  const latestWarnings = Array.isArray(latestExport?.options_json?.warnings)
+    ? (latestExport?.options_json?.warnings as Array<Record<string, unknown>>)
+    : [];
+  const latestMissingItems = Array.isArray(latestExport?.options_json?.missing_items)
+    ? (latestExport?.options_json?.missing_items as Array<Record<string, unknown>>)
+    : [];
 
   function handlePreExportConfirm() {
     const summaryLines = [
@@ -94,6 +100,9 @@ export default function ExportPanel({
       ...checklistSummary.map(
         (item) => `• ${item.ready ? "✅" : item.unknown ? "•" : "⚠️"} ${item.label}`
       ),
+      "",
+      `Known warnings: ${latestWarnings.length}`,
+      `Known missing items: ${latestMissingItems.length}`,
       "",
       allReady
         ? "All checks appear ready. Continue generating the export package?"
@@ -138,6 +147,11 @@ export default function ExportPanel({
               ? "Readiness data is still being collected."
               : "Resolve checklist warnings before generating a final package."}
         </p>
+        {(latestWarnings.length > 0 || latestMissingItems.length > 0) && (
+          <p className="mt-2 text-xs text-amber-700">
+            {latestWarnings.length} warning(s) and {latestMissingItems.length} missing item(s) were recorded on the latest export attempt.
+          </p>
+        )}
       </div>
       <div className="mb-4">
         <button
