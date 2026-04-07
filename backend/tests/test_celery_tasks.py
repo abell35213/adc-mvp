@@ -668,7 +668,11 @@ class TestBuildExport:
         event_types = [e.event_type for e in events]
 
         assert "export_requested" in event_types
+        assert "export_processing_started" in event_types
+        assert "export_section_generated" in event_types
+        assert "export_package_uploaded" in event_types
         assert "export_generated" in event_types
+        assert event_types.index("export_processing_started") < event_types.index("export_generated")
 
     @patch("app.tasks.export_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
@@ -775,6 +779,15 @@ class TestBuildExport:
             .all()
         )
         assert len(events) == 1
+        all_event_types = [
+            row.event_type
+            for row in db_session.query(Event)
+            .filter(Event.incident_id == incident.incident_id)
+            .order_by(Event.created_at_utc.asc())
+            .all()
+        ]
+        assert "export_processing_started" in all_event_types
+        assert all_event_types[-1] == "export_failed"
         updated_export = (
             db_session.query(Export)
             .filter(Export.export_id == export_row.export_id)

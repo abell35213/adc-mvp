@@ -264,10 +264,32 @@ def request_export_endpoint(
         event_type=SystemEventType.EXPORT_REQUESTED,
         actor_type="user",
         actor_id=str(current_user.id),
-        payload={"export_id": str(export.export_id)},
+        payload={
+            "export_id": str(export.export_id),
+            "incident_id": str(incident_id),
+            "export_type": "court_defense",
+            "status": "requested",
+            "actor": {"type": "user", "id": str(current_user.id)},
+        },
     )
 
     logger.info("Queueing export build task", extra={"request_id": get_request_id()})
-    build_export.delay(str(incident_id), str(export.export_id))
+    task_result = build_export.delay(str(incident_id), str(export.export_id))
+    create_event(
+        db,
+        incident_id=incident_id,
+        event_type=SystemEventType.EXPORT_QUEUED,
+        actor_type="system",
+        actor_id="api",
+        payload={
+            "export_id": str(export.export_id),
+            "incident_id": str(incident_id),
+            "export_type": "court_defense",
+            "status": "queued",
+            "task_id": str(getattr(task_result, "id", "") or ""),
+            "attempt_number": 1,
+            "actor": {"type": "system", "id": "api"},
+        },
+    )
 
     return CreateExportResponse(export_id=export.export_id, status=export.status, progress_stage=export.progress_stage)

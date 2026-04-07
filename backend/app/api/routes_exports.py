@@ -10,6 +10,7 @@ from app.api.schemas import (
     CreateExportEnqueueResponse,
     CreateExportRequest,
     DownloadExportResponse,
+    ExportDownloadAuditResponse,
     ExportContentsResponse,
     ExportStatusResponse,
     ExportSummary,
@@ -26,7 +27,7 @@ from app.db.models import User
 from app.db.session import get_db
 from app.db.repo.exports import create_export, get_export, list_exports_for_org_ids, update_export
 from app.db.repo.artifacts import get_artifacts_by_incident
-from app.db.repo.events import create_event
+from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.incidents import get_incident
 from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
@@ -82,7 +83,13 @@ def create_export_endpoint(
         event_type=SystemEventType.EXPORT_REQUESTED,
         actor_type="user",
         actor_id=str(current_user.id),
-        payload={"export_id": str(export.export_id), "export_type": body.export_type},
+        payload={
+            "export_id": str(export.export_id),
+            "incident_id": str(body.incident_id),
+            "export_type": body.export_type,
+            "status": "requested",
+            "actor": {"type": "user", "id": str(current_user.id)},
+        },
     )
 
     try:
@@ -109,8 +116,12 @@ def create_export_endpoint(
         actor_id="api",
         payload={
             "export_id": str(export.export_id),
+            "incident_id": str(body.incident_id),
+            "export_type": export.export_type,
+            "status": "queued",
             "task_id": str(task_id) if isinstance(task_id, (str, uuid.UUID)) else None,
             "attempt_number": 1,
+            "actor": {"type": "system", "id": "api"},
         },
     )
 
@@ -401,7 +412,16 @@ def download_export_endpoint(
         event_type=SystemEventType.EXPORT_DOWNLOADED,
         actor_type="system",
         actor_id="api",
-        payload={"export_id": str(export.export_id)},
+        payload={
+            "export_id": str(export.export_id),
+            "incident_id": str(export.incident_id),
+            "export_type": export.export_type,
+            "status": "ready",
+            "s3_bucket": bucket,
+            "s3_key": key,
+            "download_url_expires_in_seconds": expires_in_seconds,
+            "actor": {"type": "system", "id": "api"},
+        },
     )
 
     return DownloadExportResponse(
@@ -409,4 +429,36 @@ def download_export_endpoint(
         url=presigned_url,
         status="ready",
         progress_stage="ready_for_download",
+    )
+
+
+@router.get("/{export_id}/downloads", response_model=ExportDownloadAuditResponse)
+def get_export_downloads_endpoint(
+    export_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_ids: list[uuid.UUID] = Depends(get_current_user_org_ids),
+    current_user: User = Depends(get_current_user),
+):
+    org_ids = get_user_org_ids(db, current_user.id)
+    export = _resolve_authorized_export(db, export_id, org_ids)
+    events = get_events_by_incident(db, export.incident_id)
+    download_events = [
+        event
+        for event in events
+        if event.event_type == SystemEventType.EXPORT_DOWNLOADED
+        and isinstance(event.payload, dict)
+        and event.payload.get("export_id") == str(export.export_id)
+    ]
+    ordered_events = sorted(download_events, key=lambda event: event.occurred_at_utc or "")
+    return ExportDownloadAuditResponse(
+        export_id=export.export_id,
+        downloads=[
+            {
+                "event_type": event.event_type,
+                "occurred_at_utc": event.occurred_at_utc,
+                "actor_type": event.actor_type,
+                "payload": event.payload,
+            }
+            for event in ordered_events
+        ],
     )

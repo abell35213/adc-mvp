@@ -219,6 +219,11 @@ export interface EventSummary {
   payload?: Record<string, unknown> | null;
 }
 
+export interface ExportDownloadAuditResponse {
+  export_id: string;
+  downloads: EventSummary[];
+}
+
 export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
@@ -258,6 +263,10 @@ export function downloadExport(exportId: string) {
   return request<{ export_id: string; url: string; status: ExportStatus; progress_stage: ExportProgressStage }>(
     `/exports/${exportId}/download`
   );
+}
+
+export function getExportDownloadHistory(exportId: string) {
+  return request<ExportDownloadAuditResponse>(`/exports/${exportId}/downloads`);
 }
 
 /* ── Exports listing ──────────────────────────────────────────────── */

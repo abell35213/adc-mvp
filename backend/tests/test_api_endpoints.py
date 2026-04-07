@@ -651,6 +651,11 @@ class TestDownloadExport:
         )
         event_types = [e.event_type for e in events]
         assert "export_downloaded" in event_types
+        download_event = next(e for e in events if e.event_type == "export_downloaded")
+        assert download_event.payload["export_id"] == str(exp.export_id)
+        assert download_event.payload["status"] == "ready"
+        assert download_event.payload["s3_bucket"] == "b"
+        assert download_event.payload["s3_key"] == "k"
 
     def test_download_export_no_auth_returns_401(self, client):
         fake_id = str(uuid.uuid4())
@@ -820,6 +825,37 @@ class TestGetExport:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "requested"
+
+    def test_get_export_downloads_returns_audit_history(
+        self, client, db_session, test_org, auth_headers
+    ):
+        inc = Incident(status="open", org_id=test_org.id)
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        exp = Export(incident_id=inc.incident_id, org_id=test_org.id, status="ready")
+        db_session.add(exp)
+        db_session.commit()
+        db_session.refresh(exp)
+
+        from app.db.repo.events import create_event
+
+        create_event(
+            db_session,
+            incident_id=inc.incident_id,
+            event_type="export_downloaded",
+            actor_type="system",
+            actor_id="api",
+            payload={"export_id": str(exp.export_id), "status": "ready"},
+        )
+
+        resp = client.get(f"/exports/{exp.export_id}/downloads", headers=auth_headers)
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["export_id"] == str(exp.export_id)
+        assert len(payload["downloads"]) == 1
+        assert payload["downloads"][0]["event_type"] == "export_downloaded"
 
     def test_get_export_no_auth_returns_401(self, client):
         fake_id = str(uuid.uuid4())
