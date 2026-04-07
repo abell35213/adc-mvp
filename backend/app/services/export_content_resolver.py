@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
+from app.domain.packet_profiles import get_default_packet_profile, get_packet_profile
 
 @dataclass
 class ResolvedExportContent:
@@ -64,6 +65,8 @@ def resolve_export_content(
     missing_items: list[dict[str, str]] = []
     file_manifest: list[dict[str, Any]] = []
     options = dict(options or {})
+    profile_id = str(options.get("profile_id") or options.get("profile") or get_default_packet_profile("court_defense").profile_id)
+    profile = get_packet_profile(profile_id)
     include_media = bool(options.get("include_media", True))
     include_raw_telemetry = bool(options.get("include_raw_telemetry", True))
     include_driver_statement = bool(options.get("include_driver_statement", True))
@@ -119,10 +122,14 @@ def resolve_export_content(
         ]
         for a in artifacts
     ]
-    files[f"{package_root}/02_Evidence_Inventory.csv"] = _csv_bytes(
-        ["artifact_id", "artifact_type", "status", "s3_key", "sha256", "byte_size"],
-        inventory_rows,
+    inventory_headers = (
+        ["artifact_type", "status", "s3_key", "byte_size"]
+        if profile.inventory_mode == "condensed"
+        else ["artifact_id", "artifact_type", "status", "s3_key", "sha256", "byte_size"]
     )
+    if profile.inventory_mode == "condensed":
+        inventory_rows = [[row[1], row[2], row[3], row[5]] for row in inventory_rows]
+    files[f"{package_root}/02_Evidence_Inventory.csv"] = _csv_bytes(inventory_headers, inventory_rows)
     _record_item(
         kind="evidence_inventory",
         item="02_Evidence_Inventory.csv",
@@ -165,6 +172,26 @@ def resolve_export_content(
         path=f"{package_root}/04_Timeline.csv",
         classification="included",
     )
+    if profile.summary_style == "claim_focused":
+        claim_bundle = {
+            "profile_id": profile.profile_id,
+            "bundle_kind": "claim_focused",
+            "incident_id": incident_id,
+            "export_id": export_id,
+            "artifact_count": len(artifacts),
+            "timeline_event_count": len(events),
+        }
+        files[f"{package_root}/04a_Claim_Focus_Bundle.json"] = json.dumps(
+            claim_bundle,
+            indent=2,
+            default=str,
+        ).encode()
+        _record_item(
+            kind="claim_bundle",
+            item="04a_Claim_Focus_Bundle.json",
+            path=f"{package_root}/04a_Claim_Focus_Bundle.json",
+            classification="included",
+        )
 
     statement_marker = "Driver statement unavailable at export generation time."
     if include_driver_statement:

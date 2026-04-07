@@ -190,6 +190,7 @@ class Export(Base):
         default="court_defense",
         server_default="court_defense",
     )
+    profile_id = Column(Text, nullable=False, default="court_defense_v1", server_default="court_defense_v1")
     requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     retry_parent_export_id = Column(
         UUID(as_uuid=True),

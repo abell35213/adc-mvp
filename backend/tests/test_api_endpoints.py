@@ -347,7 +347,7 @@ class TestGetIncident:
         db_session.refresh(inc)
 
         resp = client.get(f"/incidents/{inc.incident_id}", headers=auth_headers)
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 # ── GET /incidents (list) ───────────────────────────────────────────
@@ -530,7 +530,7 @@ class TestRequestExport:
             json={
                 "incident_id": incident_id,
                 "export_type": "court_defense",
-                "options_json": {"profile": "advanced"},
+                "options_json": {"profile_id": "advanced"},
             },
             headers=auth_headers,
         )
@@ -553,7 +553,7 @@ class TestRequestExport:
                 "incident_id": incident_id,
                 "export_type": "court_defense",
                 "options_json": {
-                    "profile": "mvp_default",
+                    "profile_id": "court_defense_v1",
                     "include_media": False,
                     "include_raw_telemetry": True,
                 },
@@ -577,7 +577,7 @@ class TestRequestExport:
             org_id=test_org.id,
             export_type="court_defense",
             requested_by_user_id=test_user.id,
-            options_json={"profile": "mvp_default", "include_media": False},
+            options_json={"profile_id": "court_defense_v1", "include_media": False},
             status="failed",
             progress_stage="packaging_evidence",
             error_message="zip failed",
@@ -638,13 +638,14 @@ class TestRequestExport:
 
         resp = client.post(
             f"/exports/{failed.export_id}/retry",
-            json={"export_type": "court_defense", "options_json": {"profile": "mvp_default"}},
+            json={"export_type": "court_defense", "options_json": {"profile_id": "court_defense_v1"}},
             headers=auth_headers,
         )
         assert resp.status_code == 201
         created = db_session.query(Export).filter(Export.export_id == uuid.UUID(resp.json()["export_id"])).first()
         assert created.export_type == "court_defense"
-        assert created.options_json == {"profile": "mvp_default"}
+        assert created.options_json["profile_id"] == "court_defense_v1"
+        assert created.options_json["include_media"] is True
 
     def test_retry_export_rejects_non_failed_and_preserves_ready_export(
         self, client, db_session, test_org, auth_headers
@@ -657,7 +658,7 @@ class TestRequestExport:
             incident_id=incident.incident_id,
             org_id=test_org.id,
             export_type="court_defense",
-            options_json={"profile": "mvp_default"},
+            options_json={"profile_id": "court_defense_v1"},
             status="ready",
             package_sha256="abc123",
         )

@@ -7,6 +7,11 @@ from typing import Annotated, Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
+from app.domain.packet_profiles import (
+    DEFAULT_PROFILE_BY_EXPORT_TYPE,
+    get_default_packet_profile,
+    get_packet_profile,
+)
 
 EmailStrLike = Annotated[
     str,
@@ -161,6 +166,7 @@ class ExportSummary(BaseModel):
     export_id: uuid.UUID
     incident_id: Optional[uuid.UUID] = None
     export_type: ExportType = "court_defense"
+    profile_id: str = "court_defense_v1"
     requested_by_user_id: Optional[uuid.UUID] = None
     retry_parent_export_id: Optional[uuid.UUID] = None
     options_json: dict[str, Any] = Field(default_factory=dict)
@@ -228,38 +234,42 @@ class CreateExportRequest(BaseModel):
     @model_validator(mode="after")
     def validate_options_for_export_type(self):
         options = dict(self.options_json or {})
-
-        if self.export_type == "court_defense":
-            profile = options.get("profile", "mvp_default")
-            if profile != "mvp_default":
-                raise ValueError(
-                    "options_json.profile must be 'mvp_default' for court_defense exports"
-                )
-
-            allowed_keys = {
-                "profile",
-                "include_media",
-                "include_raw_telemetry",
-                "include_driver_statement",
-            }
-            unknown_keys = set(options.keys()) - allowed_keys
-            if unknown_keys:
-                raise ValueError(
-                    "options_json contains unsupported fields for court_defense exports"
-                )
-
-            self.options_json = {
-                "profile": "mvp_default",
-                "include_media": bool(options.get("include_media", True)),
-                "include_raw_telemetry": bool(options.get("include_raw_telemetry", True)),
-                "include_driver_statement": bool(options.get("include_driver_statement", True)),
-            }
-            return self
-
-        if options:
+        requested_profile_id = str(
+            options.get("profile_id")
+            or options.get("profile")
+            or DEFAULT_PROFILE_BY_EXPORT_TYPE[self.export_type]
+        )
+        profile = get_packet_profile(requested_profile_id)
+        if profile.export_type != self.export_type:
             raise ValueError(
-                f"options_json is not supported for export_type '{self.export_type}'"
+                f"options_json.profile_id '{requested_profile_id}' is not valid for export_type '{self.export_type}'"
             )
+
+        allowed_keys = {
+            "profile_id",
+            "profile",
+            "include_media",
+            "include_raw_telemetry",
+            "include_driver_statement",
+            "inventory_mode",
+        }
+        unknown_keys = set(options.keys()) - allowed_keys
+        if unknown_keys:
+            raise ValueError("options_json contains unsupported fields for packet profile exports")
+
+        defaults = profile.default_options()
+        self.options_json = {
+            **defaults,
+            "include_media": bool(options.get("include_media", defaults["include_media"])),
+            "include_raw_telemetry": bool(
+                options.get("include_raw_telemetry", defaults["include_raw_telemetry"])
+            ),
+            "include_driver_statement": bool(
+                options.get("include_driver_statement", defaults["include_driver_statement"])
+            ),
+            "inventory_mode": str(options.get("inventory_mode", defaults["inventory_mode"])),
+            "profile_id": requested_profile_id,
+        }
         return self
 
 
@@ -274,6 +284,44 @@ class CreateExportEnqueueResponse(BaseModel):
 class RetryExportRequest(BaseModel):
     export_type: Optional[ExportType] = None
     options_json: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def validate_retry_options(self):
+        if self.export_type is None and self.options_json is None:
+            return self
+        target_export_type = self.export_type
+        if target_export_type is None and self.options_json:
+            requested_profile_id = self.options_json.get("profile_id") or self.options_json.get("profile")
+            if requested_profile_id:
+                target_export_type = get_packet_profile(str(requested_profile_id)).export_type
+        if target_export_type is None:
+            return self
+
+        options = dict(self.options_json or {})
+        defaults = get_default_packet_profile(target_export_type).default_options()
+        requested_profile_id = str(
+            options.get("profile_id")
+            or options.get("profile")
+            or defaults["profile_id"]
+        )
+        profile = get_packet_profile(requested_profile_id)
+        if profile.export_type != target_export_type:
+            raise ValueError(
+                f"options_json.profile_id '{requested_profile_id}' is not valid for export_type '{target_export_type}'"
+            )
+        self.options_json = {
+            **defaults,
+            "profile_id": requested_profile_id,
+            "include_media": bool(options.get("include_media", defaults["include_media"])),
+            "include_raw_telemetry": bool(
+                options.get("include_raw_telemetry", defaults["include_raw_telemetry"])
+            ),
+            "include_driver_statement": bool(
+                options.get("include_driver_statement", defaults["include_driver_statement"])
+            ),
+            "inventory_mode": str(options.get("inventory_mode", defaults["inventory_mode"])),
+        }
+        return self
 
 
 class DownloadExportResponse(BaseModel):

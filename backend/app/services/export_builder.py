@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.services.export_content_resolver import resolve_export_content
+from app.domain.packet_profiles import get_default_packet_profile, get_packet_profile
 from app.services.export_manifest import build_export_manifest
 from app.services.export_pdf_service import (
     build_export_pdf_context,
@@ -64,6 +65,7 @@ def build_export_package(
         events=events,
         warnings=resolved.warnings,
         missing_items=resolved.missing_items,
+        options=options,
     )
     files[f"{package_root}/00_Cover_Summary.pdf"] = render_cover_summary_pdf(pdf_context)
     file_manifest.append(
@@ -92,8 +94,14 @@ def build_export_package(
         }
     )
 
+    profile_id = str(options.get("profile_id") or options.get("profile") or get_default_packet_profile(getattr(export, "export_type", "court_defense")).profile_id)
+    profile = get_packet_profile(profile_id)
     manifest = build_export_manifest(
         options=options,
+        profile_id=profile_id,
+        required_sections=list(profile.required_sections),
+        optional_sections=list(profile.optional_sections),
+        summary_style=profile.summary_style,
         included_files=list(files.keys()),
         file_manifest=file_manifest,
         missing_items=resolved.missing_items,

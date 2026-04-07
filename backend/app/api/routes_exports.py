@@ -42,6 +42,7 @@ from app.db.repo.users import get_user_org_ids
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.tasks.export_tasks import build_export
+from app.domain.packet_profiles import get_default_packet_profile
 from app.services.vault_s3 import (
     S3PresignConfigurationError,
     S3PresignGenerationError,
@@ -81,6 +82,7 @@ def create_export_endpoint(
         org_id=incident.org_id,
         status="requested",
         export_type=body.export_type,
+        profile_id=str(body.options_json.get("profile_id") or get_default_packet_profile(body.export_type).profile_id),
         requested_by_user_id=current_user.id,
         options_json=body.options_json,
         progress_stage="request_accepted",
@@ -162,6 +164,15 @@ def retry_export_endpoint(
         org_id=failed_export.org_id,
         status="requested",
         export_type=body.export_type or failed_export.export_type,
+        profile_id=(
+            str((body.options_json or {}).get("profile_id"))
+            if body.options_json and body.options_json.get("profile_id")
+            else (
+                get_default_packet_profile(body.export_type).profile_id
+                if body.export_type and body.export_type != failed_export.export_type
+                else failed_export.profile_id
+            )
+        ),
         requested_by_user_id=current_user.id,
         retry_parent_export_id=failed_export.export_id,
         options_json=body.options_json
@@ -243,6 +254,7 @@ def _serialize_export(export):
         "export_id": str(export.export_id),
         "incident_id": str(export.incident_id),
         "export_type": export.export_type,
+        "profile_id": export.profile_id,
         "requested_by_user_id": (
             str(export.requested_by_user_id) if export.requested_by_user_id else None
         ),

@@ -98,7 +98,7 @@ export default function IncidentDetailExportPanel({
   async function startExport(payload: {
     exportType: ExportType;
     options: {
-      profile: "mvp_default";
+      profile_id: "court_defense_v1" | "insurer_packet_v1" | "internal_review_v1" | "compliance_audit_v1";
       include_media: boolean;
       include_raw_telemetry: boolean;
       include_driver_statement: boolean;
@@ -107,11 +107,10 @@ export default function IncidentDetailExportPanel({
     setSubmitting(true);
     setErrorMessage("");
     try {
-      const options = payload.exportType === "court_defense" ? payload.options : {};
       const created = await createExport({
         incident_id: incidentId,
         export_type: payload.exportType,
-        options_json: options,
+        options_json: payload.options,
       });
       setActiveExportId(created.export_id);
       setStatus(created.status);
@@ -214,6 +213,9 @@ export default function IncidentDetailExportPanel({
                 </span>
               </div>
               <div className="mt-2 flex gap-2">
+                <span className="rounded bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-600">
+                  {item.profile_id}
+                </span>
                 {item.status === "ready" && (
                   <button
                     onClick={() => handleDownload(item.export_id)}
