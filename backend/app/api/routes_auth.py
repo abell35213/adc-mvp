@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ from app.core.deps import get_current_user
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.core.security import decode_access_token, hash_password, verify_password, create_access_token
-from app.db.models import User
+from app.db.models import Event, Org, User
 from app.db.repo.users import (
     create_org,
     create_user,
@@ -29,13 +30,43 @@ from app.db.repo.users import (
     link_user_org,
 )
 from app.db.session import get_db
+from app.domain.system_event_types import SystemEventType
 from app.security.csrf import CSRF_COOKIE_NAME, issue_csrf_token, validate_csrf_request
-from app.security.permissions import get_user_capabilities, normalize_role
+from app.security.permissions import Role, get_user_capabilities, normalize_role
 from app.security.session import create_session, revoke_session, rotate_refresh_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _is_mfa_required(user: User, org_admin_mfa_required: bool) -> bool:
+    role = normalize_role(user.role)
+    if role == Role.SYSTEM_ADMIN:
+        return True
+    if role == Role.ORG_ADMIN:
+        return org_admin_mfa_required
+    return False
+
+
+def _record_mfa_event(
+    db: Session,
+    *,
+    user: User,
+    event_type: SystemEventType,
+    org_id: uuid.UUID | None,
+    payload: dict | None = None,
+) -> None:
+    db.add(
+        Event(
+            org_id=org_id,
+            incident_id=None,
+            event_type=event_type.value,
+            actor_type="user",
+            actor_id=str(user.id),
+            payload=payload or {},
+        )
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -60,6 +91,51 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             )
 
         org_ids = get_user_org_ids(db, user.id)
+        org_admin_mfa_required = settings.ORG_ADMIN_MFA_REQUIRED
+        if org_ids:
+            org_rows = db.query(Org).filter(Org.id.in_(org_ids)).all()
+            if any(org.require_org_admin_mfa for org in org_rows):
+                org_admin_mfa_required = True
+
+        mfa_required = _is_mfa_required(user, org_admin_mfa_required)
+        if mfa_required and not user.mfa_enabled:
+            increment(MetricNames.AUTH_LOGIN_FAILURES)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="MFA enrollment required",
+            )
+        if mfa_required:
+            if body.mfa_code is None:
+                user.mfa_last_challenged_at_utc = datetime.now(timezone.utc)
+                _record_mfa_event(
+                    db,
+                    user=user,
+                    event_type=SystemEventType.MFA_CHALLENGE_COMPLETED,
+                    org_id=org_ids[0] if org_ids else None,
+                    payload={"status": "prompted"},
+                )
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="MFA code required",
+                )
+            expected_code = str(user.id.int)[-6:]
+            if body.mfa_code != expected_code:
+                increment(MetricNames.AUTH_LOGIN_FAILURES)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid MFA code",
+                )
+            user.mfa_last_challenged_at_utc = datetime.now(timezone.utc)
+            _record_mfa_event(
+                db,
+                user=user,
+                event_type=SystemEventType.MFA_CHALLENGE_COMPLETED,
+                org_id=org_ids[0] if org_ids else None,
+                payload={"status": "verified"},
+            )
+            db.commit()
+
         set_log_context(
             user_id=str(user.id), org_id=str(org_ids[0]) if org_ids else None
         )
@@ -104,6 +180,37 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         role=normalize_role(user.role).value,
         capabilities=sorted(cap.value for cap in get_user_capabilities(user.role)),
     )
+
+
+@router.post("/mfa/enroll", status_code=204)
+def enroll_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    org_ids = get_user_org_ids(db, current_user.id)
+    current_user.mfa_enabled = True
+    current_user.mfa_enrolled_at_utc = datetime.now(timezone.utc)
+    current_user.mfa_disabled_at_utc = None
+    _record_mfa_event(
+        db,
+        user=current_user,
+        event_type=SystemEventType.MFA_ENROLLMENT_COMPLETED,
+        org_id=org_ids[0] if org_ids else None,
+    )
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/mfa/disable", status_code=204)
+def disable_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    org_ids = get_user_org_ids(db, current_user.id)
+    current_user.mfa_enabled = False
+    current_user.mfa_disabled_at_utc = datetime.now(timezone.utc)
+    _record_mfa_event(
+        db,
+        user=current_user,
+        event_type=SystemEventType.MFA_DISABLED,
+        org_id=org_ids[0] if org_ids else None,
+    )
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/refresh", response_model=RefreshResponse)

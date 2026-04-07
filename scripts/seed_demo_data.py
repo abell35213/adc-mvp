@@ -40,7 +40,7 @@ def main():
             user = User(
                 email=admin_email,
                 password_hash=hash_password(admin_password),
-                role=Role.ADMIN.value,
+                role=Role.ORG_ADMIN.value,
             )
             db.add(user)
             db.commit()

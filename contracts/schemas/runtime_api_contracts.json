@@ -966,6 +966,19 @@
           "title": "Email",
           "type": "string"
         },
+        "mfa_code": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4,8}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mfa Code"
+        },
         "password": {
           "maxLength": 256,
           "minLength": 4,
@@ -1029,7 +1042,8 @@
         },
         "role": {
           "enum": [
-            "admin",
+            "system_admin",
+            "org_admin",
             "safety_manager"
           ],
           "title": "Role",
@@ -1089,7 +1103,8 @@
         "role": {
           "default": "safety_manager",
           "enum": [
-            "admin",
+            "system_admin",
+            "org_admin",
             "safety_manager"
           ],
           "title": "Role",

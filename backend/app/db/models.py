@@ -38,6 +38,7 @@ class Org(Base):
     voice_enabled = Column(Boolean, nullable=False, default=False)
     safety_manager_phone = Column(Text, nullable=True)
     instruction_source = Column(Text, nullable=False, default="default")
+    require_org_admin_mfa = Column(Boolean, nullable=False, default=False)
 
 
 class User(Base):
@@ -53,6 +54,11 @@ class User(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     is_active = Column(Boolean, nullable=False, default=True)
+    mfa_enabled = Column(Boolean, nullable=False, default=False)
+    mfa_secret_hash = Column(Text, nullable=True)
+    mfa_enrolled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    mfa_last_challenged_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    mfa_disabled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
 
 
 class UserOrg(Base):

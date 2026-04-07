@@ -54,7 +54,7 @@ QrToken = Annotated[
     ),
 ]
 
-UserRole = Literal["admin", "safety_manager"]
+UserRole = Literal["system_admin", "org_admin", "safety_manager"]
 CapabilityName = Literal[
     "incident:read",
     "incident:write",
@@ -65,7 +65,7 @@ CapabilityName = Literal[
     "vehicle_qr:read",
     "vehicle_qr:write",
 ]
-assert set(CANONICAL_ROLES) == {"admin", "safety_manager"}
+assert set(CANONICAL_ROLES) == {"system_admin", "org_admin", "safety_manager"}
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",
@@ -118,6 +118,7 @@ DriverTimelineEventName = Literal[
 class LoginRequest(BaseModel):
     email: EmailStrLike
     password: Annotated[str, StringConstraints(min_length=4, max_length=256)]
+    mfa_code: OtpCode | None = None
 
 
 class RequestOtpRequest(BaseModel):

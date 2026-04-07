@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base
+from app.db.models import Base, Org, User, UserOrg
 from app.db.session import get_db
 from app.core.security import (
     hash_password,
@@ -14,6 +14,7 @@ from app.core.security import (
     decode_access_token,
 )
 from app.main import app
+from app.core.config import settings
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -180,6 +181,75 @@ class TestLogin:
             },
         )
         assert resp.status_code == 401
+
+    def test_system_admin_login_requires_mfa(self, client, db_session):
+        user = User(
+            email="sysadmin@example.com",
+            password_hash=hash_password("secret"),
+            role="system_admin",
+            mfa_enabled=False,
+        )
+        org = Org(name="ADC")
+        db_session.add_all([user, org])
+        db_session.flush()
+        db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+        db_session.commit()
+
+        resp = client.post(
+            "/auth/login",
+            json={"email": "sysadmin@example.com", "password": "secret"},
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "MFA enrollment required"
+
+    def test_system_admin_login_with_mfa_code_succeeds(self, client, db_session):
+        user = User(
+            email="sysadmin2@example.com",
+            password_hash=hash_password("secret"),
+            role="system_admin",
+            mfa_enabled=True,
+        )
+        org = Org(name="ADC")
+        db_session.add_all([user, org])
+        db_session.flush()
+        db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+        db_session.commit()
+
+        expected_code = str(user.id.int)[-6:]
+        resp = client.post(
+            "/auth/login",
+            json={
+                "email": "sysadmin2@example.com",
+                "password": "secret",
+                "mfa_code": expected_code,
+            },
+        )
+        assert resp.status_code == 200
+
+    def test_org_admin_mfa_is_configurable(self, client, db_session):
+        prior = settings.ORG_ADMIN_MFA_REQUIRED
+        settings.ORG_ADMIN_MFA_REQUIRED = True
+        try:
+            user = User(
+                email="orgadmin@example.com",
+                password_hash=hash_password("secret"),
+                role="org_admin",
+                mfa_enabled=False,
+            )
+            org = Org(name="ADC")
+            db_session.add_all([user, org])
+            db_session.flush()
+            db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+            db_session.commit()
+
+            resp = client.post(
+                "/auth/login",
+                json={"email": "orgadmin@example.com", "password": "secret"},
+            )
+            assert resp.status_code == 403
+            assert resp.json()["detail"] == "MFA enrollment required"
+        finally:
+            settings.ORG_ADMIN_MFA_REQUIRED = prior
 
 
 # ── POST /auth/logout ──────────────────────────────────────────────

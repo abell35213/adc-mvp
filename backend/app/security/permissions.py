@@ -6,7 +6,8 @@ from enum import Enum
 
 
 class Role(str, Enum):
-    ADMIN = "admin"
+    SYSTEM_ADMIN = "system_admin"
+    ORG_ADMIN = "org_admin"
     SAFETY_MANAGER = "safety_manager"
 
 
@@ -27,10 +28,14 @@ ALL_RECOMMENDED_CAPABILITIES: tuple[str, ...] = tuple(
 )
 
 _ROLE_ALIASES: dict[str, Role] = {
-    "admin": Role.ADMIN,
-    "administrator": Role.ADMIN,
-    "super_admin": Role.ADMIN,
-    "superadmin": Role.ADMIN,
+    "system_admin": Role.SYSTEM_ADMIN,
+    "system admin": Role.SYSTEM_ADMIN,
+    "org_admin": Role.ORG_ADMIN,
+    "org admin": Role.ORG_ADMIN,
+    "admin": Role.ORG_ADMIN,
+    "administrator": Role.ORG_ADMIN,
+    "super_admin": Role.SYSTEM_ADMIN,
+    "superadmin": Role.SYSTEM_ADMIN,
     "safety_manager": Role.SAFETY_MANAGER,
     "safety manager": Role.SAFETY_MANAGER,
     "safety-manager": Role.SAFETY_MANAGER,
@@ -38,7 +43,8 @@ _ROLE_ALIASES: dict[str, Role] = {
 }
 
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
-    Role.ADMIN: frozenset(Capability),
+    Role.SYSTEM_ADMIN: frozenset(Capability),
+    Role.ORG_ADMIN: frozenset(Capability),
     Role.SAFETY_MANAGER: frozenset(
         {
             Capability.INCIDENT_READ,

@@ -121,6 +121,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = 300
+    ORG_ADMIN_MFA_REQUIRED: bool = False
 
     @classmethod
     def settings_customise_sources(
