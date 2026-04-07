@@ -50,6 +50,26 @@ class TestSettingsValidation:
             Settings(SECRET_PROVIDER="vault")
 
 
+    def test_invalid_cookie_topology_fails(self):
+        with pytest.raises(ValueError, match="COOKIE_DEPLOYMENT_TOPOLOGY"):
+            Settings(COOKIE_DEPLOYMENT_TOPOLOGY="hybrid")
+
+    def test_prod_cross_site_requires_secure_cookie(self):
+        settings = Settings(
+            APP_ENV="prod",
+            JWT_SECRET_KEY="super-secret",
+            OTP_HASH_PEPPER="pepper-secret",
+            DATABASE_URL="postgresql://db.example.com/adc",
+            COOKIE_HTTPONLY=True,
+            COOKIE_SECURE=False,
+            COOKIE_DEPLOYMENT_TOPOLOGY="cross_site",
+            FRONTEND_ORIGIN="https://app.example.com",
+            PUBLIC_APP_BASE_URL="https://app.example.com",
+        )
+
+        with pytest.raises(ValueError, match="cross_site cookies require COOKIE_SECURE=true"):
+            settings.validate_production_invariants()
+
 class TestAwsSecretsManagerSource:
     def test_loads_runtime_settings_from_aws_secrets_manager(
         self, monkeypatch: pytest.MonkeyPatch
