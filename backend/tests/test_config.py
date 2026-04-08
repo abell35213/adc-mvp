@@ -4,10 +4,29 @@ import json
 
 import pytest
 
+from app.config.validation import validate_startup_config
 from app.core.config import Settings
 
 
 class TestSettingsValidation:
+    def _non_local_minimum(self) -> dict[str, str | bool]:
+        return {
+            "APP_ENV": "staging",
+            "DATABASE_URL": "postgresql://db.example.com/adc",
+            "REDIS_URL": "redis://redis.example.com:6379/0",
+            "S3_ARTIFACTS_BUCKET": "adc-prod-artifacts",
+            "S3_EXPORTS_BUCKET": "adc-prod-exports",
+            "TWILIO_ACCOUNT_SID": "AC123",
+            "TWILIO_AUTH_TOKEN": "token",
+            "TWILIO_VERIFY_SERVICE_SID": "VA123",
+            "SAMSARA_API_KEY": "samsara-key",
+            "JWT_SECRET_KEY": "super-secret",
+            "OTP_HASH_PEPPER": "pepper-secret",
+            "COOKIE_SECURE": True,
+            "FRONTEND_ORIGIN": "https://app.example.com",
+            "PUBLIC_APP_BASE_URL": "https://app.example.com",
+        }
+
     def test_prod_requires_non_default_secrets(self):
         settings = Settings(
             APP_ENV="prod",
@@ -36,8 +55,8 @@ class TestSettingsValidation:
         with pytest.raises(ValueError, match="COOKIE_SECURE must be true in prod"):
             settings.validate_production_invariants()
 
-    def test_non_prod_allows_local_defaults(self):
-        settings = Settings(APP_ENV="dev")
+    def test_non_prod_allows_local_defaults_for_legacy_validation(self):
+        settings = Settings(APP_ENV="local")
 
         settings.validate_production_invariants()
 
@@ -48,7 +67,6 @@ class TestSettingsValidation:
     def test_invalid_secret_provider_fails(self):
         with pytest.raises(ValueError, match="SECRET_PROVIDER must be one of"):
             Settings(SECRET_PROVIDER="vault")
-
 
     def test_invalid_cookie_topology_fails(self):
         with pytest.raises(ValueError, match="COOKIE_DEPLOYMENT_TOPOLOGY"):
@@ -69,6 +87,18 @@ class TestSettingsValidation:
 
         with pytest.raises(ValueError, match="cross_site cookies require COOKIE_SECURE=true"):
             settings.validate_production_invariants()
+
+    def test_startup_validation_requires_critical_secrets_outside_local(self):
+        settings = Settings(APP_ENV="staging")
+
+        with pytest.raises(ValueError, match="must be set outside local"):
+            validate_startup_config(settings)
+
+    def test_startup_validation_accepts_complete_staging_config(self):
+        settings = Settings(**self._non_local_minimum())
+
+        validate_startup_config(settings)
+
 
 class TestAwsSecretsManagerSource:
     def test_loads_runtime_settings_from_aws_secrets_manager(
@@ -94,7 +124,7 @@ class TestAwsSecretsManagerSource:
         monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
-        monkeypatch.setattr("app.core.config.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
+        monkeypatch.setattr("app.config.settings.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
 
         settings = Settings()
 
@@ -119,7 +149,7 @@ class TestAwsSecretsManagerSource:
         monkeypatch.setenv("SECRET_PROVIDER", "aws_secrets_manager")
         monkeypatch.setenv("AWS_SECRETS_MANAGER_SECRET_ID", "adc/runtime")
         monkeypatch.setenv("JWT_SECRET_KEY", "jwt-from-env")
-        monkeypatch.setattr("app.core.config.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
+        monkeypatch.setattr("app.config.settings.boto3.client", lambda *args, **kwargs: FakeSecretsClient())
 
         settings = Settings()
 
