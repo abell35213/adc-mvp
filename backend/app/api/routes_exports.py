@@ -18,6 +18,7 @@ from app.api.schemas import (
     ExportSummary,
     RetryExportRequest,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_user
 from app.core.logging import set_log_context
 from app.core.metrics import MetricNames, increment, timed
@@ -64,7 +65,31 @@ def create_export_endpoint(
     if incident is None:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         raise HTTPException(status_code=404, detail="Incident not found")
-    require_policy(can_request_export(context, incident))
+    allowed = can_request_export(context, incident)
+    if not allowed:
+        emit_audit_event(
+            db,
+            org_id=incident.org_id if incident else None,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            action="export.request",
+            event_type="authorization_failed",
+            outcome="failure",
+            incident_id=body.incident_id,
+            metadata={"should_log": True, "resource": "export_request"},
+        )
+    require_policy(allowed)
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="export.request",
+        event_type="export_requested",
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata={"export_type": body.export_type},
+    )
 
     set_log_context(
         user_id=str(current_user.id),
@@ -176,6 +201,18 @@ def retry_export_endpoint(
     )
 
     attempt_number = _get_retry_attempt_number(db, new_export)
+    emit_audit_event(
+        db,
+        org_id=failed_export.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="export.retry_request",
+        event_type="export_requested",
+        outcome="success",
+        incident_id=failed_export.incident_id,
+        export_id=new_export.export_id,
+        metadata={"prior_export_id": str(failed_export.export_id), "attempt_number": attempt_number},
+    )
     create_event(
         db,
         incident_id=failed_export.incident_id,
@@ -284,7 +321,20 @@ def _resolve_authorized_export(
 
     export_org_id = _get_export_owner_org_id(db, export)
     if context is not None:
-        require_policy(can_download_export(context, export, export_org_id=export_org_id))
+        if not can_download_export(context, export, export_org_id=export_org_id):
+            emit_audit_event(
+                db,
+                org_id=export_org_id,
+                actor_type="user",
+                actor_id=str(context.user.id),
+                action="export.authorize",
+                event_type="authorization_failed",
+                outcome="failure",
+                incident_id=export.incident_id,
+                export_id=export.export_id,
+                metadata={"should_log": True, "resource": "export"},
+            )
+            require_policy(False)
     elif export_org_id is None or export_org_id not in org_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
     return export
@@ -488,6 +538,17 @@ def get_export_contents_endpoint(
     context = build_user_auth_context(db, current_user)
     org_ids = list(context.org_ids)
     export = _resolve_authorized_export(db, export_id, org_ids, context=context)
+    emit_audit_event(
+        db,
+        org_id=_get_export_owner_org_id(db, export),
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="export.contents.retrieve",
+        event_type="export_retrieved",
+        outcome="success",
+        incident_id=export.incident_id,
+        export_id=export.export_id,
+    )
     manifest = _build_contents_manifest(db, export)
     options = export.options_json or {}
     missing_items = options.get("missing_items") if isinstance(options, dict) else []
@@ -523,6 +584,18 @@ def download_export_endpoint(
     export_org_id = _get_export_owner_org_id(db, export)
     if not can_download_export(context, export, export_org_id=export_org_id):
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+        emit_audit_event(
+            db,
+            org_id=export_org_id,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            action="export.download",
+            event_type="authorization_failed",
+            outcome="failure",
+            incident_id=export.incident_id,
+            export_id=export.export_id,
+            metadata={"should_log": True, "resource": "export_download"},
+        )
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if export.status != "ready":
@@ -576,6 +649,18 @@ def download_export_endpoint(
             "actor": {"type": "user", "id": str(current_user.id)},
         },
     )
+    emit_audit_event(
+        db,
+        org_id=export_org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="export.download",
+        event_type="export_downloaded",
+        outcome="success",
+        incident_id=export.incident_id,
+        export_id=export.export_id,
+        metadata={"download_url_expires_in_seconds": expires_in_seconds},
+    )
 
     return DownloadExportResponse(
         export_id=export.export_id,
@@ -594,6 +679,17 @@ def get_export_downloads_endpoint(
     context = build_user_auth_context(db, current_user)
     org_ids = list(context.org_ids)
     export = _resolve_authorized_export(db, export_id, org_ids, context=context)
+    emit_audit_event(
+        db,
+        org_id=_get_export_owner_org_id(db, export),
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="export.download_audit.retrieve",
+        event_type="export_retrieved",
+        outcome="success",
+        incident_id=export.incident_id,
+        export_id=export.export_id,
+    )
     events = get_events_by_incident(db, export.incident_id)
     download_events = [
         event

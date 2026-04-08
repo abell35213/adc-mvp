@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import create_access_token, hash_password
-from app.db.models import Base, Driver, Export, Incident, Org, User, UserOrg
+from app.db.models import AuditEvent, Base, Driver, Export, Incident, Org, User, UserOrg
 from app.db.session import get_db
 from app.main import app
 
@@ -80,6 +80,9 @@ def test_export_download_checks_org_membership(client, db_session):
 
     response = client.get(f"/exports/{export.export_id}/download", headers=_user_headers(user.id, user.role))
     assert response.status_code == 403
+    audit = db_session.query(AuditEvent).filter(AuditEvent.event_type == "authorization_failed").first()
+    assert audit is not None
+    assert audit.outcome == "failure"
 
 
 def test_admin_vehicle_list_requires_vehicle_qr_read_capability(client, db_session):

@@ -19,6 +19,7 @@ from app.api.schemas import (
     DriverTokenRefreshRequest,
     DriverSessionRevokeRequest,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.repo.drivers import (
@@ -165,12 +166,32 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
 
     challenge = get_latest_otp_challenge_by_phone(db, phone_e164)
     if challenge is None:
+        emit_audit_event(
+            db,
+            org_id=None,
+            actor_type="driver_phone",
+            actor_id=_phone_hash(phone_e164),
+            action="auth.driver_login",
+            event_type="driver_login_failed",
+            outcome="failure",
+            metadata={"reason": "challenge_not_found", "should_log": True},
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Challenge not found",
         )
 
     if challenge.status == "locked":
+        emit_audit_event(
+            db,
+            org_id=None,
+            actor_type="driver_phone",
+            actor_id=_phone_hash(phone_e164),
+            action="auth.driver_login",
+            event_type="driver_login_failed",
+            outcome="failure",
+            metadata={"reason": "challenge_locked", "should_log": True},
+        )
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail="Challenge locked due to too many attempts",
@@ -190,6 +211,16 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     if now > expires:
         challenge.status = "expired"
         db.commit()
+        emit_audit_event(
+            db,
+            org_id=None,
+            actor_type="driver_phone",
+            actor_id=_phone_hash(phone_e164),
+            action="auth.driver_login",
+            event_type="driver_login_failed",
+            outcome="failure",
+            metadata={"reason": "challenge_expired", "should_log": True},
+        )
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="Challenge expired",
@@ -216,10 +247,30 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             challenge.status,
         )
         if challenge.status == "locked":
+            emit_audit_event(
+                db,
+                org_id=None,
+                actor_type="driver_phone",
+                actor_id=_phone_hash(phone_e164),
+                action="auth.driver_login",
+                event_type="driver_login_failed",
+                outcome="failure",
+                metadata={"reason": "otp_locked", "attempt_count": challenge.attempt_count, "should_log": True},
+            )
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
                 detail="Challenge locked due to too many attempts",
             )
+        emit_audit_event(
+            db,
+            org_id=None,
+            actor_type="driver_phone",
+            actor_id=_phone_hash(phone_e164),
+            action="auth.driver_login",
+            event_type="driver_login_failed",
+            outcome="failure",
+            metadata={"reason": "invalid_otp", "attempt_count": challenge.attempt_count, "should_log": True},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid OTP",
@@ -227,6 +278,16 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
 
     driver = get_driver_by_phone(db, phone_e164)
     if driver is None:
+        emit_audit_event(
+            db,
+            org_id=None,
+            actor_type="driver_phone",
+            actor_id=_phone_hash(phone_e164),
+            action="auth.driver_login",
+            event_type="driver_login_failed",
+            outcome="failure",
+            metadata={"reason": "unknown_driver", "should_log": True},
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No driver registered with this phone number",
@@ -250,6 +311,16 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         "DRIVER_OTP_VERIFIED phone_hash=%s driver=%s",
         _phone_hash(phone_e164),
         driver.driver_id,
+    )
+    emit_audit_event(
+        db,
+        org_id=driver.org_id,
+        actor_type="driver",
+        actor_id=str(driver.driver_id),
+        action="auth.driver_login",
+        event_type="driver_login_succeeded",
+        outcome="success",
+        metadata={"phone_hash": _phone_hash(phone_e164)},
     )
 
     return DriverOtpVerifyResponse(access_token=access_token, refresh_token=refresh_token)

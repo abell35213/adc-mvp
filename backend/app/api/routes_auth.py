@@ -16,6 +16,7 @@ from app.api.schemas import (
     MeResponse,
     LogoutResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.logging import set_log_context
@@ -78,6 +79,17 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         if not user or not verify_password(body.password, user.password_hash):
             increment(MetricNames.AUTH_LOGIN_FAILURES)
             logger.warning("Login failed for email", extra={"email": body.email})
+            org_ids = get_user_org_ids(db, user.id) if user else []
+            emit_audit_event(
+                db,
+                org_id=org_ids[0] if org_ids else None,
+                actor_type="user" if user else "anonymous",
+                actor_id=str(user.id) if user else body.email.lower(),
+                action="auth.login",
+                event_type="auth_login_failed",
+                outcome="failure",
+                metadata={"reason": "invalid_credentials", "should_log": True},
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -85,6 +97,17 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
         if not user.is_active:
             increment(MetricNames.AUTH_LOGIN_FAILURES)
+            org_ids = get_user_org_ids(db, user.id)
+            emit_audit_event(
+                db,
+                org_id=org_ids[0] if org_ids else None,
+                actor_type="user",
+                actor_id=str(user.id),
+                action="auth.login",
+                event_type="auth_login_failed",
+                outcome="failure",
+                metadata={"reason": "inactive_account", "should_log": True},
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account is deactivated",
@@ -100,6 +123,16 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         mfa_required = _is_mfa_required(user, org_admin_mfa_required)
         if mfa_required and not user.mfa_enabled:
             increment(MetricNames.AUTH_LOGIN_FAILURES)
+            emit_audit_event(
+                db,
+                org_id=org_ids[0] if org_ids else None,
+                actor_type="user",
+                actor_id=str(user.id),
+                action="auth.login",
+                event_type="auth_login_failed",
+                outcome="failure",
+                metadata={"reason": "mfa_enrollment_required", "should_log": True},
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="MFA enrollment required",
@@ -122,6 +155,16 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             expected_code = str(user.id.int)[-6:]
             if body.mfa_code != expected_code:
                 increment(MetricNames.AUTH_LOGIN_FAILURES)
+                emit_audit_event(
+                    db,
+                    org_id=org_ids[0] if org_ids else None,
+                    actor_type="user",
+                    actor_id=str(user.id),
+                    action="auth.login",
+                    event_type="auth_login_failed",
+                    outcome="failure",
+                    metadata={"reason": "invalid_mfa_code", "should_log": True},
+                )
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid MFA code",
@@ -147,6 +190,16 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             device_descriptor=request.headers.get("user-agent"),
             token_subject=str(user.id),
             token_claims={"role": normalize_role(user.role).value},
+        )
+        emit_audit_event(
+            db,
+            org_id=org_ids[0] if org_ids else None,
+            actor_type="user",
+            actor_id=str(user.id),
+            action="auth.login",
+            event_type="auth_login_succeeded",
+            outcome="success",
+            metadata={"role": normalize_role(user.role).value},
         )
 
     csrf_token = issue_csrf_token()
