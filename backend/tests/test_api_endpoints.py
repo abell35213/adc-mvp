@@ -1359,6 +1359,6 @@ class TestListExports:
 
 class TestHealth:
     def test_health(self, client):
-        resp = client.get("/health")
+        resp = client.get("/health/live")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}

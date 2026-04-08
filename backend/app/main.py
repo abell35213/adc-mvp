@@ -12,6 +12,7 @@ from app.api.routes.routes_driver_artifacts import router as driver_artifacts_ro
 from app.api.routes.routes_driver_report import router as driver_report_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_twilio import router as twilio_router
+from app.health.routes import router as health_router
 from app.core.config import settings
 from app.config.validation import validate_startup_config
 from app.observability.alerts import init_sentry
@@ -41,11 +42,7 @@ app.include_router(driver_artifacts_router, prefix="/driver", tags=["driver-arti
 app.include_router(driver_report_router, prefix="/driver", tags=["driver-report"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
+app.include_router(health_router)
 
 
 @app.on_event("startup")
