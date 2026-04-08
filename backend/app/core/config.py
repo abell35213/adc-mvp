@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
+    # Observability
+    RELEASE: str = "dev"
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+    METRICS_BACKEND: str = "inmemory"
+
     # CORS / Cookies
     FRONTEND_ORIGIN: str = "http://localhost:3000"
     COOKIE_HTTPONLY: bool = True
@@ -219,6 +225,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS must be between 60 and 900"
             )
+
+        self.METRICS_BACKEND = self.METRICS_BACKEND.strip().lower()
+        if self.METRICS_BACKEND not in {"inmemory", "prometheus", "opentelemetry", "otel", "datadog"}:
+            raise ValueError(
+                "METRICS_BACKEND must be one of: inmemory, prometheus, opentelemetry, otel, datadog"
+            )
+
+        if not 0.0 <= self.SENTRY_TRACES_SAMPLE_RATE <= 1.0:
+            raise ValueError("SENTRY_TRACES_SAMPLE_RATE must be between 0.0 and 1.0")
+
+        self.RELEASE = self.RELEASE.strip() or "dev"
 
         return self
 
