@@ -1,0 +1,187 @@
+version: 1
+org: adc
+service: adc-platform
+environment: prod
+
+alert_policies:
+  # Section 7.4 - Observability alerts (critical + warning)
+  - id: api_5xx_error_ratio_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "api 5xx error ratio > 5% for 10m"
+    expression: "sum(rate(http_server_requests_total{service='adc-api',environment='prod',status=~'5..'}[10m])) / sum(rate(http_server_requests_total{service='adc-api',environment='prod'}[10m])) > 0.05"
+    for: 10m
+    routing:
+      pager: primary
+      escalation: sre_manager
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
+
+  - id: api_latency_p95_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "api p95 latency > 750ms for 15m"
+    expression: "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service='adc-api',environment='prod'}[5m]))) > 0.75"
+    for: 15m
+    routing:
+      pager: secondary
+      escalation: service_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
+
+  - id: jobs_failure_ratio_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "worker failure ratio > 10% for 15m"
+    expression: "sum(rate(celery_tasks_total{service='adc-worker',environment='prod',state='FAILURE'}[15m])) / sum(rate(celery_tasks_total{service='adc-worker',environment='prod'}[15m])) > 0.10"
+    for: 15m
+    routing:
+      pager: primary
+      escalation: backend_oncall
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: jobs_queue_depth_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "queue depth > 1000 for 20m"
+    expression: "max(celery_queue_depth{service='adc-worker',environment='prod'}) > 1000"
+    for: 20m
+    routing:
+      pager: secondary
+      escalation: backend_service_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: evidence_ingest_failure_ratio_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "evidence ingest success ratio < 98% for 10m"
+    expression: "sum(rate(evidence_ingest_requests_total{service='adc-evidence-pipeline',environment='prod',result='success'}[10m])) / sum(rate(evidence_ingest_requests_total{service='adc-evidence-pipeline',environment='prod'}[10m])) < 0.98"
+    for: 10m
+    routing:
+      pager: primary
+      escalation: data_platform_oncall
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-evidence-pipeline
+      environment: prod
+
+  - id: evidence_stage_latency_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "evidence stage p95 latency > 120s for 15m"
+    expression: "histogram_quantile(0.95, sum by (le) (rate(evidence_stage_duration_seconds_bucket{service='adc-evidence-pipeline',environment='prod'}[10m]))) > 120"
+    for: 15m
+    routing:
+      pager: secondary
+      escalation: data_pipeline_owner
+    runbook: docs/section-23-export-acceptance-checklist.md
+    tags:
+      org: adc
+      service: adc-evidence-pipeline
+      environment: prod
+
+  - id: audit_ingestion_lag_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "audit ingestion lag p95 > 300s for 10m"
+    expression: "histogram_quantile(0.95, sum by (le) (rate(audit_ingestion_lag_seconds_bucket{service='adc-security-audit',environment='prod'}[10m]))) > 300"
+    for: 10m
+    routing:
+      pager: primary
+      escalation: security_oncall
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-security-audit
+      environment: prod
+
+  - id: security_auth_failure_ratio_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "auth failure ratio > 20% for 10m"
+    expression: "sum(rate(auth_failures_total{service='adc-security-audit',environment='prod'}[10m])) / sum(rate(auth_attempts_total{service='adc-security-audit',environment='prod'}[10m])) > 0.20"
+    for: 10m
+    routing:
+      pager: secondary
+      escalation: security_service_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-security-audit
+      environment: prod
+
+  # Section 21 - Change management and post-release verification
+  - id: post_release_slo_regression_critical
+    section_ref: "21"
+    severity: critical
+    condition: "post-release api error budget burn rate > 4x for 30m"
+    expression: "slo_error_budget_burn_rate{service='adc-api',environment='prod',window='30m'} > 4"
+    for: 30m
+    routing:
+      pager: primary
+      escalation: incident_commander
+    runbook: docs/release-readiness-checklist.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
+
+  - id: post_release_job_regression_warning
+    section_ref: "21"
+    severity: warning
+    condition: "job failure ratio > 5% for 30m within 24h of deploy"
+    expression: "sum(rate(celery_tasks_total{service='adc-worker',environment='prod',state='FAILURE',release_window='post_release'}[30m])) / sum(rate(celery_tasks_total{service='adc-worker',environment='prod',release_window='post_release'}[30m])) > 0.05"
+    for: 30m
+    routing:
+      pager: secondary
+      escalation: release_manager
+    runbook: docs/release-readiness-checklist.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: post_release_audit_gap_critical
+    section_ref: "21"
+    severity: critical
+    condition: "audit event coverage < 99% for 15m post deploy"
+    expression: "audit_coverage_ratio{service='adc-security-audit',environment='prod',release_window='post_release'} < 0.99"
+    for: 15m
+    routing:
+      pager: primary
+      escalation: compliance_lead
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-security-audit
+      environment: prod
+
+  - id: post_release_smoke_test_fail_warning
+    section_ref: "21"
+    severity: warning
+    condition: "any mandatory smoke test fails in post-release checks"
+    expression: "max(release_smoke_test_failure{service='adc-api',environment='prod',required='true'}) > 0"
+    for: 5m
+    routing:
+      pager: secondary
+      escalation: release_manager
+    runbook: docs/release-readiness-checklist.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
