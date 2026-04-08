@@ -3,7 +3,14 @@
 import logging
 
 from celery import Celery
-from celery.signals import before_task_publish, task_failure, task_postrun, task_prerun, worker_process_init
+from celery.signals import (
+    before_task_publish,
+    task_failure,
+    task_postrun,
+    task_prerun,
+    task_retry,
+    worker_process_init,
+)
 
 from app.core.config import settings
 from app.observability.alerts import init_sentry
@@ -16,6 +23,13 @@ from app.observability.tracing import (
     inject_correlation_headers,
     set_actor_context,
     set_correlation_id,
+)
+from app.jobs.tracking import (
+    record_task_failed,
+    record_task_queued,
+    record_task_retrying,
+    record_task_started,
+    record_task_succeeded,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +103,10 @@ def _on_before_task_publish(headers=None, **_kwargs):
     if headers is None:
         return
     headers.update(inject_correlation_headers(headers))
+    task_name = headers.get("task")
+    task_id = headers.get("id")
+    if task_name and task_id:
+        record_task_queued(task_name=task_name, task_id=task_id, args=None, kwargs=None)
 
 
 @task_prerun.connect
@@ -100,6 +118,12 @@ def _on_task_prerun(*_, task=None, **__):
         user_id=extracted.get(USER_ID_HEADER) or None,
         org_id=extracted.get(ORG_ID_HEADER) or None,
     )
+    if task is not None:
+        record_task_started(
+            task_name=task.name,
+            task_id=task.request.id,
+            max_retries=getattr(task, "max_retries", 0) or 0,
+        )
     increment(MetricNames.CELERY_TASK_STARTED)
 
 
@@ -108,9 +132,54 @@ def _on_task_failure(*_, **__):
     increment(MetricNames.CELERY_TASK_FAILURES)
 
 
+@task_retry.connect
+def _on_task_retry(request=None, reason=None, sender=None, **_kwargs):
+    if sender is None or request is None or not request.id:
+        return
+    record_task_retrying(
+        task_name=sender.name,
+        task_id=request.id,
+        retry_count=getattr(request, "retries", 0) or 0,
+        max_retries=getattr(sender, "max_retries", 0) or 0,
+        exception=reason
+        if isinstance(reason, BaseException)
+        else RuntimeError(str(reason)),
+    )
+
+
 @task_postrun.connect
 def _on_task_postrun(*_, **__):
     clear_context()
+
+
+@task_failure.connect
+def persist_terminal_failure(
+    sender=None,
+    task_id=None,
+    exception=None,
+    **_kwargs,
+):
+    if sender is None or not task_id or exception is None:
+        return
+    max_retries = getattr(sender, "max_retries", 0) or 0
+    current_retries = getattr(getattr(sender, "request", None), "retries", 0) or 0
+    if current_retries < max_retries:
+        return
+    record_task_failed(
+        task_name=sender.name,
+        task_id=task_id,
+        retry_count=current_retries,
+        max_retries=max_retries,
+        exception=exception,
+    )
+
+
+@task_postrun.connect
+def persist_task_success(sender=None, task_id=None, state=None, **_kwargs):
+    if sender is None or not task_id:
+        return
+    if state == "SUCCESS":
+        record_task_succeeded(task_name=sender.name, task_id=task_id)
 
 
 @celery_app.task
