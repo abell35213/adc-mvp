@@ -1,9 +1,15 @@
 """Tests for S3 presigned URL generation helpers."""
 
+from datetime import datetime, timedelta, timezone
+import hashlib
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.vault_s3 import (
+    ArtifactObjectMetadata,
+    S3ObjectKeyValidationError,
     S3PresignConfigurationError,
     S3PresignGenerationError,
     generate_presigned_download_url,
@@ -14,22 +20,28 @@ class _FakeS3Client:
     def generate_presigned_url(self, ClientMethod, Params, ExpiresIn):  # noqa: N803
         assert ClientMethod == "get_object"
         assert Params["Bucket"] == "bucket"
-        assert Params["Key"] == "exports/test.zip"
-        assert ExpiresIn == 900
+        assert Params["Key"] == "orgs/org-1/incidents/inc-1/artifacts/art-1.zip"
+        # caller asked for 900, implementation caps to 300 for short-lived URL issuance
+        assert ExpiresIn == 300
         return "https://signed.example.com/exports/test.zip"
 
 
 def test_generate_presigned_download_url_missing_bucket_raises():
-    try:
+    with pytest.raises(S3PresignConfigurationError, match="Export download bucket is not configured"):
         generate_presigned_download_url(
             bucket="",
-            key="exports/test.zip",
+            key="orgs/org-1/incidents/inc-1/artifacts/art-1.zip",
             region="us-east-1",
         )
-    except S3PresignConfigurationError as exc:
-        assert str(exc) == "Export download bucket is not configured"
-    else:
-        raise AssertionError("Expected S3PresignConfigurationError")
+
+
+def test_generate_presigned_download_url_invalid_key_raises():
+    with pytest.raises(S3ObjectKeyValidationError):
+        generate_presigned_download_url(
+            bucket="bucket",
+            key="org/org-1/incidents/inc-1/exports/test.zip",
+            region="us-east-1",
+        )
 
 
 def test_generate_presigned_download_url_uses_boto3(monkeypatch):
@@ -44,7 +56,7 @@ def test_generate_presigned_download_url_uses_boto3(monkeypatch):
 
     url = generate_presigned_download_url(
         bucket="bucket",
-        key="exports/test.zip",
+        key="orgs/org-1/incidents/inc-1/artifacts/art-1.zip",
         region="us-east-1",
         expires_in=900,
     )
@@ -64,13 +76,44 @@ def test_generate_presigned_download_url_missing_boto3_raises(monkeypatch):
 
     monkeypatch.setattr("builtins.__import__", _raising_import)
 
-    try:
+    with pytest.raises(S3PresignGenerationError, match="Failed to generate download URL"):
         generate_presigned_download_url(
             bucket="bucket",
-            key="exports/test.zip",
+            key="orgs/org-1/incidents/inc-1/artifacts/art-1.zip",
             region="us-east-1",
         )
-    except S3PresignGenerationError as exc:
-        assert str(exc) == "Failed to generate download URL"
-    else:
-        raise AssertionError("Expected S3PresignGenerationError")
+
+
+def test_artifact_metadata_round_trip_and_s3_projection():
+    data = b"artifact-bytes"
+    captured_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    uploaded_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+    metadata = ArtifactObjectMetadata.from_blob(
+        data=data,
+        content_type="application/pdf",
+        captured_at_utc=captured_at,
+        uploaded_at_utc=uploaded_at,
+    )
+
+    metadata.validate_against_data(data)
+    headers = metadata.to_s3_metadata()
+
+    assert headers["adc-sha256"] == hashlib.sha256(data).hexdigest()
+    assert headers["adc-byte-size"] == str(len(data))
+    assert headers["adc-content-type"] == "application/pdf"
+    assert headers["adc-captured-at-utc"] == captured_at.isoformat()
+    assert headers["adc-uploaded-at-utc"] == uploaded_at.isoformat()
+
+
+def test_artifact_metadata_rejects_timestamp_inversion():
+    metadata = ArtifactObjectMetadata(
+        sha256="a" * 64,
+        byte_size=1,
+        content_type="video/mp4",
+        captured_at_utc=datetime.now(timezone.utc),
+        uploaded_at_utc=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+
+    with pytest.raises(ValueError, match="before capture"):
+        metadata.validate()
