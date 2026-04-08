@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -29,6 +29,9 @@ from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
+from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
+from app.services.rate_limit_service import enforce_rate_limit
+from app.core.config import settings
 from app.security.authn import build_user_auth_context
 from app.security.authz import (
     can_create_incident,
@@ -233,10 +236,20 @@ def get_incident_endpoint(
 )
 def request_export_endpoint(
     incident_id: uuid.UUID,
+    request: Request,
+    idempotency=Depends(optional_idempotency_key),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
+    enforce_rate_limit(
+        request,
+        bucket_name="incident_export_request",
+        subject=str(current_user.id),
+        max_calls=settings.EXPORT_REQUEST_RATE_LIMIT,
+        window_seconds=settings.EXPORT_RATE_LIMIT_WINDOW_SECONDS,
+        detail="Too many export requests. Please retry later.",
+    )
 
     context = build_user_auth_context(db, current_user)
     org_ids = list(context.org_ids)
@@ -250,6 +263,26 @@ def request_export_endpoint(
         user_id=str(current_user.id),
         org_id=str(incident.org_id) if incident.org_id else None,
     )
+
+    if idempotency is not None:
+        existing_event = find_event_by_idempotency(
+            db,
+            event_type=SystemEventType.EXPORT_REQUESTED.value,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            incident_id=incident_id,
+            idempotency_key_hash=idempotency.hashed_key,
+        )
+        if existing_event and (existing_event.payload or {}).get("export_id"):
+            prior_export_id = uuid.UUID(str(existing_event.payload["export_id"]))
+            prior_export = get_exports_by_incident(db, incident_id)
+            for row in prior_export:
+                if row.export_id == prior_export_id:
+                    return CreateExportResponse(
+                        export_id=row.export_id,
+                        status=row.status,
+                        progress_stage=row.progress_stage,
+                    )
 
     export = create_export(
         db,

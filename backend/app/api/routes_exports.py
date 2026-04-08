@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -37,6 +37,8 @@ from app.db.repo.incidents import get_incident
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.tasks.export_tasks import build_export
+from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
+from app.services.rate_limit_service import enforce_rate_limit
 from app.domain.packet_profiles import get_default_packet_profile
 from app.security.authn import UserAuthContext, build_user_auth_context
 from app.security.authz import can_download_export, can_request_export, require_policy
@@ -55,10 +57,20 @@ STABLE_EXPORT_CONTENT_KINDS: tuple[str, ...] = ("summary_pdf", "raw_telemetry", 
 @router.post("/", response_model=CreateExportEnqueueResponse, status_code=201)
 def create_export_endpoint(
     body: CreateExportRequest,
+    request: Request,
+    idempotency=Depends(optional_idempotency_key),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     increment(MetricNames.EXPORT_REQUEST_ATTEMPTS)
+    enforce_rate_limit(
+        request,
+        bucket_name="export_request",
+        subject=str(current_user.id),
+        max_calls=settings.EXPORT_REQUEST_RATE_LIMIT,
+        window_seconds=settings.EXPORT_RATE_LIMIT_WINDOW_SECONDS,
+        detail="Too many export requests. Please retry later.",
+    )
 
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, body.incident_id)
@@ -96,6 +108,26 @@ def create_export_endpoint(
         org_id=str(incident.org_id) if incident.org_id else None,
     )
 
+    if idempotency is not None:
+        existing_event = find_event_by_idempotency(
+            db,
+            event_type=SystemEventType.EXPORT_REQUESTED.value,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            incident_id=body.incident_id,
+            idempotency_key_hash=idempotency.hashed_key,
+        )
+        if existing_event and (existing_event.payload or {}).get("export_id"):
+            prior = get_export(db, uuid.UUID(str(existing_event.payload["export_id"])))
+            if prior is not None:
+                return CreateExportEnqueueResponse(
+                    export_id=prior.export_id,
+                    incident_id=prior.incident_id,
+                    export_type=prior.export_type,
+                    status=prior.status,
+                    created_at_utc=prior.created_at_utc,
+                )
+
     export = create_export(
         db,
         incident_id=body.incident_id,
@@ -120,6 +152,7 @@ def create_export_endpoint(
             "export_type": body.export_type,
             "status": "requested",
             "actor": {"type": "user", "id": str(current_user.id)},
+            "idempotency_key_hash": idempotency.hashed_key if idempotency else None,
         },
     )
 
@@ -137,7 +170,7 @@ def create_export_endpoint(
             detail="Unable to enqueue export generation",
         ) from exc
 
-    export = update_export(db, export.export_id, status="queued") or export
+    export = update_export(db, export.export_id, status="queued", transition_actor="api_user") or export
     task_id = getattr(task_result, "id", None)
     create_event(
         db,
@@ -242,7 +275,7 @@ def retry_export_endpoint(
             status_code=502,
             detail="Unable to enqueue export generation",
         ) from exc
-    new_export = update_export(db, new_export.export_id, status="queued") or new_export
+    new_export = update_export(db, new_export.export_id, status="queued", transition_actor="api_user") or new_export
     task_id = getattr(task_result, "id", None)
     create_event(
         db,

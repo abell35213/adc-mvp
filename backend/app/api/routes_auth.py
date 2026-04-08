@@ -35,6 +35,7 @@ from app.domain.system_event_types import SystemEventType
 from app.security.csrf import CSRF_COOKIE_NAME, issue_csrf_token, validate_csrf_request
 from app.security.permissions import Role, get_user_capabilities, normalize_role
 from app.security.session import create_session, revoke_session, rotate_refresh_token
+from app.services.rate_limit_service import enforce_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,14 @@ def _record_mfa_event(
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     increment(MetricNames.AUTH_LOGIN_ATTEMPTS)
+    enforce_rate_limit(
+        request,
+        bucket_name="auth_login",
+        subject=body.email.lower(),
+        max_calls=settings.AUTH_LOGIN_RATE_LIMIT,
+        window_seconds=settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        detail="Too many login attempts. Please retry later.",
+    )
     with timed(MetricNames.AUTH_LOGIN_ATTEMPTS):
         user = get_user_by_email(db, body.email)
 
