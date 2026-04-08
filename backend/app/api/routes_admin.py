@@ -15,6 +15,8 @@ from app.api.schemas import (
     DriverInstructionStep,
     DriverProtocolSettingsRequest,
     DriverProtocolSettingsResponse,
+    JobExecutionMetaItem,
+    JobExecutionMetaSummary,
     QrPayloadResponse,
     RotateQrResponse,
 )
@@ -34,6 +36,10 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
+from app.db.repo.job_execution_meta import (
+    list_ops_jobs_with_db,
+    summarize_ops_jobs_with_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +177,9 @@ def get_driver_protocol_settings(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="driver_protocol.settings.read",
@@ -198,7 +206,9 @@ def update_driver_protocol_settings(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="driver_protocol.settings.update",
@@ -247,7 +257,9 @@ def get_driver_protocol_instructions(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="driver_protocol.instructions.read",
@@ -286,7 +298,9 @@ def update_driver_protocol_instructions(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="driver_protocol.instructions.update",
@@ -339,7 +353,9 @@ def reset_driver_protocol_instructions(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="driver_protocol.instructions.reset",
@@ -378,7 +394,9 @@ def list_admin_vehicles(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.VEHICLE_QR_READ
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicles.list",
@@ -400,7 +418,9 @@ def rotate_qr(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.VEHICLE_QR_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.rotate",
@@ -479,7 +499,9 @@ def get_qr_payload(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.VEHICLE_QR_READ
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.read",
@@ -487,3 +509,67 @@ def get_qr_payload(
     scheme = settings.DRIVER_APP_DEEPLINK_SCHEME
     deep_link = f"{scheme}://vehicle/{vehicle_id}"
     return QrPayloadResponse(deep_link=deep_link)
+
+
+@router.get("/ops/jobs/summary", response_model=JobExecutionMetaSummary)
+def get_ops_jobs_summary(
+    stale_after_minutes: int = 15,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.EXPORT_READ
+        ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="admin.ops.jobs.summary",
+    )
+    return JobExecutionMetaSummary(
+        **summarize_ops_jobs_with_db(db=db, stale_after_minutes=stale_after_minutes)
+    )
+
+
+@router.get("/ops/jobs", response_model=list[JobExecutionMetaItem])
+def list_ops_job_failures(
+    stale_after_minutes: int = 15,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.EXPORT_READ
+        ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="admin.ops.jobs.list",
+    )
+    rows = list_ops_jobs_with_db(
+        db=db,
+        statuses={"failed", "retrying", "running", "queued"},
+        stale_after_minutes=stale_after_minutes,
+    )
+    return [
+        JobExecutionMetaItem(
+            celery_task_id=row.celery_task_id,
+            task_name=row.task_name,
+            task_type=row.task_type,
+            status=row.status,
+            retry_count=row.retry_count,
+            max_retries=row.max_retries,
+            retry_category=row.retry_category,
+            should_retry=row.should_retry,
+            next_retry_at_utc=row.next_retry_at_utc,
+            started_at_utc=row.started_at_utc,
+            finished_at_utc=row.finished_at_utc,
+            last_heartbeat_at_utc=row.last_heartbeat_at_utc,
+            last_error=row.last_error,
+            created_at_utc=row.created_at_utc,
+            updated_at_utc=row.updated_at_utc,
+        )
+        for row in rows
+    ]

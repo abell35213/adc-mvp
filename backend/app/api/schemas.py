@@ -80,13 +80,43 @@ InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
 IncidentStatus = Literal["open", "evidence_capturing", "closed"]
 ArtifactStatus = Literal["pending", "captured", "unavailable"]
-ExportType = Literal["court_defense", "insurer_packet", "internal_review", "compliance_audit"]
-ExportStatus = Literal["requested", "queued", "processing", "ready", "failed", "expired"]
-ExportProgressStage = Literal["request_accepted", "gathering_incident_data", "assembling_documents", "packaging_evidence", "uploading_export", "ready_for_download"]
+ExportType = Literal[
+    "court_defense", "insurer_packet", "internal_review", "compliance_audit"
+]
+ExportStatus = Literal[
+    "requested", "queued", "processing", "ready", "failed", "expired"
+]
+ExportProgressStage = Literal[
+    "request_accepted",
+    "gathering_incident_data",
+    "assembling_documents",
+    "packaging_evidence",
+    "uploading_export",
+    "ready_for_download",
+]
 
-assert set(EXPORT_TYPES) == {"court_defense", "insurer_packet", "internal_review", "compliance_audit"}
-assert set(EXPORT_STATUSES) == {"requested", "queued", "processing", "ready", "failed", "expired"}
-assert set(EXPORT_PROGRESS_STAGES) == {"request_accepted", "gathering_incident_data", "assembling_documents", "packaging_evidence", "uploading_export", "ready_for_download"}
+assert set(EXPORT_TYPES) == {
+    "court_defense",
+    "insurer_packet",
+    "internal_review",
+    "compliance_audit",
+}
+assert set(EXPORT_STATUSES) == {
+    "requested",
+    "queued",
+    "processing",
+    "ready",
+    "failed",
+    "expired",
+}
+assert set(EXPORT_PROGRESS_STAGES) == {
+    "request_accepted",
+    "gathering_incident_data",
+    "assembling_documents",
+    "packaging_evidence",
+    "uploading_export",
+    "ready_for_download",
+}
 VehicleStrategy = Literal["qr", "last_assigned"]
 CaptureState = Literal[
     "failed", "complete", "in_progress", "requested", "lockdown", "closed", "pending"
@@ -286,19 +316,27 @@ class CreateExportRequest(BaseModel):
         }
         unknown_keys = set(options.keys()) - allowed_keys
         if unknown_keys:
-            raise ValueError("options_json contains unsupported fields for packet profile exports")
+            raise ValueError(
+                "options_json contains unsupported fields for packet profile exports"
+            )
 
         defaults = profile.default_options()
         self.options_json = {
             **defaults,
-            "include_media": bool(options.get("include_media", defaults["include_media"])),
+            "include_media": bool(
+                options.get("include_media", defaults["include_media"])
+            ),
             "include_raw_telemetry": bool(
                 options.get("include_raw_telemetry", defaults["include_raw_telemetry"])
             ),
             "include_driver_statement": bool(
-                options.get("include_driver_statement", defaults["include_driver_statement"])
+                options.get(
+                    "include_driver_statement", defaults["include_driver_statement"]
+                )
             ),
-            "inventory_mode": str(options.get("inventory_mode", defaults["inventory_mode"])),
+            "inventory_mode": str(
+                options.get("inventory_mode", defaults["inventory_mode"])
+            ),
             "profile_id": requested_profile_id,
         }
         return self
@@ -322,9 +360,13 @@ class RetryExportRequest(BaseModel):
             return self
         target_export_type = self.export_type
         if target_export_type is None and self.options_json:
-            requested_profile_id = self.options_json.get("profile_id") or self.options_json.get("profile")
+            requested_profile_id = self.options_json.get(
+                "profile_id"
+            ) or self.options_json.get("profile")
             if requested_profile_id:
-                target_export_type = get_packet_profile(str(requested_profile_id)).export_type
+                target_export_type = get_packet_profile(
+                    str(requested_profile_id)
+                ).export_type
         if target_export_type is None:
             return self
 
@@ -343,14 +385,20 @@ class RetryExportRequest(BaseModel):
         self.options_json = {
             **defaults,
             "profile_id": requested_profile_id,
-            "include_media": bool(options.get("include_media", defaults["include_media"])),
+            "include_media": bool(
+                options.get("include_media", defaults["include_media"])
+            ),
             "include_raw_telemetry": bool(
                 options.get("include_raw_telemetry", defaults["include_raw_telemetry"])
             ),
             "include_driver_statement": bool(
-                options.get("include_driver_statement", defaults["include_driver_statement"])
+                options.get(
+                    "include_driver_statement", defaults["include_driver_statement"]
+                )
             ),
-            "inventory_mode": str(options.get("inventory_mode", defaults["inventory_mode"])),
+            "inventory_mode": str(
+                options.get("inventory_mode", defaults["inventory_mode"])
+            ),
         }
         return self
 
@@ -472,9 +520,9 @@ class DriverArtifactUploadUrlResponse(BaseModel):
 class DriverArtifactCompleteRequest(BaseModel):
     artifact_id: uuid.UUID
     byte_size: int = Field(gt=0)
-    sha256: Optional[Annotated[str, StringConstraints(min_length=16, max_length=128)]] = (
-        None
-    )
+    sha256: Optional[
+        Annotated[str, StringConstraints(min_length=16, max_length=128)]
+    ] = None
 
 
 class DriverArtifactCompleteResponse(BaseModel):
@@ -626,3 +674,27 @@ class RotateQrResponse(BaseModel):
 
 class QrPayloadResponse(BaseModel):
     deep_link: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+
+
+class JobExecutionMetaSummary(BaseModel):
+    failed: int = 0
+    retrying: int = 0
+    stuck: int = 0
+
+
+class JobExecutionMetaItem(BaseModel):
+    celery_task_id: str
+    task_name: str
+    task_type: str
+    status: Literal["queued", "running", "retrying", "failed", "succeeded", "stuck"]
+    retry_count: int = 0
+    max_retries: int | None = None
+    retry_category: str | None = None
+    should_retry: bool | None = None
+    next_retry_at_utc: datetime | None = None
+    started_at_utc: datetime | None = None
+    finished_at_utc: datetime | None = None
+    last_heartbeat_at_utc: datetime | None = None
+    last_error: str | None = None
+    created_at_utc: datetime | None = None
+    updated_at_utc: datetime | None = None

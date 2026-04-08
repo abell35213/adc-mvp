@@ -119,7 +119,9 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
     incident_id = Column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id"),
@@ -155,10 +157,30 @@ class AuditEvent(Base):
 
     __table_args__ = (
         Index("ix_audit_events_org_occurred", "org_id", "occurred_at_utc"),
-        Index("ix_audit_events_org_incident_occurred", "org_id", "incident_id", "occurred_at_utc"),
-        Index("ix_audit_events_org_export_occurred", "org_id", "export_id", "occurred_at_utc"),
-        Index("ix_audit_events_org_actor_occurred", "org_id", "actor_id", "occurred_at_utc"),
-        Index("ix_audit_events_org_event_type_occurred", "org_id", "event_type", "occurred_at_utc"),
+        Index(
+            "ix_audit_events_org_incident_occurred",
+            "org_id",
+            "incident_id",
+            "occurred_at_utc",
+        ),
+        Index(
+            "ix_audit_events_org_export_occurred",
+            "org_id",
+            "export_id",
+            "occurred_at_utc",
+        ),
+        Index(
+            "ix_audit_events_org_actor_occurred",
+            "org_id",
+            "actor_id",
+            "occurred_at_utc",
+        ),
+        Index(
+            "ix_audit_events_org_event_type_occurred",
+            "org_id",
+            "event_type",
+            "occurred_at_utc",
+        ),
     )
 
 
@@ -246,8 +268,15 @@ class Export(Base):
         default="court_defense",
         server_default="court_defense",
     )
-    profile_id = Column(Text, nullable=False, default="court_defense_v1", server_default="court_defense_v1")
-    requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    profile_id = Column(
+        Text,
+        nullable=False,
+        default="court_defense_v1",
+        server_default="court_defense_v1",
+    )
+    requested_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     retry_parent_export_id = Column(
         UUID(as_uuid=True),
         ForeignKey("exports.export_id"),
@@ -271,7 +300,9 @@ class Export(Base):
     package_sha256 = Column(Text, nullable=True)
     byte_size = Column(BigInteger, nullable=True)
     artifact_count = Column(Integer, nullable=False, default=0, server_default="0")
-    timeline_event_count = Column(Integer, nullable=False, default=0, server_default="0")
+    timeline_event_count = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     requested_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -284,7 +315,10 @@ class Export(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at_utc = Column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     __table_args__ = (Index("ix_exports_org_incident", "org_id", "incident_id"),)
@@ -296,12 +330,20 @@ class SessionRecord(Base):
     __tablename__ = "sessions"
 
     session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
     client_type = Column(Text, nullable=False)
     device_descriptor = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-    last_seen_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
     revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
     refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
@@ -312,15 +354,71 @@ class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
     token_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.session_id"), nullable=False, index=True)
+    session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("sessions.session_id"),
+        nullable=False,
+        index=True,
+    )
     refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    parent_token_id = Column(UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id"), nullable=True)
+    parent_token_id = Column(
+        UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id"), nullable=True
+    )
     token_hash = Column(Text, nullable=False, unique=True, index=True)
-    issued_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    issued_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
     consumed_at = Column(TIMESTAMP(timezone=True), nullable=True)
     revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
     expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
 
+
+class JobExecutionMeta(Base):
+    """Persistent per-task execution metadata for operations visibility."""
+
+    __tablename__ = "job_execution_meta"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    celery_task_id = Column(Text, nullable=False, unique=True, index=True)
+    task_name = Column(Text, nullable=False, index=True)
+    task_type = Column(Text, nullable=False, index=True)
+    status = Column(
+        Enum(
+            "queued",
+            "running",
+            "retrying",
+            "failed",
+            "succeeded",
+            "stuck",
+            name="job_execution_status",
+        ),
+        nullable=False,
+        default="queued",
+        server_default="queued",
+        index=True,
+    )
+    retry_count = Column(Integer, nullable=False, default=0, server_default="0")
+    max_retries = Column(Integer, nullable=True)
+    retry_category = Column(Text, nullable=True, index=True)
+    should_retry = Column(Boolean, nullable=True)
+    next_retry_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    finished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_heartbeat_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    args_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
+    kwargs_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 
 # ── Driver protocol models ────────────────────────────────────────────

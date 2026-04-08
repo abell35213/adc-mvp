@@ -1,6 +1,7 @@
 """Tests for driver and admin endpoints."""
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from app.db.models import (
     DriverVehicleAssignment,
     Event,
     Incident,
+    JobExecutionMeta,
     Org,
     User,
     UserOrg,
@@ -394,12 +396,8 @@ class TestDriverInitiate:
         incident = db_session.query(Incident).first()
         assert incident is not None
         assert incident.adc_vehicle_id == "veh-100"
-        mock_dash.delay.assert_called_once_with(
-            str(incident.incident_id), None, None
-        )
-        mock_tele.delay.assert_called_once_with(
-            str(incident.incident_id), None, None
-        )
+        mock_dash.delay.assert_called_once_with(str(incident.incident_id), None, None)
+        mock_tele.delay.assert_called_once_with(str(incident.incident_id), None, None)
         mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
         events = (
@@ -437,12 +435,8 @@ class TestDriverInitiate:
         assert resp.status_code == 200
         incident = db_session.query(Incident).first()
         assert incident.adc_vehicle_id == "veh-200"
-        mock_dash.delay.assert_called_once_with(
-            str(incident.incident_id), None, None
-        )
-        mock_tele.delay.assert_called_once_with(
-            str(incident.incident_id), None, None
-        )
+        mock_dash.delay.assert_called_once_with(str(incident.incident_id), None, None)
+        mock_tele.delay.assert_called_once_with(str(incident.incident_id), None, None)
         mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
     @patch("app.api.routes_driver.notify_safety_manager")
@@ -531,8 +525,6 @@ class TestDriverInitiate:
         assert resp.status_code == 200
         assert resp.json()["incident_id"] == str(existing.incident_id)
         assert db_session.query(Incident).count() == 1
-
-
 
 
 # ── GET /driver/instructions/active ─────────────────────────────────
@@ -805,7 +797,6 @@ class TestDriverActiveIncidentAndStatus:
         assert resp.status_code == 404
 
 
-
 # ── GET /admin/vehicles/{vehicle_id}/qr ─────────────────────────────
 
 
@@ -864,7 +855,11 @@ class TestDriverProtocolSettings:
         db_session.refresh(test_org)
         assert test_org.instruction_source == "company"
         assert test_org.require_driver_ack is True
-        audit = db_session.query(AuditEvent).filter(AuditEvent.event_type == "config_updated").first()
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "config_updated")
+            .first()
+        )
         assert audit is not None
         assert audit.outcome == "success"
 
@@ -938,3 +933,56 @@ class TestAdminVehiclesList:
         assert resp.status_code == 200
         data = resp.json()
         assert any(vehicle["adc_vehicle_id"] == "veh-101" for vehicle in data)
+
+
+class TestAdminOpsJobs:
+    def test_ops_jobs_summary_and_list(self, client, admin_headers, db_session):
+        retrying = JobExecutionMeta(
+            celery_task_id="task-retrying",
+            task_name="app.tasks.export_tasks.build_export",
+            task_type="export_tasks",
+            status="retrying",
+            retry_count=1,
+            max_retries=3,
+            retry_category="transient_dependency",
+            should_retry=True,
+            last_heartbeat_at_utc=datetime.now(timezone.utc),
+        )
+        failed = JobExecutionMeta(
+            celery_task_id="task-failed",
+            task_name="app.tasks.notification_tasks.notify_safety_manager",
+            task_type="notification_tasks",
+            status="failed",
+            retry_count=2,
+            max_retries=2,
+            retry_category="internal_processing_error",
+            should_retry=False,
+            last_error="Twilio timeout",
+            last_heartbeat_at_utc=datetime.now(timezone.utc),
+        )
+        stale = JobExecutionMeta(
+            celery_task_id="task-stale",
+            task_name="app.tasks.evidence_tasks.capture_dashcam",
+            task_type="evidence_tasks",
+            status="running",
+            retry_count=0,
+            max_retries=3,
+            last_heartbeat_at_utc=datetime.now(timezone.utc) - timedelta(minutes=90),
+        )
+        db_session.add_all([retrying, failed, stale])
+        db_session.commit()
+
+        summary_resp = client.get("/admin/ops/jobs/summary", headers=admin_headers)
+        assert summary_resp.status_code == 200
+        summary = summary_resp.json()
+        assert summary["failed"] == 1
+        assert summary["retrying"] == 1
+        assert summary["stuck"] == 1
+
+        list_resp = client.get("/admin/ops/jobs", headers=admin_headers)
+        assert list_resp.status_code == 200
+        payload = list_resp.json()
+        statuses = {item["status"] for item in payload}
+        assert "failed" in statuses
+        assert "retrying" in statuses
+        assert "stuck" in statuses
