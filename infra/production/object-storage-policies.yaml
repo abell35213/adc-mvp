@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adc-object-storage-dr-policy
+  namespace: adc
+data:
+  assumptions.md: |
+    - Artifacts and exports buckets must have versioning enabled.
+    - Replication/copy jobs should keep RPO at or below 15 minutes.
+    - Non-current version retention must be at least 90 days.
+    - Delete markers should expire after 30 days.
+  artifacts-versioning.json: |
+    {
+      "Bucket": "adc-artifacts-prod",
+      "VersioningConfiguration": {
+        "Status": "Enabled"
+      }
+    }
+  exports-versioning.json: |
+    {
+      "Bucket": "adc-exports-prod",
+      "VersioningConfiguration": {
+        "Status": "Enabled"
+      }
+    }
+  artifacts-lifecycle.json: |
+    {
+      "Rules": [
+        {
+          "ID": "adc-artifacts-noncurrent-retention",
+          "Status": "Enabled",
+          "Filter": {"Prefix": ""},
+          "NoncurrentVersionExpiration": {
+            "NoncurrentDays": 90
+          },
+          "Expiration": {
+            "ExpiredObjectDeleteMarker": true
+          },
+          "AbortIncompleteMultipartUpload": {
+            "DaysAfterInitiation": 7
+          }
+        }
+      ]
+    }
+  exports-lifecycle.json: |
+    {
+      "Rules": [
+        {
+          "ID": "adc-exports-noncurrent-retention",
+          "Status": "Enabled",
+          "Filter": {"Prefix": ""},
+          "NoncurrentVersionExpiration": {
+            "NoncurrentDays": 90
+          },
+          "Expiration": {
+            "ExpiredObjectDeleteMarker": true
+          },
+          "AbortIncompleteMultipartUpload": {
+            "DaysAfterInitiation": 7
+          }
+        }
+      ]
+    }

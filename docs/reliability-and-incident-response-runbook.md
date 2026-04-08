@@ -11,6 +11,9 @@ This document defines:
 
 Use this runbook alongside credential/key rotation runbooks in `docs/`.
 
+Use detailed backup/DR artifacts in `docs/operations/backup-dr/` for operational execution checklists and playbooks.
+
+
 ## 1) Service ownership and on-call assignments
 
 | Area | Primary owner | Secondary owner | Escalation manager |
