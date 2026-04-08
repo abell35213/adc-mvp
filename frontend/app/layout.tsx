@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Accident Documentation & Compliance Dashboard",
 };
 
+const deployVersion = process.env.NEXT_PUBLIC_DEPLOY_VERSION ?? "dev";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,6 +26,9 @@ export default function RootLayout({
       </head>
       <body className="antialiased bg-[#EBF2FA]">
         {children}
+        <div className="fixed bottom-2 right-2 rounded bg-slate-900/85 px-2 py-1 text-xs text-white" aria-label="deploy-version">
+          Deploy {deployVersion}
+        </div>
       </body>
     </html>
   );

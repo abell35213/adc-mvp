@@ -1,5 +1,7 @@
 """FastAPI application entry point."""
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,6 +19,8 @@ from app.core.config import settings
 from app.config.validation import validate_startup_config
 from app.observability.alerts import init_sentry
 from app.observability.logging import RequestContextMiddleware, setup_logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
 
@@ -51,3 +55,4 @@ async def validate_startup_configuration() -> None:
 
     validate_startup_config(settings)
     init_sentry(service="api")
+    logger.info("startup_complete", extra={"deploy_version": settings.RELEASE, "app_env": settings.APP_ENV})
