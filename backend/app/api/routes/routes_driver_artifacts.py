@@ -15,6 +15,7 @@ from app.api.schemas import (
     DriverArtifactUploadUrlRequest,
     DriverArtifactUploadUrlResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_driver
 from app.db.models import Driver
 from app.db.session import get_db
@@ -45,6 +46,18 @@ def create_driver_artifact_upload_url(
         content_type=body.content_type,
         file_name=body.file_name,
     )
+    emit_audit_event(
+        db,
+        org_id=driver.org_id,
+        actor_type="driver",
+        actor_id=str(driver.driver_id),
+        action="artifact.upload_url.request",
+        event_type="artifact_retrieved",
+        outcome="success",
+        incident_id=incident_id,
+        artifact_id=artifact.artifact_id,
+        metadata={"artifact_type": artifact.artifact_type},
+    )
     return DriverArtifactUploadUrlResponse(
         artifact_id=artifact.artifact_id,
         upload_url=upload_url,
@@ -72,6 +85,18 @@ def complete_driver_artifact(
         byte_size=body.byte_size,
         sha256=body.sha256,
     )
+    emit_audit_event(
+        db,
+        org_id=driver.org_id,
+        actor_type="driver",
+        actor_id=str(driver.driver_id),
+        action="artifact.upload.complete",
+        event_type="artifact_retrieved",
+        outcome="success",
+        incident_id=incident_id,
+        artifact_id=artifact.artifact_id,
+        metadata={"byte_size": body.byte_size},
+    )
     return DriverArtifactCompleteResponse(
         artifact_id=artifact.artifact_id,
         status=artifact.status,
@@ -92,6 +117,19 @@ def get_driver_artifacts(
         incident_id=incident_id,
         driver=driver,
     )
+    for artifact in artifacts:
+        emit_audit_event(
+            db,
+            org_id=driver.org_id,
+            actor_type="driver",
+            actor_id=str(driver.driver_id),
+            action="artifact.retrieve",
+            event_type="artifact_retrieved",
+            outcome="success",
+            incident_id=incident_id,
+            artifact_id=artifact.artifact_id,
+            metadata={"artifact_type": artifact.artifact_type, "status": artifact.status},
+        )
     return DriverArtifactListResponse(
         artifacts=[
             ArtifactSummary(

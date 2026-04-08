@@ -18,6 +18,7 @@ from app.api.schemas import (
     QrPayloadResponse,
     RotateQrResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.security.permissions import Capability
@@ -84,6 +85,30 @@ def _normalize_instruction_scope(scope: str) -> str:
     return scope
 
 
+def _require_admin_policy(
+    db: Session,
+    *,
+    allowed: bool,
+    actor_id: uuid.UUID,
+    org_id: uuid.UUID | None,
+    action: str,
+    metadata: dict | None = None,
+) -> None:
+    if allowed:
+        return
+    emit_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(actor_id),
+        action=action,
+        event_type="authorization_failed",
+        outcome="failure",
+        metadata={"should_log": True, **(metadata or {})},
+    )
+    require_policy(False)
+
+
 def _get_or_create_instruction_set(
     db: Session, org_id: uuid.UUID, scope: str
 ) -> DriverInstructionSet:
@@ -144,7 +169,13 @@ def get_driver_protocol_settings(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="driver_protocol.settings.read",
+    )
     org = _get_admin_org(db, context.org_ids[0])
     return DriverProtocolSettingsResponse(
         instruction_source=org.instruction_source,
@@ -165,13 +196,35 @@ def update_driver_protocol_settings(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="driver_protocol.settings.update",
+    )
     org = _get_admin_org(db, context.org_ids[0])
     org.instruction_source = _normalize_instruction_scope(body.instruction_source)
     org.require_driver_ack = body.require_ack
     org.sms_enabled = body.sms_enabled
     org.voice_enabled = body.voice_enabled
     org.safety_manager_phone = body.safety_manager_phone
+    emit_audit_event(
+        db,
+        org_id=org.id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="driver_protocol.settings.update",
+        event_type="config_updated",
+        outcome="success",
+        metadata={
+            "instruction_source": org.instruction_source,
+            "require_ack": org.require_driver_ack,
+            "sms_enabled": org.sms_enabled,
+            "voice_enabled": org.voice_enabled,
+            "support_access_escalation": bool(org.sms_enabled or org.voice_enabled),
+        },
+    )
     db.commit()
     return DriverProtocolSettingsResponse(
         instruction_source=org.instruction_source,
@@ -192,7 +245,13 @@ def get_driver_protocol_instructions(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="driver_protocol.instructions.read",
+    )
     org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
@@ -225,7 +284,13 @@ def update_driver_protocol_instructions(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="driver_protocol.instructions.update",
+    )
     org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(body.scope)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
@@ -244,6 +309,16 @@ def update_driver_protocol_instructions(
         )
         db.add(step_row)
         new_steps.append(step_row)
+    emit_audit_event(
+        db,
+        org_id=org.id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="driver_protocol.instructions.update",
+        event_type="instruction_set_updated",
+        outcome="success",
+        metadata={"scope": resolved_scope, "step_count": len(new_steps)},
+    )
     db.commit()
     return DriverInstructionSetResponse(
         instruction_set_id=instruction_set.instruction_set_id,
@@ -262,7 +337,13 @@ def reset_driver_protocol_instructions(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="driver_protocol.instructions.reset",
+    )
     org = _get_admin_org(db, context.org_ids[0])
     resolved_scope = _normalize_instruction_scope(scope or org.instruction_source)
     instruction_set = _get_or_create_instruction_set(db, org.id, resolved_scope)
@@ -271,6 +352,16 @@ def reset_driver_protocol_instructions(
         == instruction_set.instruction_set_id
     ).delete(synchronize_session=False)
     steps = _seed_instruction_steps(db, instruction_set)
+    emit_audit_event(
+        db,
+        org_id=org.id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="driver_protocol.instructions.reset",
+        event_type="instruction_set_updated",
+        outcome="success",
+        metadata={"scope": resolved_scope, "reset": True, "step_count": len(steps)},
+    )
     db.commit()
     return DriverInstructionSetResponse(
         instruction_set_id=instruction_set.instruction_set_id,
@@ -285,7 +376,13 @@ def list_admin_vehicles(
     admin: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="admin.vehicles.list",
+    )
     return [AdminVehicleSummary(**vehicle) for vehicle in ADMIN_VEHICLES]
 
 
@@ -301,7 +398,13 @@ def rotate_qr(
 ):
     """Revoke the current active QR token for a vehicle and issue a new one."""
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="admin.vehicle_qr.rotate",
+    )
 
     # Revoke existing active token(s)
     active_tokens = (
@@ -345,6 +448,16 @@ def rotate_qr(
         },
     )
     db.add(event)
+    emit_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="admin.vehicle_qr.rotate",
+        event_type="credential_updated",
+        outcome="success",
+        metadata={"adc_vehicle_id": vehicle_id, "token_sha256": token_hash},
+    )
     db.commit()
 
     logger.info(
@@ -364,7 +477,13 @@ def get_qr_payload(
 ):
     """Return the deep link string for QR code generation."""
     context = build_user_auth_context(db, admin)
-    require_policy(can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ))
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="admin.vehicle_qr.read",
+    )
     scheme = settings.DRIVER_APP_DEEPLINK_SCHEME
     deep_link = f"{scheme}://vehicle/{vehicle_id}"
     return QrPayloadResponse(deep_link=deep_link)

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base, Org, User, UserOrg
+from app.db.models import AuditEvent, Base, Org, User, UserOrg
 from app.db.session import get_db
 from app.core.security import (
     hash_password,
@@ -135,7 +135,7 @@ class TestRegister:
 
 
 class TestLogin:
-    def test_login_returns_token(self, client):
+    def test_login_returns_token(self, client, db_session):
         client.post(
             "/auth/register",
             json={
@@ -154,8 +154,11 @@ class TestLogin:
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+        audit = db_session.query(AuditEvent).filter(AuditEvent.event_type == "auth_login_succeeded").first()
+        assert audit is not None
+        assert audit.outcome == "success"
 
-    def test_login_wrong_password(self, client):
+    def test_login_wrong_password(self, client, db_session):
         client.post(
             "/auth/register",
             json={
@@ -171,6 +174,9 @@ class TestLogin:
             },
         )
         assert resp.status_code == 401
+        audit = db_session.query(AuditEvent).filter(AuditEvent.event_type == "auth_login_failed").first()
+        assert audit is not None
+        assert audit.outcome == "failure"
 
     def test_login_unknown_email(self, client):
         resp = client.post(

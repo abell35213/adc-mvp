@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.models import (
+    AuditEvent,
     Base,
     Driver,
     DriverInstructionSet,
@@ -863,6 +864,9 @@ class TestDriverProtocolSettings:
         db_session.refresh(test_org)
         assert test_org.instruction_source == "company"
         assert test_org.require_driver_ack is True
+        audit = db_session.query(AuditEvent).filter(AuditEvent.event_type == "config_updated").first()
+        assert audit is not None
+        assert audit.outcome == "success"
 
 
 # ── /admin/driver-protocol/instructions ────────────────────────────

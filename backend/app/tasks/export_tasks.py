@@ -193,9 +193,24 @@ def _persist_warnings(ctx: ExportRuntimeContext):
 def _load_context(ctx: ExportRuntimeContext):
     from app.db.repo.artifacts import get_artifacts_by_incident
     from app.db.repo.events import get_events_by_incident
+    from app.audit.emitter import emit_audit_event
 
     ctx.artifacts = get_artifacts_by_incident(ctx.db, ctx.incident_uuid)
     ctx.events = get_events_by_incident(ctx.db, ctx.incident_uuid)
+    for artifact in ctx.artifacts:
+        emit_audit_event(
+            ctx.db,
+            org_id=_uuid.UUID(ctx.org_id),
+            actor_type="system",
+            actor_id="celery",
+            action="artifact.retrieve",
+            event_type="artifact_retrieved",
+            outcome="success",
+            incident_id=ctx.incident_uuid,
+            export_id=ctx.export_uuid,
+            artifact_id=artifact.artifact_id,
+            metadata={"artifact_type": artifact.artifact_type, "status": artifact.status},
+        )
 
     exportable_artifacts: list[tuple[Any, str]] = []
     for artifact in ctx.artifacts:
@@ -381,6 +396,7 @@ def build_export(
         extra={"incident_id": incident_id, "export_id": export_id, "attempt_context": attempt_context or {}},
     )
     from app.core.config import settings
+    from app.audit.emitter import emit_audit_event
     from app.db.repo.exports import get_export, update_export
     from app.db.repo.incidents import get_incident
     from app.domain.system_event_types import SystemEventType
@@ -437,6 +453,18 @@ def build_export(
             options_json=options,
         )
         export_row.options_json = options
+        emit_audit_event(
+            db,
+            org_id=_uuid.UUID(org_id),
+            actor_type="system",
+            actor_id="celery",
+            action="export.request",
+            event_type="export_requested",
+            outcome="success",
+            incident_id=inc_uuid,
+            export_id=exp_uuid,
+            metadata={"trigger": (attempt_context or {}).get("trigger", "worker")},
+        )
         ctx = ExportRuntimeContext(
             db=db,
             incident_uuid=inc_uuid,
@@ -591,6 +619,18 @@ def build_export(
             ),
         )
 
+        emit_audit_event(
+            db,
+            org_id=_uuid.UUID(org_id),
+            actor_type="system",
+            actor_id="celery",
+            action="export.generate",
+            event_type="export_download_ready",
+            outcome="success",
+            incident_id=inc_uuid,
+            export_id=exp_uuid,
+            metadata={"warnings_count": len(ctx.warnings), "missing_items_count": len(ctx.missing_items)},
+        )
         return {
             "export_id": export_id,
             "incident_id": incident_id,
@@ -627,6 +667,21 @@ def build_export(
                 "error_message": str(exc),
             },
         )
+        try:
+            emit_audit_event(
+                db,
+                org_id=_uuid.UUID(_get_org_id(db, inc_uuid)),
+                actor_type="system",
+                actor_id="celery",
+                action="export.generate",
+                event_type="export_generation_failed",
+                outcome="failure",
+                incident_id=inc_uuid,
+                export_id=exp_uuid,
+                metadata={"error": str(exc), "should_log": True},
+            )
+        except Exception:
+            logger.exception("Failed to append audit event for export failure")
         raise
     finally:
         db.close()
