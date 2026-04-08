@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import Artifact, Driver, Incident
+from app.domain.state_transitions import validate_incident_transition
 
 UPLOAD_URL_EXPIRATION_SECONDS = 300
 ALLOWED_CONTENT_TYPES = {
@@ -74,6 +75,8 @@ def issue_driver_artifact_upload_url(
         incident_id=incident_id,
         driver=driver,
     )
+
+    validate_incident_transition(current_status=incident.status, next_status="evidence_capturing", actor="driver_api")
 
     normalized_artifact_type = artifact_type.strip().lower()
     if normalized_artifact_type not in ALLOWED_ARTIFACT_CONTENT_TYPES:
@@ -155,6 +158,15 @@ def complete_driver_artifact_upload(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Artifact not found",
+        )
+
+    if artifact.status == "captured":
+        return artifact
+
+    if artifact.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Artifact is not completable from status={artifact.status}",
         )
 
     artifact.status = "captured"

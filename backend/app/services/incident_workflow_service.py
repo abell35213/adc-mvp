@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.models import Event, Incident
 from app.db.repo.incidents import create_incident
 from app.domain.system_event_types import SystemEventType
@@ -74,6 +77,17 @@ def _protocol_event_exists(db: Session, *, incident_id: uuid.UUID, driver_id: uu
     )
 
 
+
+
+def _idempotency_key_hash(raw_key: str | None) -> str | None:
+    if not raw_key:
+        return None
+    normalized = raw_key.strip()
+    if not normalized:
+        return None
+    return hmac.new(settings.JWT_SECRET_KEY.encode(), normalized.encode(), hashlib.sha256).hexdigest()
+
+
 def initiate_driver_incident(
     db: Session,
     *,
@@ -105,6 +119,24 @@ def initiate_driver_incident(
             org_id=org_id,
         )
 
+    key_hash = _idempotency_key_hash(idempotency_key)
+    if key_hash:
+        prior_events = (
+            db.query(Event)
+            .filter(
+                Event.incident_id == incident.incident_id,
+                Event.event_type == SystemEventType.INCIDENT_PROTOCOL_INITIATED.value,
+                Event.actor_type == "driver_app",
+                Event.actor_id == str(driver_id),
+            )
+            .order_by(Event.created_at_utc.desc())
+            .all()
+        )
+        for prior in prior_events:
+            payload = prior.payload or {}
+            if payload.get("idempotency_key_hash") == key_hash:
+                return IncidentInitiationResult(incident=incident, protocol_already_started=True)
+
     already_started = _protocol_event_exists(
         db,
         incident_id=incident.incident_id,
@@ -124,6 +156,8 @@ def initiate_driver_incident(
     }
     if idempotency_key:
         event_payload["idempotency_key"] = idempotency_key
+    if key_hash:
+        event_payload["idempotency_key_hash"] = key_hash
 
     protocol_event = Event(
         org_id=org_id,
@@ -139,7 +173,7 @@ def initiate_driver_incident(
         event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED.value,
         actor_type="driver_app",
         actor_id=str(driver_id),
-        payload={"idempotency_key": idempotency_key} if idempotency_key else None,
+        payload=({"idempotency_key": idempotency_key, "idempotency_key_hash": key_hash} if idempotency_key else None),
     )
     db.add(protocol_event)
     db.add(lockdown_event)

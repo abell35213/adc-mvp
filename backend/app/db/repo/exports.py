@@ -7,6 +7,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Export, Incident
+from app.domain.state_transitions import validate_export_transition
 
 
 def _get_export_query(db: Session, export_id: _uuid.UUID):
@@ -93,6 +94,7 @@ def update_export(
     timeline_event_count: Optional[int] = None,
     s3_bucket: Optional[str] = None,
     s3_key: Optional[str] = None,
+    transition_actor: str = "system",
 ) -> Optional[Export]:
     """Update an existing export record."""
     export = _get_export_query(db, export_id).with_for_update().first()
@@ -102,6 +104,7 @@ def update_export(
 
     # Only update fields that are provided
     if status is not None:
+        validate_export_transition(current_status=export.status, next_status=status, actor=transition_actor)
         export.status = status
     if progress_stage is not None:
         export.progress_stage = progress_stage

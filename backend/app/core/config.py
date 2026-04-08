@@ -129,6 +129,16 @@ class Settings(BaseSettings):
     EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = 300
     ORG_ADMIN_MFA_REQUIRED: bool = False
 
+    # API rate limits (per subject/IP sliding windows)
+    AUTH_LOGIN_RATE_LIMIT: int = 20
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 300
+    EXPORT_REQUEST_RATE_LIMIT: int = 20
+    EXPORT_RATE_LIMIT_WINDOW_SECONDS: int = 300
+    DRIVER_UPLOAD_URL_RATE_LIMIT: int = 30
+    DRIVER_UPLOAD_URL_RATE_LIMIT_WINDOW_SECONDS: int = 300
+    DRIVER_QR_RESOLVE_RATE_LIMIT: int = 60
+    DRIVER_QR_RESOLVE_RATE_LIMIT_WINDOW_SECONDS: int = 300
+
     @classmethod
     def settings_customise_sources(
         cls,

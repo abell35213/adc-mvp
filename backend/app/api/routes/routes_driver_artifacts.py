@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -24,6 +24,8 @@ from app.services.artifact_upload_service import (
     issue_driver_artifact_upload_url,
     list_driver_artifacts,
 )
+from app.services.rate_limit_service import enforce_rate_limit
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -35,9 +37,18 @@ router = APIRouter()
 def create_driver_artifact_upload_url(
     incident_id: uuid.UUID,
     body: DriverArtifactUploadUrlRequest,
+    request: Request,
     driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
+    enforce_rate_limit(
+        request,
+        bucket_name="driver_upload_url",
+        subject=str(driver.driver_id),
+        max_calls=settings.DRIVER_UPLOAD_URL_RATE_LIMIT,
+        window_seconds=settings.DRIVER_UPLOAD_URL_RATE_LIMIT_WINDOW_SECONDS,
+        detail="Too many upload URL requests. Please retry later.",
+    )
     artifact, upload_url, expires_in = issue_driver_artifact_upload_url(
         db,
         incident_id=incident_id,

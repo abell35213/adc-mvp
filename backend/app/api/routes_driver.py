@@ -7,7 +7,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -55,6 +55,8 @@ from app.security.authn import build_driver_auth_context
 from app.security.authz import can_access_driver_incident, require_policy
 from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.notification_tasks import notify_safety_manager
+from app.services.idempotency_service import optional_idempotency_key
+from app.services.rate_limit_service import enforce_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -254,10 +256,19 @@ def driver_me(
 @router.post("/vehicle/resolve-qr", response_model=ResolveQrResponse)
 def resolve_qr(
     body: ResolveQrRequest,
+    request: Request,
     driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Resolve a QR token to a vehicle. Only active tokens are accepted."""
+    enforce_rate_limit(
+        request,
+        bucket_name="driver_qr_resolve",
+        subject=str(driver.driver_id),
+        max_calls=settings.DRIVER_QR_RESOLVE_RATE_LIMIT,
+        window_seconds=settings.DRIVER_QR_RESOLVE_RATE_LIMIT_WINDOW_SECONDS,
+        detail="Too many QR resolution attempts. Please retry later.",
+    )
     token_row = (
         db.query(VehicleQrToken)
         .filter(
@@ -431,11 +442,20 @@ def _get_driver_incident(
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)
 def initiate_incident(
     body: DriverIncidentInitiateRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    request: Request,
+    idempotency=Depends(optional_idempotency_key),
     driver: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
     """Initiate a driver incident protocol and start evidence capture idempotently."""
+    enforce_rate_limit(
+        request,
+        bucket_name="driver_incident_initiate",
+        subject=str(driver.driver_id),
+        max_calls=15,
+        window_seconds=300,
+        detail="Too many incident initiation attempts. Please retry later.",
+    )
     adc_vehicle_id = _resolve_vehicle_for_driver(body, driver, db)
 
     initiation = initiate_driver_incident(
@@ -446,7 +466,7 @@ def initiate_incident(
         vehicle_strategy=body.vehicle_strategy,
         device_location=body.device_location,
         device=body.device,
-        idempotency_key=idempotency_key,
+        idempotency_key=idempotency.raw_key if idempotency else None,
     )
 
     if not initiation.protocol_already_started:
