@@ -3,11 +3,20 @@
 import logging
 
 from celery import Celery
-from celery.signals import task_failure, task_prerun
+from celery.signals import before_task_publish, task_failure, task_postrun, task_prerun, worker_process_init
 
 from app.core.config import settings
-from app.core.logging import clear_log_context, set_log_context, set_request_id
-from app.core.metrics import MetricNames, increment
+from app.observability.alerts import init_sentry
+from app.observability.metrics import MetricNames, increment
+from app.observability.tracing import (
+    ORG_ID_HEADER,
+    USER_ID_HEADER,
+    clear_context,
+    extract_correlation_headers,
+    inject_correlation_headers,
+    set_actor_context,
+    set_correlation_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +79,26 @@ celery_app.conf.update(
 )
 
 
+@worker_process_init.connect
+def _on_worker_process_init(**_kwargs):
+    init_sentry(service="celery-worker")
+
+
+@before_task_publish.connect
+def _on_before_task_publish(headers=None, **_kwargs):
+    if headers is None:
+        return
+    headers.update(inject_correlation_headers(headers))
+
+
 @task_prerun.connect
 def _on_task_prerun(*_, task=None, **__):
     headers = getattr(task.request, "headers", {}) or {}
-    set_request_id(headers.get("x-request-id"))
-    set_log_context(
-        user_id=headers.get("x-user-id") or None,
-        org_id=headers.get("x-org-id") or None,
+    extracted = extract_correlation_headers(headers)
+    set_correlation_id(extracted.get("x-request-id"))
+    set_actor_context(
+        user_id=extracted.get(USER_ID_HEADER) or None,
+        org_id=extracted.get(ORG_ID_HEADER) or None,
     )
     increment(MetricNames.CELERY_TASK_STARTED)
 
@@ -84,7 +106,11 @@ def _on_task_prerun(*_, task=None, **__):
 @task_failure.connect
 def _on_task_failure(*_, **__):
     increment(MetricNames.CELERY_TASK_FAILURES)
-    clear_log_context()
+
+
+@task_postrun.connect
+def _on_task_postrun(*_, **__):
+    clear_context()
 
 
 @celery_app.task
