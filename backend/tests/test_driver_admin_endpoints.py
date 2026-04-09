@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.models import (
+    Artifact,
     AuditEvent,
     Base,
     Driver,
@@ -18,6 +19,7 @@ from app.db.models import (
     DriverInstructionStep,
     DriverVehicleAssignment,
     Event,
+    Export,
     Incident,
     JobExecutionMeta,
     Org,
@@ -986,3 +988,110 @@ class TestAdminOpsJobs:
         assert "failed" in statuses
         assert "retrying" in statuses
         assert "stuck" in statuses
+
+
+class TestAdminOpsDashboardAndAudit:
+    def test_ops_dashboard_exposes_operational_risks(
+        self, client, admin_headers, db_session, test_org
+    ):
+        stale_incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-stale",
+            adc_driver_id="drv-stale",
+            status="evidence_capturing",
+            created_at_utc=datetime.now(timezone.utc) - timedelta(hours=4),
+        )
+        missing_evidence_incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-missing",
+            adc_driver_id="drv-missing",
+            status="open",
+        )
+        db_session.add_all([stale_incident, missing_evidence_incident])
+        db_session.commit()
+        db_session.add(
+            Artifact(
+                org_id=test_org.id,
+                incident_id=missing_evidence_incident.incident_id,
+                artifact_type="dashcam",
+                status="pending",
+            )
+        )
+        db_session.add(
+            Export(
+                org_id=test_org.id,
+                incident_id=missing_evidence_incident.incident_id,
+                export_type="court_defense",
+                status="failed",
+                error_message="zip build failed",
+            )
+        )
+        db_session.add(
+            JobExecutionMeta(
+                celery_task_id="notify-failed-1",
+                task_name="app.tasks.notification_tasks.notify_safety_manager",
+                task_type="notification_tasks",
+                status="failed",
+                last_error="sms provider unavailable",
+            )
+        )
+        db_session.add(
+            AuditEvent(
+                org_id=test_org.id,
+                actor_type="user",
+                actor_id="user-x",
+                action="security.session.invalid_refresh",
+                event_type="authorization_failed",
+                outcome="failure",
+            )
+        )
+        db_session.commit()
+
+        resp = client.get("/admin/ops/dashboard", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["stuck_incidents"]) >= 1
+        assert len(data["missing_evidence_incidents"]) >= 1
+        assert len(data["failed_notifications"]) >= 1
+        assert len(data["failed_exports"]) >= 1
+        assert len(data["integration_health"]) >= 1
+        assert len(data["recent_anomalies"]) >= 1
+
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "ops_dashboard_viewed")
+            .first()
+        )
+        assert audit is not None
+        assert audit.outcome == "success"
+
+    def test_audit_search_is_restricted_and_logged(
+        self, client, admin_headers, non_admin_headers, db_session, test_org
+    ):
+        db_session.add(
+            AuditEvent(
+                org_id=test_org.id,
+                actor_type="user",
+                actor_id="ops-user",
+                action="admin.ops.jobs.list",
+                event_type="ops_event",
+                outcome="success",
+            )
+        )
+        db_session.commit()
+
+        denied = client.get("/admin/ops/audit-search", headers=non_admin_headers)
+        assert denied.status_code == 403
+
+        allowed = client.get(
+            "/admin/ops/audit-search?q=ops-user",
+            headers=admin_headers,
+        )
+        assert allowed.status_code == 200
+        assert len(allowed.json()) >= 1
+        log = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "ops_audit_search_performed")
+            .first()
+        )
+        assert log is not None

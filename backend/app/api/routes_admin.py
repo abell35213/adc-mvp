@@ -4,19 +4,28 @@ import hashlib
 import logging
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
+    AuditSearchResponseItem,
     AdminVehicleSummary,
     DriverInstructionSetRequest,
     DriverInstructionSetResponse,
     DriverInstructionStep,
     DriverProtocolSettingsRequest,
     DriverProtocolSettingsResponse,
+    IntegrationHealthItem,
     JobExecutionMetaItem,
     JobExecutionMetaSummary,
+    OpsAnomalyItem,
+    OpsDashboardResponse,
+    OpsFailedExportItem,
+    OpsFailedNotificationItem,
+    OpsIncidentItem,
     QrPayloadResponse,
     RotateQrResponse,
 )
@@ -27,9 +36,14 @@ from app.security.permissions import Capability
 from app.security.authn import build_user_auth_context
 from app.security.authz import can_access_admin_org, require_policy
 from app.db.models import (
+    Artifact,
+    AuditEvent,
     DriverInstructionSet,
     DriverInstructionStep as DriverInstructionStepModel,
     Event,
+    Export,
+    Incident,
+    JobExecutionMeta,
     Org,
     User,
     VehicleQrToken,
@@ -46,6 +60,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 INSTRUCTION_SCOPES = {"default", "company", "insurer"}
+OPS_ALLOWED_ROLES = {"system_admin", "org_admin", "admin"}
 
 DEFAULT_DRIVER_PROTOCOL_STEPS = [
     {
@@ -113,6 +128,10 @@ def _require_admin_policy(
         metadata={"should_log": True, **(metadata or {})},
     )
     require_policy(False)
+
+
+def _can_access_ops_views(context) -> bool:
+    return context.user.role in OPS_ALLOWED_ROLES and bool(context.org_ids)
 
 
 def _get_or_create_instruction_set(
@@ -570,6 +589,290 @@ def list_ops_job_failures(
             last_error=row.last_error,
             created_at_utc=row.created_at_utc,
             updated_at_utc=row.updated_at_utc,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/ops/dashboard", response_model=OpsDashboardResponse)
+def get_ops_dashboard(
+    stale_after_minutes: int = 15,
+    lookback_hours: int = 24,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=_can_access_ops_views(context),
+        actor_id=admin.id,
+        org_id=context.org_ids[0] if context.org_ids else None,
+        action="admin.ops.dashboard.read",
+        metadata={"required_roles": sorted(OPS_ALLOWED_ROLES)},
+    )
+    org_id = context.org_ids[0]
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - timedelta(minutes=max(1, stale_after_minutes))
+    lookback_cutoff = now - timedelta(hours=max(1, lookback_hours))
+
+    stuck_incidents = (
+        db.query(Incident)
+        .filter(
+            Incident.org_id == org_id,
+            Incident.status == "evidence_capturing",
+            Incident.created_at_utc <= stale_cutoff,
+        )
+        .order_by(Incident.created_at_utc.asc())
+        .limit(50)
+        .all()
+    )
+
+    missing_evidence_rows = (
+        db.query(Incident, func.count(Artifact.artifact_id).label("missing_count"))
+        .outerjoin(
+            Artifact,
+            Artifact.incident_id == Incident.incident_id,
+        )
+        .filter(
+            Incident.org_id == org_id,
+            Incident.status != "closed",
+            or_(Artifact.artifact_id.is_(None), Artifact.status != "captured"),
+        )
+        .group_by(Incident.incident_id)
+        .order_by(Incident.created_at_utc.asc())
+        .limit(50)
+        .all()
+    )
+
+    failed_notifications = (
+        db.query(JobExecutionMeta)
+        .filter(
+            JobExecutionMeta.task_type == "notification_tasks",
+            JobExecutionMeta.status.in_(("failed", "retrying")),
+        )
+        .order_by(JobExecutionMeta.updated_at_utc.desc())
+        .limit(50)
+        .all()
+    )
+
+    failed_exports = (
+        db.query(Export)
+        .filter(Export.org_id == org_id, Export.status == "failed")
+        .order_by(Export.updated_at_utc.desc())
+        .limit(50)
+        .all()
+    )
+
+    integration_rows = (
+        db.query(
+            JobExecutionMeta.task_type,
+            func.count(JobExecutionMeta.id).label("failure_count"),
+            func.max(JobExecutionMeta.updated_at_utc).label("last_failure_at_utc"),
+        )
+        .filter(JobExecutionMeta.status.in_(("failed", "retrying")))
+        .group_by(JobExecutionMeta.task_type)
+        .all()
+    )
+    known_integration_keys = {"evidence_tasks", "notification_tasks", "export_tasks"}
+    integration_health: list[IntegrationHealthItem] = []
+    for key in ("evidence_tasks", "notification_tasks", "export_tasks"):
+        row = next((item for item in integration_rows if item.task_type == key), None)
+        if row is None:
+            integration_health.append(
+                IntegrationHealthItem(
+                    integration_key=key,
+                    status="healthy",
+                    failure_count=0,
+                )
+            )
+            continue
+        integration_health.append(
+            IntegrationHealthItem(
+                integration_key=key,
+                status="degraded",
+                failure_count=int(row.failure_count or 0),
+                last_failure_at_utc=row.last_failure_at_utc,
+                details="Recent failed or retrying job executions detected.",
+            )
+        )
+    for row in integration_rows:
+        if row.task_type in known_integration_keys:
+            continue
+        integration_health.append(
+            IntegrationHealthItem(
+                integration_key=row.task_type,
+                status="degraded",
+                failure_count=int(row.failure_count or 0),
+                last_failure_at_utc=row.last_failure_at_utc,
+                details="Recent failed or retrying job executions detected.",
+            )
+        )
+
+    anomaly_events = (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.org_id == org_id,
+            AuditEvent.occurred_at_utc >= lookback_cutoff,
+            or_(
+                AuditEvent.event_type == "authorization_failed",
+                AuditEvent.outcome == "failure",
+                AuditEvent.action.ilike("%security%"),
+            ),
+        )
+        .order_by(AuditEvent.occurred_at_utc.desc())
+        .limit(100)
+        .all()
+    )
+    emit_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="admin.ops.dashboard.read",
+        event_type="ops_dashboard_viewed",
+        outcome="success",
+        metadata={
+            "stuck_incident_count": len(stuck_incidents),
+            "missing_evidence_count": len(missing_evidence_rows),
+            "failed_notification_count": len(failed_notifications),
+            "failed_export_count": len(failed_exports),
+            "anomaly_count": len(anomaly_events),
+        },
+    )
+    return OpsDashboardResponse(
+        stuck_incidents=[
+            OpsIncidentItem(
+                incident_id=row.incident_id,
+                status=row.status,
+                created_at_utc=row.created_at_utc,
+                adc_vehicle_id=row.adc_vehicle_id,
+                adc_driver_id=row.adc_driver_id,
+                reason="Evidence capture has exceeded stale threshold.",
+            )
+            for row in stuck_incidents
+        ],
+        missing_evidence_incidents=[
+            OpsIncidentItem(
+                incident_id=incident.incident_id,
+                status=incident.status,
+                created_at_utc=incident.created_at_utc,
+                adc_vehicle_id=incident.adc_vehicle_id,
+                adc_driver_id=incident.adc_driver_id,
+                reason=f"{missing_count} evidence artifacts not captured.",
+            )
+            for incident, missing_count in missing_evidence_rows
+        ],
+        failed_notifications=[
+            OpsFailedNotificationItem(
+                celery_task_id=row.celery_task_id,
+                status=row.status,
+                retry_count=row.retry_count,
+                max_retries=row.max_retries,
+                last_error=row.last_error,
+                updated_at_utc=row.updated_at_utc,
+            )
+            for row in failed_notifications
+        ],
+        failed_exports=[
+            OpsFailedExportItem(
+                export_id=row.export_id,
+                incident_id=row.incident_id,
+                export_type=row.export_type,
+                status=row.status,
+                error_message=row.error_message,
+                updated_at_utc=row.updated_at_utc,
+            )
+            for row in failed_exports
+        ],
+        integration_health=integration_health,
+        recent_anomalies=[
+            OpsAnomalyItem(
+                audit_event_id=row.id,
+                occurred_at_utc=row.occurred_at_utc,
+                action=row.action,
+                event_type=row.event_type,
+                outcome=row.outcome,
+                actor_id=row.actor_id,
+                metadata=row.metadata_json or {},
+            )
+            for row in anomaly_events
+        ],
+    )
+
+
+@router.get("/ops/audit-search", response_model=list[AuditSearchResponseItem])
+def audit_search(
+    q: str | None = None,
+    action: str | None = None,
+    event_type: str | None = None,
+    outcome: str | None = None,
+    actor_id: str | None = None,
+    lookback_hours: int = 168,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=_can_access_ops_views(context),
+        actor_id=admin.id,
+        org_id=context.org_ids[0] if context.org_ids else None,
+        action="admin.ops.audit.search",
+        metadata={"required_roles": sorted(OPS_ALLOWED_ROLES)},
+    )
+    org_id = context.org_ids[0]
+    lookback_cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, lookback_hours))
+    query = db.query(AuditEvent).filter(
+        AuditEvent.org_id == org_id,
+        AuditEvent.occurred_at_utc >= lookback_cutoff,
+    )
+    if action:
+        query = query.filter(AuditEvent.action.ilike(f"%{action}%"))
+    if event_type:
+        query = query.filter(AuditEvent.event_type.ilike(f"%{event_type}%"))
+    if outcome:
+        query = query.filter(AuditEvent.outcome == outcome)
+    if actor_id:
+        query = query.filter(AuditEvent.actor_id.ilike(f"%{actor_id}%"))
+    if q:
+        query = query.filter(
+            or_(
+                AuditEvent.action.ilike(f"%{q}%"),
+                AuditEvent.event_type.ilike(f"%{q}%"),
+                AuditEvent.actor_id.ilike(f"%{q}%"),
+            )
+        )
+    rows = query.order_by(AuditEvent.occurred_at_utc.desc()).limit(max(1, min(limit, 250))).all()
+    emit_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="admin.ops.audit.search",
+        event_type="ops_audit_search_performed",
+        outcome="success",
+        metadata={
+            "query_text": q,
+            "action_filter": action,
+            "event_type_filter": event_type,
+            "outcome_filter": outcome,
+            "result_count": len(rows),
+        },
+    )
+    return [
+        AuditSearchResponseItem(
+            audit_event_id=row.id,
+            org_id=row.org_id,
+            incident_id=row.incident_id,
+            export_id=row.export_id,
+            actor_type=row.actor_type,
+            actor_id=row.actor_id,
+            action=row.action,
+            event_type=row.event_type,
+            outcome=row.outcome,
+            occurred_at_utc=row.occurred_at_utc,
+            metadata=row.metadata_json or {},
         )
         for row in rows
     ]

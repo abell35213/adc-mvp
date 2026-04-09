@@ -698,3 +698,71 @@ class JobExecutionMetaItem(BaseModel):
     last_error: str | None = None
     created_at_utc: datetime | None = None
     updated_at_utc: datetime | None = None
+
+
+class OpsIncidentItem(BaseModel):
+    incident_id: uuid.UUID
+    status: str
+    created_at_utc: datetime | None = None
+    adc_vehicle_id: str | None = None
+    adc_driver_id: str | None = None
+    reason: str
+
+
+class OpsFailedNotificationItem(BaseModel):
+    celery_task_id: str
+    status: str
+    retry_count: int = 0
+    max_retries: int | None = None
+    last_error: str | None = None
+    updated_at_utc: datetime | None = None
+
+
+class OpsFailedExportItem(BaseModel):
+    export_id: uuid.UUID
+    incident_id: uuid.UUID
+    export_type: ExportType
+    status: ExportStatus
+    error_message: str | None = None
+    updated_at_utc: datetime | None = None
+
+
+class IntegrationHealthItem(BaseModel):
+    integration_key: str
+    status: Literal["healthy", "degraded"]
+    failure_count: int = 0
+    last_failure_at_utc: datetime | None = None
+    details: str | None = None
+
+
+class OpsAnomalyItem(BaseModel):
+    audit_event_id: uuid.UUID
+    occurred_at_utc: datetime
+    action: str
+    event_type: str
+    outcome: str | None = None
+    actor_id: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class OpsDashboardResponse(BaseModel):
+    stuck_incidents: list[OpsIncidentItem] = Field(default_factory=list)
+    missing_evidence_incidents: list[OpsIncidentItem] = Field(default_factory=list)
+    failed_notifications: list[OpsFailedNotificationItem] = Field(default_factory=list)
+    failed_exports: list[OpsFailedExportItem] = Field(default_factory=list)
+    integration_health: list[IntegrationHealthItem] = Field(default_factory=list)
+    recent_anomalies: list[OpsAnomalyItem] = Field(default_factory=list)
+
+
+class AuditSearchResponseItem(BaseModel):
+    audit_event_id: uuid.UUID
+    org_id: uuid.UUID
+    incident_id: uuid.UUID | None = None
+    export_id: uuid.UUID | None = None
+    actor_type: str
+    actor_id: str
+    action: str
+    event_type: str
+    outcome: str | None = None
+    occurred_at_utc: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
