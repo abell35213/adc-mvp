@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.audit.models import AuditEventCreate
 from app.audit.service import append_event
+from app.observability.detection import audit_activity_detector
+from app.observability.redaction import redact_log_data
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +49,35 @@ def emit_audit_event(
                 metadata=metadata or {},
             ),
         )
+        alerts = audit_activity_detector.evaluate(
+            org_id=str(org_id),
+            actor_type=actor_type,
+            actor_id=actor_id,
+            action=action,
+            event_type=event_type,
+            outcome=outcome,
+            metadata=metadata or {},
+        )
+        for alert in alerts:
+            logger.warning(
+                alert.message,
+                extra=redact_log_data(
+                    {
+                        "alert": alert.rule,
+                        "severity": alert.severity,
+                        **alert.context,
+                    }
+                ),
+            )
     except Exception:
         logger.exception(
             "Failed to append audit event",
-            extra={
+            extra=redact_log_data({
                 "org_id": str(org_id),
                 "actor_type": actor_type,
                 "actor_id": actor_id,
                 "action": action,
                 "event_type": event_type,
-            },
+                "metadata": metadata or {},
+            }),
         )

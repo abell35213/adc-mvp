@@ -8,6 +8,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
+from app.observability.redaction import redact_log_data
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -33,18 +35,18 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_log_data(record.getMessage()),
             "request_id": get_correlation_id(),
             "user_id": get_user_id(),
             "org_id": get_org_id(),
         }
 
         if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
+            payload["exc_info"] = redact_log_data(self.formatException(record.exc_info))
 
         for key in ("path", "method", "status_code", "metric", "value", "alert"):
             if hasattr(record, key):
-                payload[key] = getattr(record, key)
+                payload[key] = redact_log_data(getattr(record, key), key=key)
 
         return json.dumps(payload, default=str)
 
