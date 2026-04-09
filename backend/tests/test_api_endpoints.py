@@ -859,7 +859,10 @@ class TestDownloadExport:
 
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 422
-        assert resp.json()["detail"] == "Export download bucket is not configured"
+        detail = resp.json()["detail"]
+        assert detail["code"] == "THIRD_PARTY_DEGRADED"
+        assert detail["message"] == "Export download is temporarily unavailable."
+        assert detail.get("correlation_id")
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_presign_failure_returns_502(
@@ -889,7 +892,10 @@ class TestDownloadExport:
 
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 502
-        assert resp.json()["detail"] == "Unable to generate export download URL"
+        detail = resp.json()["detail"]
+        assert detail["code"] == "THIRD_PARTY_DEGRADED"
+        assert detail["message"] == "Unable to prepare export download right now."
+        assert detail.get("correlation_id")
 
     def test_download_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
         self, client, db_session, auth_headers
@@ -935,7 +941,10 @@ class TestDownloadExport:
 
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 410
-        assert resp.json()["detail"] == "Export is expired"
+        detail = resp.json()["detail"]
+        assert detail["code"] == "EXPORT_EXPIRED"
+        assert detail["message"] == "This export link has expired."
+        assert detail.get("correlation_id")
 
     @pytest.mark.parametrize("status", ["requested", "queued", "processing", "failed"])
     def test_download_export_not_ready_statuses_return_409(
@@ -980,7 +989,10 @@ class TestDownloadExport:
 
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 502
-        assert resp.json()["detail"] == "Invalid presigned download URL"
+        detail = resp.json()["detail"]
+        assert detail["code"] == "THIRD_PARTY_DEGRADED"
+        assert detail["message"] == "Unable to prepare export download right now."
+        assert detail.get("correlation_id")
 
 
 # ── GET /exports/{export_id} ───────────────────────────────────────

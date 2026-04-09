@@ -16,6 +16,7 @@ import {
   type ExportDownloadAuditResponse,
   type ExportStatus,
   type ExportType,
+  toUserErrorMessage,
 } from "@/lib/api";
 import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 
@@ -81,7 +82,7 @@ export default function ExportsPage() {
   useEffect(() => {
     listExports()
       .then(setExports)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(toUserErrorMessage(err, "Failed to load exports")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -98,7 +99,7 @@ export default function ExportsPage() {
         setAudit(exportAudit);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load export detail");
+        setError(toUserErrorMessage(err, "Failed to load export detail"));
       })
       .finally(() => setDetailLoading(false));
   }, [selectedExportId]);
@@ -144,7 +145,7 @@ export default function ExportsPage() {
       const result = await downloadExport(exportId);
       window.open(result.url, "_blank");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Download failed");
+      setError(toUserErrorMessage(err, "Download failed"));
     }
   }
 

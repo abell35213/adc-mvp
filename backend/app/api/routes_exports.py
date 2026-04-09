@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.api.error_responses import raise_api_error
 from app.api.schemas import (
     CreateExportEnqueueResponse,
     CreateExportRequest,
@@ -76,7 +77,11 @@ def create_export_endpoint(
     incident = get_incident(db, body.incident_id)
     if incident is None:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
-        raise HTTPException(status_code=404, detail="Incident not found")
+        raise_api_error(
+            status_code=404,
+            message="Incident not found",
+            code="RESOURCE_NOT_FOUND",
+        )
     allowed = can_request_export(context, incident)
     if not allowed:
         emit_audit_event(
@@ -165,10 +170,12 @@ def create_export_endpoint(
     except Exception as exc:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         logger.exception("Failed to enqueue export task")
-        raise HTTPException(
+        raise_api_error(
             status_code=502,
-            detail="Unable to enqueue export generation",
-        ) from exc
+            message="Export processing is temporarily degraded.",
+            code="THIRD_PARTY_DEGRADED",
+            retry_hint="Please retry export generation in a few minutes.",
+        )
 
     export = update_export(db, export.export_id, status="queued", transition_actor="api_user") or export
     task_id = getattr(task_result, "id", None)
@@ -208,7 +215,12 @@ def retry_export_endpoint(
     context = build_user_auth_context(db, current_user)
     failed_export = _resolve_authorized_export(db, export_id, list(context.org_ids), context=context)
     if failed_export.status != "failed":
-        raise HTTPException(status_code=409, detail="Only failed exports can be retried")
+        raise_api_error(
+            status_code=409,
+            message="Only failed exports can be retried.",
+            code="EXPORT_RETRY_ALLOWED",
+            retry_hint="Wait for the export to fail, then retry.",
+        )
 
     new_export = create_export(
         db,
@@ -271,10 +283,12 @@ def retry_export_endpoint(
         )
     except Exception as exc:
         logger.exception("Failed to enqueue retry export task")
-        raise HTTPException(
+        raise_api_error(
             status_code=502,
-            detail="Unable to enqueue export generation",
-        ) from exc
+            message="Export processing is temporarily degraded.",
+            code="THIRD_PARTY_DEGRADED",
+            retry_hint="Please retry export generation in a few minutes.",
+        )
     new_export = update_export(db, new_export.export_id, status="queued", transition_actor="api_user") or new_export
     task_id = getattr(task_result, "id", None)
     create_event(
@@ -350,7 +364,11 @@ def _resolve_authorized_export(
 ):
     export = get_export(db, export_id)
     if not export:
-        raise HTTPException(status_code=404, detail="Export not found")
+        raise_api_error(
+            status_code=404,
+            message="Export not found",
+            code="RESOURCE_NOT_FOUND",
+        )
 
     export_org_id = _get_export_owner_org_id(db, export)
     if context is not None:
@@ -369,7 +387,11 @@ def _resolve_authorized_export(
             )
             require_policy(False)
     elif export_org_id is None or export_org_id not in org_ids:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise_api_error(
+            status_code=403,
+            message="You do not have access to this export.",
+            code="ACCESS_DENIED",
+        )
     return export
 
 
@@ -612,7 +634,11 @@ def download_export_endpoint(
         export = get_export(db, export_id)
     if not export:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=404, detail="Export not found")
+        raise_api_error(
+            status_code=404,
+            message="Export not found",
+            code="RESOURCE_NOT_FOUND",
+        )
 
     export_org_id = _get_export_owner_org_id(db, export)
     if not can_download_export(context, export, export_org_id=export_org_id):
@@ -629,18 +655,32 @@ def download_export_endpoint(
             export_id=export.export_id,
             metadata={"should_log": True, "resource": "export_download"},
         )
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise_api_error(
+            status_code=403,
+            message="You do not have access to this export.",
+            code="ACCESS_DENIED",
+        )
 
     if export.status != "ready":
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=409, detail="Export is not ready")
+        raise_api_error(
+            status_code=409,
+            message="Export is still processing.",
+            code="EXPORT_DELAYED",
+            retry_hint="Try downloading again in 30-60 seconds.",
+        )
     now = datetime.now(timezone.utc)
     expires_at = export.expires_at_utc
     if expires_at and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at and expires_at <= now:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=410, detail="Export is expired")
+        raise_api_error(
+            status_code=410,
+            message="This export link has expired.",
+            code="EXPORT_EXPIRED",
+            retry_hint="Generate a new export package and retry download.",
+        )
 
     bucket = export.s3_bucket or settings.S3_BUCKET
     key = export.s3_key or f"exports/{export.export_id}.zip"
@@ -655,16 +695,29 @@ def download_export_endpoint(
         )
     except S3PresignConfigurationError as exc:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.warning("Presign configuration invalid", extra={"error": str(exc)})
+        raise_api_error(
+            status_code=422,
+            message="Export download is temporarily unavailable.",
+            code="THIRD_PARTY_DEGRADED",
+            retry_hint="Please retry shortly or contact support with the correlation ID.",
+        )
     except S3PresignGenerationError as exc:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(
+        raise_api_error(
             status_code=502,
-            detail="Unable to generate export download URL",
-        ) from exc
+            message="Unable to prepare export download right now.",
+            code="THIRD_PARTY_DEGRADED",
+            retry_hint="Please retry in a few minutes.",
+        )
     if not _is_presigned_https_url(presigned_url):
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
-        raise HTTPException(status_code=502, detail="Invalid presigned download URL")
+        raise_api_error(
+            status_code=502,
+            message="Unable to prepare export download right now.",
+            code="THIRD_PARTY_DEGRADED",
+            retry_hint="Please retry in a few minutes.",
+        )
 
     create_event(
         db,
