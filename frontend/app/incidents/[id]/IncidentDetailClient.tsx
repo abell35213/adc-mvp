@@ -9,6 +9,7 @@ import {
   type IncidentDetail,
   type DriverProtocolSummary,
   type DriverResponseSummary,
+  toUserErrorMessage,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import EvidenceTable, { EVIDENCE_TYPES } from "@/components/EvidenceTable";
@@ -98,7 +99,7 @@ export default function IncidentDetailClient() {
     if (!user) return;
     getIncident(id)
       .then(setIncident)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(toUserErrorMessage(err, "Failed to load incident")))
       .finally(() => setLoading(false));
   }, [id, user]);
 

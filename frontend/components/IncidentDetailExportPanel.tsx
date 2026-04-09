@@ -11,6 +11,7 @@ import {
   type ExportStatus,
   type ExportSummary,
   type ExportType,
+  toUserErrorMessage,
 } from "@/lib/api";
 import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 import GenerateExportModal from "@/components/GenerateExportModal";
@@ -88,7 +89,7 @@ export default function IncidentDetailExportPanel({
           window.clearInterval(timer);
         }
       } catch (err: unknown) {
-        setErrorMessage(err instanceof Error ? err.message : "Unable to poll export status");
+        setErrorMessage(toUserErrorMessage(err, "Unable to poll export status"));
       }
     }, 2500);
 
@@ -119,15 +120,19 @@ export default function IncidentDetailExportPanel({
       setShowModal(false);
       await onExportsChanged();
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : "Failed to create export");
+      setErrorMessage(toUserErrorMessage(err, "Failed to create export"));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDownload(exportId: string) {
-    const result = await downloadExport(exportId);
-    window.open(result.url, "_blank");
+    try {
+      const result = await downloadExport(exportId);
+      window.open(result.url, "_blank");
+    } catch (err: unknown) {
+      setErrorMessage(toUserErrorMessage(err, "Failed to download export"));
+    }
   }
 
   async function handleRetry(exportId: string) {
@@ -141,7 +146,7 @@ export default function IncidentDetailExportPanel({
       setReadyExport(null);
       await onExportsChanged();
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : "Failed to retry export");
+      setErrorMessage(toUserErrorMessage(err, "Failed to retry export"));
     } finally {
       setSubmitting(false);
     }

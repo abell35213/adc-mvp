@@ -127,6 +127,32 @@ ArtifactUploadContentType = Literal[
     "image/png",
     "video/mp4",
 ]
+
+
+ApiErrorCode = Literal[
+    "EXPORT_DELAYED",
+    "EXPORT_NOT_READY",
+    "EXPORT_EXPIRED",
+    "EXPORT_RETRY_ALLOWED",
+    "UPLOAD_RETRY_RECOMMENDED",
+    "THIRD_PARTY_DEGRADED",
+    "RESOURCE_NOT_FOUND",
+    "ACCESS_DENIED",
+    "RATE_LIMITED",
+    "REQUEST_INVALID",
+    "INTERNAL_ERROR",
+]
+
+
+class ApiErrorDetail(BaseModel):
+    message: Annotated[str, StringConstraints(min_length=1, max_length=300)]
+    code: ApiErrorCode
+    retry_hint: Annotated[str, StringConstraints(min_length=1, max_length=300)] | None = None
+    correlation_id: Annotated[str, StringConstraints(min_length=8, max_length=128)] | None = None
+
+
+class ApiErrorResponse(BaseModel):
+    detail: ApiErrorDetail
 DriverTimelineEventName = Literal[
     "driver_protocol_launch_confirmed",
     "driver_safety_gate_viewed",
