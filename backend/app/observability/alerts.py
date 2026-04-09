@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from app.core.config import settings
+from app.observability.redaction import redact_log_data
 
 logger = logging.getLogger(__name__)
 _sentry_ready = False
@@ -46,27 +47,28 @@ def init_sentry(*, service: str) -> None:
 
 
 def capture_exception(exc: Exception, *, context: dict[str, Any] | None = None) -> None:
-    logger.exception("Unhandled exception", exc_info=exc, extra={"alert": "exception"})
+    logger.exception("Unhandled exception", exc_info=exc, extra=redact_log_data({"alert": "exception", "context": context or {}}))
     if not _sentry_ready:
         return
 
     import sentry_sdk
 
     with sentry_sdk.push_scope() as scope:
-        for key, value in (context or {}).items():
+        for key, value in redact_log_data(context or {}).items():
             scope.set_extra(key, value)
         sentry_sdk.capture_exception(exc)
 
 
 def capture_message(message: str, *, level: str = "warning", **context: Any) -> None:
     log_level = getattr(logging, level.upper(), logging.WARNING)
-    logger.log(log_level, message, extra={"alert": "message"})
+    safe_context = redact_log_data(context)
+    logger.log(log_level, redact_log_data(message), extra={"alert": "message", "context": safe_context})
     if not _sentry_ready:
         return
 
     import sentry_sdk
 
     with sentry_sdk.push_scope() as scope:
-        for key, value in context.items():
+        for key, value in safe_context.items():
             scope.set_extra(key, value)
-        sentry_sdk.capture_message(message, level=level)
+        sentry_sdk.capture_message(redact_log_data(message), level=level)
