@@ -122,8 +122,8 @@ jobs:
       - name: Check runtime API contract drift
         run: python scripts/generate_runtime_api_contract.py --check
 
-  frontend:
-    name: Frontend (lint + build)
+  dependency-vulnerability-scan:
+    name: Dependency vulnerability scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +154,7 @@ jobs:
 
   required-checks:
     name: Required checks gate
-    if: github.event_name == 'pull_request'
+    if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs:
       - backend
@@ -163,5 +163,19 @@ jobs:
       - schema-validation
       - dependency-vulnerability-scan
     steps:
-      - name: All required checks passed
-        run: echo "All required CI checks passed. Safe to merge once branch protections require this check."
+      - name: Validate upstream job outcomes
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          MIGRATION_RESULT: ${{ needs.migration-integrity.result }}
+          SCHEMA_RESULT: ${{ needs.schema-validation.result }}
+          VULN_RESULT: ${{ needs.dependency-vulnerability-scan.result }}
+        run: |
+          results=("$BACKEND_RESULT" "$FRONTEND_RESULT" "$MIGRATION_RESULT" "$SCHEMA_RESULT" "$VULN_RESULT")
+          for result in "${results[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "Required CI dependency failed or was skipped: $result"
+              exit 1
+            fi
+          done
+          echo "All required CI checks passed."
