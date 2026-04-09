@@ -167,7 +167,7 @@ def create_export_endpoint(
             str(export.export_id),
             {"attempt_number": 1, "trigger": "api"},
         )
-    except Exception as exc:
+    except Exception:
         increment(MetricNames.EXPORT_REQUEST_FAILURES)
         logger.exception("Failed to enqueue export task")
         raise_api_error(
@@ -281,7 +281,7 @@ def retry_export_endpoint(
             str(new_export.export_id),
             {"attempt_number": attempt_number, "trigger": "retry_api"},
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to enqueue retry export task")
         raise_api_error(
             status_code=502,
@@ -702,7 +702,7 @@ def download_export_endpoint(
             code="THIRD_PARTY_DEGRADED",
             retry_hint="Please retry shortly or contact support with the correlation ID.",
         )
-    except S3PresignGenerationError as exc:
+    except S3PresignGenerationError:
         increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
         raise_api_error(
             status_code=502,
