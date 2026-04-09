@@ -33,6 +33,15 @@ Use this checklist as the final go/no-go gate before a production release.
   - [ ] Retry/backoff behavior matches expected policy.
   - [ ] Upload eventually succeeds (or fails with actionable surfaced error) under flaky network simulation.
 
+
+## Production onboarding evidence package
+
+Before customer production onboarding, reviewers must verify:
+
+- `docs/production-hardening/release-gate-evidence.md` is current and references passing tests and controls.
+- `docs/security/data-classification.md` is approved and mapped to onboarding scope.
+- Priority-1 gate statuses in `docs/production-hardening/checklist.yaml` are set to complete/verified.
+
 ## Go/No-Go owner sign-off
 
 Mark one status per owner and include links to evidence.
