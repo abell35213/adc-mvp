@@ -3,8 +3,9 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-MATRIX_PATH = Path("docs/production-hardening/control-matrix.md")
-SCRIPT_PATH = Path("scripts/check_hardening_matrix_updates.py")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+MATRIX_PATH = REPO_ROOT / "docs/production-hardening/control-matrix.md"
+SCRIPT_PATH = REPO_ROOT / "scripts/check_hardening_matrix_updates.py"
 
 
 def _load_lint_module():
@@ -12,6 +13,7 @@ def _load_lint_module():
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.MATRIX_PATH = str(MATRIX_PATH)
     return module
 
 

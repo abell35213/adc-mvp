@@ -258,7 +258,8 @@ class ProdSettings(AppSettings):
 
 def build_settings(app_env: str | None = None) -> AppSettings:
     """Create explicit settings class by environment."""
-    normalized = (app_env or os.getenv("APP_ENV", "local")).strip().lower()
+    resolved_env = app_env if app_env is not None else os.getenv("APP_ENV")
+    normalized = (resolved_env or "local").strip().lower()
     if normalized == "dev":
         normalized = "local"
 

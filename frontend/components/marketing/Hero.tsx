@@ -6,8 +6,6 @@ import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
 import { trackCtaClick } from "@/lib/tracking";
 
-const fleetSizes = ["1 – 5", "6 – 29", "30 – 499", "500 – 4,999", "5,000+"];
-
 const primaryNavLinks = [
   { label: "Product", href: "/product" },
   { label: "Solutions", href: "/solutions" },

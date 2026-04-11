@@ -11,7 +11,7 @@ INCIDENT_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 }
 
 EXPORT_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "requested": {"queued", "processing", "failed"},
+    "requested": {"queued", "processing", "ready", "failed"},
     "queued": {"processing", "failed", "expired"},
     "processing": {"ready", "failed", "expired"},
     "ready": {"expired"},

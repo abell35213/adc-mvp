@@ -1,60 +1,34 @@
-"""Fake Samsara adapter for local development and testing.
+"""Backwards-compatible fake Samsara adapter wrapper."""
 
-Returns canned JSON data from the ``provider_fixtures/samsara/`` folder instead of
-calling the real Samsara API.
-"""
+from __future__ import annotations
 
-import json
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-SAMSARA_FIXTURES_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "provider_fixtures" / "samsara"
+from app.integrations.providers.fake_samsara import (
+    SAMSARA_FIXTURES_DIR as _SAMSARA_FIXTURES_DIR,
+    FakeSamsaraProvider,
 )
+
+SAMSARA_FIXTURES_DIR = _SAMSARA_FIXTURES_DIR
 
 
 class FakeSamsaraAdapter:
-    """Drop-in replacement for :class:`SamsaraClient` that serves fixture data."""
+    """Legacy API shim for tests; delegates to FakeSamsaraProvider."""
 
     def __init__(self, fixtures_dir: Path | None = None):
-        self.fixtures_dir = fixtures_dir or SAMSARA_FIXTURES_DIR
+        self._provider = FakeSamsaraProvider(fixtures_dir=fixtures_dir)
 
-    # ── helpers ────────────────────────────────────────────────────────
+    def get_vehicle_locations(self, start: str | None = None, end: str | None = None) -> list:
+        return self._provider.fetch_gps_window(start=start, end=end)
 
-    def _load_json(self, filename: str) -> list:
-        """Load a JSON file from the fixtures directory and return its data list."""
-        path = self.fixtures_dir / filename
-        if not path.exists():
-            logger.warning("Fixture file not found: %s", path)
-            return []
-        with open(path) as f:
-            return json.load(f).get("data", [])
-
-    # ── public API (mirrors SamsaraClient) ─────────────────────────────
-
-    def get_vehicle_locations(
-        self, start: str | None = None, end: str | None = None
-    ) -> list:
-        """Return example vehicle location data."""
-        return self._load_json("vehicle_locations.json")
-
-    def get_safety_events(
-        self, start: str | None = None, end: str | None = None
-    ) -> list:
-        """Return example safety events data."""
-        return self._load_json("safety_events.json")
+    def get_safety_events(self, start: str | None = None, end: str | None = None) -> list:
+        return self._provider.fetch_safety_events(start=start, end=end)
 
     def get_eld_logs(self, start: str | None = None, end: str | None = None) -> list:
-        """Return example ELD log data."""
-        return self._load_json("eld_logs.json")
+        return self._provider.fetch_eld_window(start=start, end=end)
 
-    def get_vehicle_state(
-        self, start: str | None = None, end: str | None = None
-    ) -> list:
-        """Return example vehicle state data."""
-        return self._load_json("vehicle_stats.json")
+    def get_vehicle_state(self, start: str | None = None, end: str | None = None) -> list:
+        return self._provider.fetch_vehicle_state(start=start, end=end)
 
     def fetch_dashcam_stream(
         self,
@@ -62,8 +36,5 @@ class FakeSamsaraAdapter:
         start: str | None = None,
         end: str | None = None,
     ) -> bytes | None:
-        """Return example dashcam bytes from the fixtures directory."""
-        path = self.fixtures_dir / "dashcam_stream.bin"
-        if not path.exists():
-            return None
-        return path.read_bytes()
+        clip_request_id = self._provider.request_clip(stream=stream, start=start, end=end)
+        return self._provider.download_clip(clip_request_id)
