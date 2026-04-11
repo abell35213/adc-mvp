@@ -1,0 +1,55 @@
+import type { IntegrationOperationDiagnostics } from "@/lib/api";
+
+type Props = {
+  operation: IntegrationOperationDiagnostics | null;
+  onClose: () => void;
+};
+
+export default function IntegrationOperationDrawer({ operation, onClose }: Props) {
+  if (!operation) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
+      <aside
+        className="h-full w-full max-w-2xl overflow-y-auto bg-white p-5 shadow-xl dark:bg-gray-900"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">Operation diagnostics</h2>
+          <button onClick={onClose} className="rounded border px-2 py-1 text-xs">Close</button>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-3 text-xs">
+          <div><dt className="text-gray-500">Operation ID</dt><dd className="font-mono">{operation.operation_id}</dd></div>
+          <div><dt className="text-gray-500">Status</dt><dd>{operation.status}</dd></div>
+          <div><dt className="text-gray-500">Provider</dt><dd>{operation.provider}</dd></div>
+          <div><dt className="text-gray-500">Domain</dt><dd>{operation.domain ?? "—"}</dd></div>
+          <div><dt className="text-gray-500">Org</dt><dd className="font-mono">{operation.org_id ?? "—"}</dd></div>
+          <div><dt className="text-gray-500">Correlation ID</dt><dd className="font-mono">{operation.correlation_id ?? "—"}</dd></div>
+          <div><dt className="text-gray-500">Error code</dt><dd>{operation.error_code ?? "—"}</dd></div>
+          <div><dt className="text-gray-500">Retryable</dt><dd>{operation.error_retryable == null ? "—" : operation.error_retryable ? "Yes" : "No"}</dd></div>
+        </dl>
+
+        <div className="mt-4 space-y-4 text-xs">
+          <section>
+            <h3 className="font-semibold">Error details</h3>
+            <p className="mt-1 rounded border bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">{operation.error_message ?? "No error message"}</p>
+            {operation.error_operator_message && (
+              <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:bg-amber-950/40 dark:text-amber-100">{operation.error_operator_message}</p>
+            )}
+          </section>
+
+          <section>
+            <h3 className="font-semibold">Request payload</h3>
+            <pre className="mt-1 overflow-x-auto rounded border bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">{JSON.stringify(operation.payload_json, null, 2)}</pre>
+          </section>
+
+          <section>
+            <h3 className="font-semibold">Provider result</h3>
+            <pre className="mt-1 overflow-x-auto rounded border bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">{JSON.stringify(operation.result_json, null, 2)}</pre>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
+}
