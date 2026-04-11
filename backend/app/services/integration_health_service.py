@@ -11,6 +11,13 @@ from app.db.models import EvidenceRequest, IntegrationOperation
 from app.db.repo.integration_operation_status_history import create_operation_status_history
 
 
+def _safe_duration_ms(start: datetime, end: datetime) -> int:
+    """Return non-negative elapsed milliseconds handling naive/aware mismatches."""
+    start_dt = start if start.tzinfo is not None else start.replace(tzinfo=timezone.utc)
+    end_dt = end if end.tzinfo is not None else end.replace(tzinfo=timezone.utc)
+    return max(int((end_dt - start_dt).total_seconds() * 1000), 0)
+
+
 def transition_operation_status(
     db: Session,
     *,
@@ -49,10 +56,10 @@ def transition_operation_status(
         and operation.completed_at_utc is not None
         and to_status in {"succeeded", "downloaded", "failed", "unavailable"}
     ):
-        completion_time_ms = int(
-            (operation.completed_at_utc - operation.started_at_utc).total_seconds() * 1000
+        completion_time_ms = _safe_duration_ms(
+            operation.started_at_utc, operation.completed_at_utc
         )
-        increment(MetricNames.EVIDENCE_COMPLETION_TIME, max(completion_time_ms, 0))
+        increment(MetricNames.EVIDENCE_COMPLETION_TIME, completion_time_ms)
 
     create_operation_status_history(
         db,
@@ -85,11 +92,11 @@ def set_evidence_request_status(
     if status == "fulfilled":
         evidence_request.fulfilled_at_utc = datetime.now(timezone.utc)
         if evidence_request.created_at_utc is not None:
-            completion_time_ms = int(
-                (evidence_request.fulfilled_at_utc - evidence_request.created_at_utc).total_seconds()
-                * 1000
+            completion_time_ms = _safe_duration_ms(
+                evidence_request.created_at_utc,
+                evidence_request.fulfilled_at_utc,
             )
-            increment(MetricNames.EVIDENCE_COMPLETION_TIME, max(completion_time_ms, 0))
+            increment(MetricNames.EVIDENCE_COMPLETION_TIME, completion_time_ms)
     db.add(evidence_request)
     db.commit()
     db.refresh(evidence_request)
