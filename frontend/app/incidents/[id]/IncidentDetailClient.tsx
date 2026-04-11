@@ -257,6 +257,7 @@ export default function IncidentDetailClient() {
           <IncidentDetailExportPanel
             incidentId={id}
             exports={incident.export_status}
+            artifacts={incident.evidence_inventory}
             onExportsChanged={refreshIncident}
           />
         </div>
