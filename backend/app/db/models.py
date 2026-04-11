@@ -402,6 +402,12 @@ class IntegrationOperation(Base):
     operation_type = Column(Text, nullable=False, index=True)
     status = Column(
         Enum(
+            "requested",
+            "submitted_to_provider",
+            "processing_at_provider",
+            "available",
+            "downloaded",
+            "unavailable",
             "queued",
             "running",
             "succeeded",
@@ -416,6 +422,7 @@ class IntegrationOperation(Base):
     )
     correlation_id = Column(Text, nullable=True, index=True)
     external_reference = Column(Text, nullable=True, index=True)
+    external_reference_id = Column(Text, nullable=True, index=True)
     payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
     result_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
     error_message = Column(Text, nullable=True)
@@ -482,6 +489,7 @@ class IntegrationOperationStatusHistory(Base):
     to_status = Column(Text, nullable=False, index=True)
     correlation_id = Column(Text, nullable=True, index=True)
     external_reference = Column(Text, nullable=True, index=True)
+    external_reference_id = Column(Text, nullable=True, index=True)
     message = Column(Text, nullable=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()

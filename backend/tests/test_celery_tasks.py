@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Artifact, Base, Event, Export, Incident, Org
+from app.db.models import Artifact, Base, Event, Export, Incident, IntegrationOperation, Org
 from app.domain.system_event_types import SystemEventType
 from app.tasks.notification_tasks import notify_safety_manager
 
@@ -252,7 +252,7 @@ class TestCaptureDashcam:
             "2024-01-01T01:00:00Z",
         )
 
-        assert result["status"] == "captured"
+        assert result["status"] == "unavailable"
 
         artifacts = (
             db_session.query(Artifact)
@@ -261,6 +261,37 @@ class TestCaptureDashcam:
         )
         assert len(artifacts) == 2
         assert all(a.status == "unavailable" for a in artifacts)
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_dashcam_operation_state_machine_and_external_reference_id(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
+        mock_get_db.return_value = db_session
+
+        samsara_inst = MagicMock()
+        samsara_inst.fetch_dashcam_stream.return_value = b"video-bytes"
+        MockSamsara.return_value = samsara_inst
+        MockS3.return_value = MagicMock()
+
+        from app.tasks.evidence_tasks import capture_dashcam
+
+        capture_dashcam(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+
+        operation = (
+            db_session.query(IntegrationOperation)
+            .filter(IntegrationOperation.incident_id == incident.incident_id)
+            .order_by(IntegrationOperation.requested_at_utc.desc())
+            .first()
+        )
+        assert operation is not None
+        assert operation.status == "downloaded"
+        assert operation.external_reference_id
 
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")

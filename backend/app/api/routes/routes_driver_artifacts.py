@@ -26,6 +26,7 @@ from app.services.artifact_upload_service import (
 )
 from app.services.rate_limit_service import enforce_rate_limit
 from app.core.config import settings
+from app.services.dashcam_reason_codes import dashcam_reason_message
 
 router = APIRouter()
 
@@ -148,7 +149,11 @@ def get_driver_artifacts(
                 artifact_type=artifact.artifact_type,
                 status=artifact.status,
                 captured_at_utc=artifact.capture_window_end_utc,
-                unavailable_reason=artifact.unavailable_reason_code,
+                unavailable_reason=(
+                    dashcam_reason_message(artifact.unavailable_reason_code)
+                    if (artifact.artifact_type or "").startswith("dash_cam_video")
+                    else artifact.unavailable_reason_code
+                ),
             )
             for artifact in artifacts
         ]

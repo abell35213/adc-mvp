@@ -34,7 +34,7 @@ def queue_dashcam_capture(
         provider="samsara",
         domain="dashcam",
         operation_type="capture_dashcam",
-        status="queued",
+        status="requested",
         correlation_id=operation_correlation_id,
         payload_json={
             "window_start": window_start,
@@ -45,8 +45,8 @@ def queue_dashcam_capture(
     transition_operation_status(
         db,
         operation=operation,
-        to_status="queued",
-        message="Dashcam capture operation queued",
+        to_status="requested",
+        message="Dashcam capture operation requested",
     )
     evidence_requests = (
         db.query(EvidenceRequest)

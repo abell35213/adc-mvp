@@ -30,6 +30,7 @@ from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.export_tasks import build_export
 from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
 from app.services.incident_evidence_orchestrator import IncidentEvidenceOrchestrator
+from app.services.dashcam_reason_codes import dashcam_reason_message
 from app.services.rate_limit_service import enforce_rate_limit
 from app.core.config import settings
 from app.security.authn import build_user_auth_context
@@ -199,7 +200,11 @@ def get_incident_endpoint(
                     else None
                 ),
                 unavailable_reason=a.unavailable_reason_code,
-                unavailable_message=a.unavailable_reason_detail,
+                unavailable_message=(
+                    dashcam_reason_message(a.unavailable_reason_code)
+                    if (a.artifact_type or "").startswith("dash_cam_video")
+                    else a.unavailable_reason_detail
+                ),
             )
             for a in artifacts
         ],

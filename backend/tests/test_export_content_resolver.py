@@ -35,11 +35,13 @@ def test_resolver_classifies_included_excluded_unavailable_and_failed() -> None:
         ),
         SimpleNamespace(
             artifact_id="a-3",
-            artifact_type="gps_trail",
-            status="pending",
+            artifact_type="dash_cam_video_road",
+            status="unavailable",
             s3_key=None,
             sha256=None,
             byte_size=None,
+            unavailable_reason_code="retention_window_passed",
+            unavailable_reason_detail=None,
         ),
         SimpleNamespace(
             artifact_id="a-4",
@@ -58,15 +60,17 @@ def test_resolver_classifies_included_excluded_unavailable_and_failed() -> None:
         events=[],
         s3=_FakeS3({"artifacts/eld.json": b"{}"}),
         package_root="ADC_Export_inc-1_20260407",
-        options={"include_media": False},
+        options={},
     )
 
     classifications = {f"{row['kind']}:{row['item']}": row["classification"] for row in resolved.file_manifest}
-    assert classifications["photo:photo.jpg"] == "excluded_by_option"
+    assert classifications["photo:photo.jpg"] == "failed_to_retrieve"
     assert classifications["eld_log:eld.json"] == "included"
-    assert classifications["gps_trail:a-3"] == "unavailable"
+    assert classifications["dash_cam_video_road:a-3"] == "unavailable"
     assert classifications["safety_event:missing.json"] == "failed_to_retrieve"
     assert resolved.missing_items == [
-        {"kind": "gps_trail", "item": "a-3"},
+        {"kind": "photo", "item": "photo.jpg"},
+        {"kind": "dash_cam_video_road", "item": "a-3"},
         {"kind": "safety_event", "item": "missing.json"},
     ]
+    assert any(w["reason"] == "Requested clip is outside provider retention window." for w in resolved.warnings)

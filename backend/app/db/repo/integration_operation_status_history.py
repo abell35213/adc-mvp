@@ -18,6 +18,7 @@ def create_operation_status_history(
     from_status: str | None = None,
     correlation_id: str | None = None,
     external_reference: str | None = None,
+    external_reference_id: str | None = None,
     message: str | None = None,
 ):
     history = IntegrationOperationStatusHistory(
@@ -30,6 +31,7 @@ def create_operation_status_history(
         from_status=from_status,
         correlation_id=correlation_id,
         external_reference=external_reference,
+        external_reference_id=external_reference_id or external_reference,
         message=message,
     )
     db.add(history)
@@ -46,6 +48,7 @@ def list_operation_status_history(
     provider: str | None = None,
     correlation_id: str | None = None,
     external_reference: str | None = None,
+    external_reference_id: str | None = None,
 ):
     query = db.query(IntegrationOperationStatusHistory)
     if org_id is not None:
@@ -63,5 +66,9 @@ def list_operation_status_history(
     if external_reference is not None:
         query = query.filter(
             IntegrationOperationStatusHistory.external_reference == external_reference
+        )
+    if external_reference_id is not None:
+        query = query.filter(
+            IntegrationOperationStatusHistory.external_reference_id == external_reference_id
         )
     return query.order_by(IntegrationOperationStatusHistory.created_at_utc.desc()).all()

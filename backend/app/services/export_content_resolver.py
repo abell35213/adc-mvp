@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from app.domain.packet_profiles import get_default_packet_profile, get_packet_profile
+from app.services.dashcam_reason_codes import dashcam_reason_message
 
 @dataclass
 class ResolvedExportContent:
@@ -236,13 +237,26 @@ def resolve_export_content(
             )
             continue
         if artifact.status != "captured" or not artifact.s3_key or not filename:
+            reason_code = str(getattr(artifact, "unavailable_reason_code", "") or "")
+            reason_message = (
+                dashcam_reason_message(reason_code)
+                if "dash" in str(getattr(artifact, "artifact_type", "")).lower()
+                else str(getattr(artifact, "unavailable_reason_detail", "") or "")
+            )
             missing_items.append({"kind": artifact.artifact_type, "item": filename or str(artifact.artifact_id)})
+            warnings.append(
+                {
+                    "kind": str(artifact.artifact_type or "artifact"),
+                    "item": filename or str(artifact.artifact_id),
+                    "reason": reason_message or f"artifact_status={artifact.status}",
+                }
+            )
             _record_item(
                 kind=artifact.artifact_type or "unknown",
                 item=filename or str(artifact.artifact_id),
                 path=None,
                 classification="unavailable",
-                reason=f"artifact_status={artifact.status}",
+                reason=reason_code or f"artifact_status={artifact.status}",
                 byte_size=artifact.byte_size,
             )
             continue
