@@ -324,6 +324,422 @@ class Export(Base):
     __table_args__ = (Index("ix_exports_org_incident", "org_id", "incident_id"),)
 
 
+class IntegrationConnection(Base):
+    """Provider integration connection configuration per org."""
+
+    __tablename__ = "integration_connections"
+
+    connection_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    status = Column(
+        Enum(
+            "pending",
+            "active",
+            "inactive",
+            "error",
+            name="integration_connection_status",
+        ),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+    )
+    external_reference = Column(Text, nullable=True, index=True)
+    credentials_ref = Column(Text, nullable=True)
+    config_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    last_synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_integration_connections_org_provider_domain_status",
+            "org_id",
+            "provider",
+            "domain",
+            "status",
+        ),
+        Index(
+            "ix_integration_connections_org_provider_updated",
+            "org_id",
+            "provider",
+            "updated_at_utc",
+        ),
+    )
+
+
+class IntegrationOperation(Base):
+    """Operation execution state for external provider integrations."""
+
+    __tablename__ = "integration_operations"
+
+    operation_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    connection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("integration_connections.connection_id"),
+        nullable=True,
+        index=True,
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    operation_type = Column(Text, nullable=False, index=True)
+    status = Column(
+        Enum(
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "canceled",
+            name="integration_operation_status",
+        ),
+        nullable=False,
+        default="queued",
+        server_default="queued",
+        index=True,
+    )
+    correlation_id = Column(Text, nullable=True, index=True)
+    external_reference = Column(Text, nullable=True, index=True)
+    payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    result_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    error_message = Column(Text, nullable=True)
+    requested_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_integration_operations_org_provider_domain_status_requested",
+            "org_id",
+            "provider",
+            "domain",
+            "status",
+            "requested_at_utc",
+        ),
+        Index(
+            "ix_integration_operations_org_incident_status",
+            "org_id",
+            "incident_id",
+            "status",
+        ),
+    )
+
+
+class IntegrationOperationStatusHistory(Base):
+    """Append-only status transitions for integration operations."""
+
+    __tablename__ = "integration_operation_status_history"
+
+    history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("integration_operations.operation_id"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    from_status = Column(Text, nullable=True)
+    to_status = Column(Text, nullable=False, index=True)
+    correlation_id = Column(Text, nullable=True, index=True)
+    external_reference = Column(Text, nullable=True, index=True)
+    message = Column(Text, nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_integration_op_history_org_provider_domain_to_status_created",
+            "org_id",
+            "provider",
+            "domain",
+            "to_status",
+            "created_at_utc",
+        ),
+        Index(
+            "ix_integration_op_history_org_incident_created",
+            "org_id",
+            "incident_id",
+            "created_at_utc",
+        ),
+    )
+
+
+class EvidenceRequest(Base):
+    """External evidence request state per incident/provider."""
+
+    __tablename__ = "evidence_requests"
+
+    evidence_request_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    operation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("integration_operations.operation_id"),
+        nullable=True,
+        index=True,
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    status = Column(
+        Enum(
+            "open",
+            "in_progress",
+            "fulfilled",
+            "failed",
+            "canceled",
+            name="evidence_request_status",
+        ),
+        nullable=False,
+        default="open",
+        server_default="open",
+        index=True,
+    )
+    correlation_id = Column(Text, nullable=True, index=True)
+    external_reference = Column(Text, nullable=True, index=True)
+    request_payload_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    response_payload_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    requested_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    due_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    fulfilled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_evidence_requests_org_provider_domain_status_requested",
+            "org_id",
+            "provider",
+            "domain",
+            "status",
+            "requested_at_utc",
+        ),
+        Index("ix_evidence_requests_org_incident_status", "org_id", "incident_id", "status"),
+    )
+
+
+class ExternalMapping(Base):
+    """Cross-reference between internal ids and provider external ids."""
+
+    __tablename__ = "external_mappings"
+
+    mapping_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    internal_entity_type = Column(Text, nullable=False, index=True)
+    internal_entity_id = Column(Text, nullable=False, index=True)
+    external_reference = Column(Text, nullable=False, index=True)
+    status = Column(Text, nullable=False, default="active", server_default="active")
+    metadata_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_external_mappings_org_provider_domain_entity",
+            "org_id",
+            "provider",
+            "domain",
+            "internal_entity_type",
+            "internal_entity_id",
+        ),
+        Index(
+            "ix_external_mappings_org_provider_external_ref",
+            "org_id",
+            "provider",
+            "external_reference",
+        ),
+        Index("ix_external_mappings_org_incident", "org_id", "incident_id"),
+    )
+
+
+class ProviderWebhookEvent(Base):
+    """Inbound provider webhook events for processing and replay."""
+
+    __tablename__ = "provider_webhook_events"
+
+    webhook_event_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    event_type = Column(Text, nullable=False, index=True)
+    status = Column(
+        Enum(
+            "received",
+            "processed",
+            "ignored",
+            "failed",
+            name="provider_webhook_event_status",
+        ),
+        nullable=False,
+        default="received",
+        server_default="received",
+        index=True,
+    )
+    correlation_id = Column(Text, nullable=True, index=True)
+    external_reference = Column(Text, nullable=True, index=True)
+    payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    error_message = Column(Text, nullable=True)
+    received_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    processed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_provider_webhook_events_org_provider_domain_status_received",
+            "org_id",
+            "provider",
+            "domain",
+            "status",
+            "received_at_utc",
+        ),
+        Index(
+            "ix_provider_webhook_events_org_incident_received",
+            "org_id",
+            "incident_id",
+            "received_at_utc",
+        ),
+    )
+
+
+class MessageOperation(Base):
+    """Message send/receive operations, optionally tied to integration operations."""
+
+    __tablename__ = "message_operations"
+
+    message_operation_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("integration_operations.operation_id"),
+        nullable=True,
+        index=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    provider = Column(Text, nullable=False, index=True)
+    domain = Column(Text, nullable=True, index=True)
+    channel = Column(Text, nullable=True, index=True)
+    direction = Column(Text, nullable=True, index=True)
+    status = Column(
+        Enum(
+            "queued",
+            "sent",
+            "delivered",
+            "failed",
+            "received",
+            name="message_operation_status",
+        ),
+        nullable=False,
+        default="queued",
+        server_default="queued",
+        index=True,
+    )
+    correlation_id = Column(Text, nullable=True, index=True)
+    external_reference = Column(Text, nullable=True, index=True)
+    template_name = Column(Text, nullable=True)
+    payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    sent_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_message_operations_org_provider_domain_status_created",
+            "org_id",
+            "provider",
+            "domain",
+            "status",
+            "created_at_utc",
+        ),
+        Index("ix_message_operations_org_incident_created", "org_id", "incident_id", "created_at_utc"),
+    )
+
+
 class SessionRecord(Base):
     """Server-side authenticated session state."""
 
