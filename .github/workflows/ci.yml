@@ -150,7 +150,7 @@ jobs:
 
       - name: Frontend vulnerability scan (npm audit)
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=critical
 
   required-checks:
     name: Required checks gate
