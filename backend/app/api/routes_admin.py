@@ -21,6 +21,7 @@ from app.api.schemas import (
     IntegrationHealthItem,
     JobExecutionMetaItem,
     JobExecutionMetaSummary,
+    MessagingReliabilityResponse,
     OpsAnomalyItem,
     OpsDashboardResponse,
     OpsFailedExportItem,
@@ -49,6 +50,7 @@ from app.db.models import (
     VehicleQrToken,
 )
 from app.db.session import get_db
+from app.db.repo.message_operations import get_messaging_reliability_summary
 from app.domain.system_event_types import SystemEventType
 from app.db.repo.job_execution_meta import (
     list_ops_jobs_with_db,
@@ -797,6 +799,33 @@ def get_ops_dashboard(
             )
             for row in anomaly_events
         ],
+        org_messaging_reliability=MessagingReliabilityResponse(
+            **get_messaging_reliability_summary(db, org_id=org_id)
+        ),
+    )
+
+
+@router.get(
+    "/ops/messaging-reliability",
+    response_model=MessagingReliabilityResponse,
+)
+def ops_messaging_reliability(
+    incident_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=_can_access_ops_views(context),
+        actor_id=admin.id,
+        org_id=context.org_ids[0] if context.org_ids else None,
+        action="admin.ops.messaging_reliability.read",
+        metadata={"required_roles": sorted(OPS_ALLOWED_ROLES)},
+    )
+    org_id = context.org_ids[0]
+    return MessagingReliabilityResponse(
+        **get_messaging_reliability_summary(db, org_id=org_id, incident_id=incident_id)
     )
 
 

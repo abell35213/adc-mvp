@@ -99,6 +99,7 @@ def notify_safety_manager(self, incident_id: str):
     increment("notifications.safety_manager.attempts")
     from app.db.models import Org
     from app.db.repo.incidents import get_incident
+    from app.db.repo.message_operations import create_message_operation, update_message_operation_status
     from app.domain.system_event_types import SystemEventType
     from app.services.twilio_notify import build_voice_twiml, place_call, send_sms
 
@@ -156,15 +157,39 @@ def notify_safety_manager(self, incident_id: str):
         }
 
         if org.sms_enabled:
+            sms_operation = create_message_operation(
+                db,
+                org_id=incident.org_id,
+                incident_id=inc_uuid,
+                provider="twilio",
+                domain="messaging",
+                purpose="safety_manager_sms_notification",
+                to_e164=phone,
+                status="queued",
+                payload_json={"task": "notify_safety_manager"},
+            )
             sms_event_key = f"{workflow_key}:sms_sent"
             if _event_exists(
                 db, inc_uuid, SystemEventType.SAFETY_MANAGER_SMS_SENT, sms_event_key
             ):
                 result["sms_status"] = "already_sent"
+                update_message_operation_status(
+                    db,
+                    sms_operation,
+                    to_status="sent",
+                    details_json={"reason": "already_sent_event_exists"},
+                )
             else:
                 try:
                     sms_sid = send_sms(phone, message)
                     result["sms_sid"] = sms_sid
+                    update_message_operation_status(
+                        db,
+                        sms_operation,
+                        to_status="sent",
+                        provider_message_id=sms_sid,
+                        details_json={"sms_sid": sms_sid},
+                    )
                     _emit_once(
                         db,
                         inc_uuid,
@@ -178,6 +203,13 @@ def notify_safety_manager(self, incident_id: str):
                 except (httpx.HTTPError, ValueError, IntegrationError) as exc:
                     normalized_error = as_normalized_error(
                         exc, provider_hint="twilio", category="messaging"
+                    )
+                    update_message_operation_status(
+                        db,
+                        sms_operation,
+                        to_status="failed",
+                        normalized_error_code=normalized_error.code,
+                        details_json={"reason": normalized_error.operator_message},
                     )
                     _emit_once(
                         db,
@@ -194,15 +226,39 @@ def notify_safety_manager(self, incident_id: str):
                     errors.append(f"SMS failed: {normalized_error.operator_message}")
 
         if org.voice_enabled:
+            call_operation = create_message_operation(
+                db,
+                org_id=incident.org_id,
+                incident_id=inc_uuid,
+                provider="twilio",
+                domain="voice",
+                purpose="safety_manager_voice_notification",
+                to_e164=phone,
+                status="queued",
+                payload_json={"task": "notify_safety_manager"},
+            )
             call_event_key = f"{workflow_key}:call_placed"
             if _event_exists(
                 db, inc_uuid, SystemEventType.SAFETY_MANAGER_CALL_PLACED, call_event_key
             ):
                 result["call_status"] = "already_placed"
+                update_message_operation_status(
+                    db,
+                    call_operation,
+                    to_status="sent",
+                    details_json={"reason": "already_placed_event_exists"},
+                )
             else:
                 try:
                     call_sid = place_call(phone, twiml)
                     result["call_sid"] = call_sid
+                    update_message_operation_status(
+                        db,
+                        call_operation,
+                        to_status="sent",
+                        provider_message_id=call_sid,
+                        details_json={"call_sid": call_sid},
+                    )
                     _emit_once(
                         db,
                         inc_uuid,
@@ -216,6 +272,13 @@ def notify_safety_manager(self, incident_id: str):
                 except (httpx.HTTPError, ValueError, IntegrationError) as exc:
                     normalized_error = as_normalized_error(
                         exc, provider_hint="twilio", category="messaging"
+                    )
+                    update_message_operation_status(
+                        db,
+                        call_operation,
+                        to_status="failed",
+                        normalized_error_code=normalized_error.code,
+                        details_json={"reason": normalized_error.operator_message},
                     )
                     _emit_once(
                         db,

@@ -303,6 +303,15 @@ class IncidentDetailResponse(BaseModel):
     evidence_inventory: list[ArtifactSummary] = Field(default_factory=list)
     export_status: list[ExportSummary] = Field(default_factory=list)
     timeline: list[EventSummary] = Field(default_factory=list)
+    messaging_reliability: dict[str, int] = Field(default_factory=dict)
+
+
+class MessagingReliabilityResponse(BaseModel):
+    total: int = Field(default=0, ge=0)
+    delivered: int = Field(default=0, ge=0)
+    undelivered: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    success_rate_pct: int = Field(default=0, ge=0, le=100)
 
 
 # ── Exports ─────────────────────────────────────────────────────────
@@ -779,6 +788,9 @@ class OpsDashboardResponse(BaseModel):
     failed_exports: list[OpsFailedExportItem] = Field(default_factory=list)
     integration_health: list[IntegrationHealthItem] = Field(default_factory=list)
     recent_anomalies: list[OpsAnomalyItem] = Field(default_factory=list)
+    org_messaging_reliability: MessagingReliabilityResponse = Field(
+        default_factory=MessagingReliabilityResponse
+    )
 
 
 class AuditSearchResponseItem(BaseModel):

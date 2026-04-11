@@ -714,6 +714,10 @@ class MessageOperation(Base):
         UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
     )
     provider = Column(Text, nullable=False, index=True)
+    purpose = Column(Text, nullable=False, server_default="notification", index=True)
+    to_e164 = Column(Text, nullable=True, index=True)
+    provider_message_id = Column(Text, nullable=True, index=True)
+    normalized_error_code = Column(Text, nullable=True, index=True)
     domain = Column(Text, nullable=True, index=True)
     channel = Column(Text, nullable=True, index=True)
     direction = Column(Text, nullable=True, index=True)
@@ -722,6 +726,7 @@ class MessageOperation(Base):
             "queued",
             "sent",
             "delivered",
+            "undelivered",
             "failed",
             "received",
             name="message_operation_status",
@@ -757,6 +762,28 @@ class MessageOperation(Base):
             "created_at_utc",
         ),
         Index("ix_message_operations_org_incident_created", "org_id", "incident_id", "created_at_utc"),
+    )
+
+
+class MessageOperationStatusHistory(Base):
+    """Timeline of status transitions for a message operation."""
+
+    __tablename__ = "message_operation_status_history"
+
+    history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_operation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("message_operations.message_operation_id"),
+        nullable=False,
+        index=True,
+    )
+    from_status = Column(Text, nullable=True)
+    to_status = Column(Text, nullable=False, index=True)
+    provider_message_id = Column(Text, nullable=True, index=True)
+    normalized_error_code = Column(Text, nullable=True, index=True)
+    details_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
 

@@ -24,6 +24,7 @@ from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
 from app.db.repo.incidents import create_incident, get_incident, list_incidents
+from app.db.repo.message_operations import get_messaging_reliability_summary
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
@@ -249,6 +250,11 @@ def get_incident_endpoint(
             )
             for ev in sorted(events, key=lambda e: e.occurred_at_utc or "")
         ],
+        messaging_reliability=get_messaging_reliability_summary(
+            db, org_id=incident.org_id, incident_id=incident.incident_id
+        )
+        if incident.org_id
+        else {},
     )
 
 
