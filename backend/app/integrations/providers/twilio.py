@@ -90,7 +90,7 @@ class TwilioMessagingProvider:
         sid = payload.get("sid")
         if not sid:
             increment(MetricNames.TWILIO_SEND_SMS_FAILURES)
-            raise ValueError(f"Twilio SMS response missing SID. Response: {payload}")
+            raise ValueError("Twilio SMS response missing SID")
         return sid
 
     def lookup_delivery_status(self, message_id: str) -> str | None:
@@ -128,7 +128,7 @@ class TwilioMessagingProvider:
         sid = payload.get("sid")
         if not sid:
             increment(MetricNames.TWILIO_PLACE_CALL_FAILURES)
-            raise ValueError(f"Twilio call response missing SID. Response: {payload}")
+            raise ValueError("Twilio call response missing SID")
         return sid
 
     def build_voice_twiml(self, message: str) -> str:
@@ -175,7 +175,7 @@ class TwilioMessagingProvider:
         sid = payload.get("sid")
         if not isinstance(sid, str) or not sid:
             increment(MetricNames.OTP_DELIVERY_FAILURE)
-            raise RuntimeError(f"Twilio Verify response missing sid: {payload!r}")
+            raise RuntimeError("Twilio Verify response missing sid")
         increment(MetricNames.OTP_DELIVERY_SUCCESS)
         logger.info("Twilio verification started sid=%s", sid)
         return sid
