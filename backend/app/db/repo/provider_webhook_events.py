@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.db.models import ProviderWebhookEvent
+from app.observability.redaction import redact_payload_for_storage, redact_raw_payload
 
 
 def create_provider_webhook_event(
@@ -40,8 +41,8 @@ def create_provider_webhook_event(
         idempotency_key=idempotency_key,
         signature_valid=signature_valid,
         processing_outcome=processing_outcome,
-        raw_payload=raw_payload or "",
-        payload_json=payload_json or {},
+        raw_payload=redact_raw_payload(raw_payload),
+        payload_json=redact_payload_for_storage(payload_json),
         error_message=error_message,
         error_details_json=error_details_json or {},
     )
@@ -107,9 +108,10 @@ def list_provider_webhook_events(
     correlation_id: str | None = None,
     external_reference: str | None = None,
 ):
+    if org_id is None:
+        raise ValueError("org_id is required for provider webhook event queries")
     query = db.query(ProviderWebhookEvent)
-    if org_id is not None:
-        query = query.filter(ProviderWebhookEvent.org_id == org_id)
+    query = query.filter(ProviderWebhookEvent.org_id == org_id)
     if incident_id is not None:
         query = query.filter(ProviderWebhookEvent.incident_id == incident_id)
     if status is not None:

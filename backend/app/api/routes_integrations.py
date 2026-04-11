@@ -18,7 +18,7 @@ from app.api.schemas import (
     IntegrationOperationDiagnosticsResponse,
 )
 from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_user_role
 from app.core.logging import get_request_id
 from app.db.models import (
     EvidenceRequest,
@@ -36,10 +36,13 @@ from app.integrations.webhooks.signatures import (
     validate_twilio_signature,
 )
 from app.security.authn import build_user_auth_context
+from app.observability.redaction import redact_payload_for_storage
 from app.services.dashcam_capture_service import queue_dashcam_capture
 from app.services.telematics_capture_service import queue_telematics_capture
 
 router = APIRouter()
+
+_integration_admin = require_user_role("system_admin", "org_admin")
 
 
 @router.get("/org/integrations", response_model=list[IntegrationConnectionHealthResponse])
@@ -105,7 +108,7 @@ def get_org_integration(
 def validate_org_integration(
     integration_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
     row = (
@@ -208,7 +211,7 @@ def list_integration_operations(
     status: str | None = None,
     provider: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
     query = db.query(IntegrationOperation).filter(IntegrationOperation.org_id.in_(context.org_ids))
@@ -219,7 +222,7 @@ def list_integration_operations(
     if provider is not None:
         query = query.filter(IntegrationOperation.provider == provider)
     rows = query.order_by(IntegrationOperation.requested_at_utc.desc()).all()
-    return [IntegrationOperationDiagnosticsResponse.model_validate(row, from_attributes=True) for row in rows]
+    return [_to_diagnostics_response(row) for row in rows]
 
 
 @router.get(
@@ -229,7 +232,7 @@ def list_integration_operations(
 def get_integration_operation(
     operation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
     row = (
@@ -242,7 +245,14 @@ def get_integration_operation(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Integration operation not found")
-    return IntegrationOperationDiagnosticsResponse.model_validate(row, from_attributes=True)
+    return _to_diagnostics_response(row)
+
+
+def _to_diagnostics_response(row: IntegrationOperation) -> IntegrationOperationDiagnosticsResponse:
+    response = IntegrationOperationDiagnosticsResponse.model_validate(row, from_attributes=True)
+    response.payload_json = redact_payload_for_storage(response.payload_json)
+    response.result_json = redact_payload_for_storage(response.result_json)
+    return response
 
 
 @router.get(

@@ -280,7 +280,9 @@ class TestIntegrationDiagnosticsRoutes:
         assert detail_resp.status_code == 200
         assert detail_resp.json()["provider"] == "samsara"
 
-    def test_integration_operations_and_evidence_summary(self, client, db_session, test_org, auth_headers):
+    def test_integration_operations_and_evidence_summary(
+        self, client, db_session, test_org, test_user, auth_headers
+    ):
         incident = Incident(
             org_id=test_org.id,
             status="evidence_capturing",
@@ -300,8 +302,8 @@ class TestIntegrationDiagnosticsRoutes:
             domain="dashcam",
             operation_type="capture_dashcam",
             status="failed",
-            payload_json={},
-            result_json={},
+            payload_json={"token": "abc123", "nested": {"api_key": "very-secret"}},
+            result_json={"authorization": "Bearer asdf"},
         )
         db_session.add(operation)
         db_session.commit()
@@ -322,8 +324,20 @@ class TestIntegrationDiagnosticsRoutes:
         db_session.commit()
 
         ops_resp = client.get("/integration-operations", headers=auth_headers)
+        assert ops_resp.status_code == 403
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        org_admin_token = create_access_token({"sub": str(test_user.id), "role": "org_admin"})
+        org_admin_headers = {"Authorization": f"Bearer {org_admin_token}"}
+        ops_resp = client.get("/integration-operations", headers=org_admin_headers)
         assert ops_resp.status_code == 200
         assert len(ops_resp.json()) == 1
+        payload = ops_resp.json()[0]["payload_json"]
+        result_payload = ops_resp.json()[0]["result_json"]
+        assert payload["token"] == "[REDACTED]"
+        assert payload["nested"]["api_key"] == "[REDACTED]"
+        assert result_payload["authorization"] == "[REDACTED]"
 
         evidence_list = client.get(
             f"/incidents/{incident.incident_id}/evidence-requests",
@@ -338,6 +352,41 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert summary_resp.status_code == 200
         assert summary_resp.json()["retryable_failures"] == 1
+
+    def test_integration_validate_requires_admin_role(
+        self,
+        client,
+        db_session,
+        test_org,
+        test_user,
+        auth_headers,
+    ):
+        connection = IntegrationConnection(
+            org_id=test_org.id,
+            provider="twilio",
+            domain="messaging",
+            status="active",
+            credentials_ref="vault://twilio",
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        denied = client.post(
+            f"/org/integrations/{connection.connection_id}/validate",
+            headers=auth_headers,
+        )
+        assert denied.status_code == 403
+
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        org_admin_token = create_access_token({"sub": str(test_user.id), "role": "org_admin"})
+        org_admin_headers = {"Authorization": f"Bearer {org_admin_token}"}
+        allowed = client.post(
+            f"/org/integrations/{connection.connection_id}/validate",
+            headers=org_admin_headers,
+        )
+        assert allowed.status_code == 200
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(

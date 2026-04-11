@@ -31,6 +31,7 @@ from app.jobs.tracking import (
     record_task_started,
     record_task_succeeded,
 )
+from app.observability.redaction import redact_log_data
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ def hello_world():
 @celery_app.task(name="app.tasks.celery_app.record_dead_letter")
 def record_dead_letter(payload: dict):
     """Persist terminal task failure payload to a dead-letter queue."""
-    logger.error("Dead-letter task received: %s", payload)
+    logger.error("Dead-letter task received: %s", redact_log_data(payload))
     return {"status": "recorded", "task_name": payload.get("task_name")}
 
 
@@ -220,7 +221,7 @@ def route_terminal_failures_to_dead_letter(
         "kwargs": kwargs or {},
         "exception": str(exception),
     }
-    logger.error("Routing task failure to dead-letter queue: %s", payload)
+    logger.error("Routing task failure to dead-letter queue: %s", redact_log_data(payload))
     celery_app.send_task(
         "app.tasks.celery_app.record_dead_letter",
         kwargs={"payload": payload},
