@@ -465,6 +465,8 @@ def capture_telematics_bundle(
     window_end: str | None,
     operation_id: str | None = None,
     correlation_id: str | None = None,
+    dataset_windows: dict[str, dict[str, str]] | None = None,
+    external_mappings: dict[str, str | None] | None = None,
 ):
     """Capture telematics bundle for an incident.
 
@@ -482,9 +484,12 @@ def capture_telematics_bundle(
     import io
 
     from app.core.config import settings
-    from app.db.models import EvidenceRequest, IntegrationOperation
+    from app.db.models import EvidenceRequest, IntegrationOperation, Incident
     from app.db.repo.artifacts import create_artifact
+    from app.db.repo.evidence_requests import update_evidence_request_error
+    from app.db.repo.integration_operations import update_integration_operation_error
     from app.domain.system_event_types import SystemEventType
+    from app.integrations.errors import NormalizedIntegrationError
     from app.services.integration_health_service import (
         set_evidence_request_status,
         transition_operation_status,
@@ -574,6 +579,20 @@ def capture_telematics_bundle(
             to_status="running",
             message="Telematics capture task started",
         )
+        if dataset_windows is None:
+            dataset_windows = {}
+        if external_mappings is None:
+            external_mappings = {}
+
+        def _telematics_reason(error: Exception) -> str:
+            msg = str(error).lower()
+            if "401" in msg or "403" in msg or "credential" in msg or "auth" in msg:
+                return "credentials_invalid"
+            if "mapping" in msg:
+                return "vehicle_mapping_missing"
+            if "not found" in msg or "no data" in msg or "empty" in msg:
+                return "data_not_found"
+            return "provider_unavailable"
 
         datasets = {
             "eld": {
@@ -601,6 +620,42 @@ def capture_telematics_bundle(
                 "fetcher": "get_vehicle_state",
             },
         }
+
+        incident_row = db.query(Incident).filter(Incident.incident_id == inc_uuid).first()
+        resolved_vehicle_id = (
+            external_mappings.get("vehicle_id")
+            if external_mappings.get("vehicle_id")
+            else (
+                incident_row.samsara_vehicle_id
+                if incident_row and incident_row.samsara_vehicle_id
+                else (incident_row.adc_vehicle_id if incident_row else None)
+            )
+        )
+        if not resolved_vehicle_id:
+            mapping_error = NormalizedIntegrationError(
+                code="TELEMATICS_NOT_MAPPED",
+                category="telematics",
+                provider_key="samsara",
+                retryable=False,
+                user_facing_message="Vehicle mapping is missing for telematics capture.",
+                operator_message="vehicle_mapping_missing",
+            )
+            update_integration_operation_error(db, operation, mapping_error)
+            transition_operation_status(
+                db,
+                operation=operation,
+                to_status="failed",
+                message="Telematics capture failed: vehicle_mapping_missing",
+            )
+            return {
+                "incident_id": incident_id,
+                "type": "telematics",
+                "status": "failed",
+                "reason_code": "vehicle_mapping_missing",
+                "idempotency_key": workflow_key,
+            }
+
+        request_statuses: dict[str, dict[str, str]] = {}
 
         for dataset_name, spec in datasets.items():
             evidence_request = None
@@ -639,15 +694,20 @@ def capture_telematics_bundle(
                     raise AttributeError(
                         f"SamsaraClient has no method {spec['fetcher']}"
                     )
-                raw_records = fetcher(
-                    start=window_start,
-                    end=window_end,
-                )
+                dataset_window = dataset_windows.get(dataset_name, {})
+                start = dataset_window.get("start") or window_start
+                end = dataset_window.get("end") or window_end
+                raw_records = fetcher(start=start, end=end)
                 if raw_records is None:
                     raw_records = []
+                raw_records = [
+                    rec for rec in raw_records if not resolved_vehicle_id or rec.get("vehicleId") == resolved_vehicle_id
+                ]
 
                 # 2. Normalize
                 normalized = [spec["normalizer"](r) for r in raw_records]
+                capture_status = "available" if normalized else "unavailable"
+                reason_code = None if normalized else "data_not_found"
 
                 # 3. Validate JSON schema
                 for record in normalized:
@@ -844,11 +904,29 @@ def capture_telematics_bundle(
                     db,
                     evidence_request=evidence_request,
                     status="fulfilled",
-                    response_payload_json={"dataset": dataset_name, "status": "captured"},
+                    response_payload_json={
+                        "dataset": dataset_name,
+                        "status": capture_status,
+                        "reason_code": reason_code,
+                        "window": {"start": start, "end": end},
+                        "external_mappings": external_mappings,
+                        "raw_record_count": len(raw_records),
+                        "normalized_record_count": len(normalized),
+                        "raw_payload_reference": {
+                            "provider": "samsara",
+                            "dataset": dataset_name,
+                            "window": {"start": start, "end": end},
+                        },
+                    },
                 )
+                request_statuses[dataset_name] = {
+                    "status": capture_status,
+                    "reason_code": reason_code,
+                }
 
             except Exception as ds_exc:
                 reason = str(ds_exc)
+                reason_code = _telematics_reason(ds_exc)
                 logger.warning(
                     "Telematics dataset %s unavailable for incident %s: %s",
                     dataset_name,
@@ -865,6 +943,7 @@ def capture_telematics_bundle(
                         "artifact_type": spec["artifact_type"],
                         "status": "unavailable",
                         "reason": reason,
+                        "reason_code": reason_code,
                         "correlation_id": correlation_id or workflow_key,
                         "operation_id": str(operation.operation_id) if operation is not None else None,
                     },
@@ -887,12 +966,45 @@ def capture_telematics_bundle(
                         unavailable_reason_detail=reason,
                     )
                 if evidence_request is not None:
+                    normalized_error = NormalizedIntegrationError(
+                        code="TELEMATICS_UNAVAILABLE",
+                        category="telematics",
+                        provider_key="samsara",
+                        retryable=reason_code != "credentials_invalid",
+                        user_facing_message="Telematics data capture failed for one dataset.",
+                        operator_message=reason,
+                    )
+                    update_evidence_request_error(db, evidence_request, normalized_error)
                     set_evidence_request_status(
                         db,
                         evidence_request=evidence_request,
                         status="failed",
-                        response_payload_json={"dataset": dataset_name, "error": reason},
+                        response_payload_json={
+                            "dataset": dataset_name,
+                            "status": "failed",
+                            "reason_code": reason_code,
+                            "error": reason,
+                        },
                     )
+                request_statuses[dataset_name] = {"status": "failed", "reason_code": reason_code}
+
+        available_count = sum(1 for status in request_statuses.values() if status["status"] == "available")
+        failed_count = sum(1 for status in request_statuses.values() if status["status"] == "failed")
+        unavailable_count = sum(1 for status in request_statuses.values() if status["status"] == "unavailable")
+        overall_status = "available"
+        if failed_count == len(datasets):
+            overall_status = "failed"
+        elif failed_count > 0 or unavailable_count > 0:
+            overall_status = "partial"
+        elif available_count == 0:
+            overall_status = "unavailable"
+        operation.result_json = {
+            "status": overall_status,
+            "request_statuses": request_statuses,
+            "external_mappings": external_mappings,
+        }
+        db.add(operation)
+        db.commit()
 
         _emit_once(
             db,
@@ -913,7 +1025,7 @@ def capture_telematics_bundle(
         return {
             "incident_id": incident_id,
             "type": "telematics",
-            "status": "captured",
+            "status": overall_status,
             "idempotency_key": workflow_key,
         }
 

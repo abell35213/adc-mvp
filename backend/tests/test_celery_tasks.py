@@ -427,7 +427,7 @@ class TestCaptureTelematicsBundle:
             "2024-01-01T01:00:00Z",
         )
 
-        assert result["status"] == "captured"
+        assert result["status"] == "available"
         assert result["type"] == "telematics"
 
         # 4 datasets × 3 formats (JSON, CSV, PDF) = 12 artifacts
@@ -466,7 +466,7 @@ class TestCaptureTelematicsBundle:
             "2024-01-01T01:00:00Z",
         )
 
-        assert result["status"] == "captured"
+        assert result["status"] == "partial"
 
         artifacts = (
             db_session.query(Artifact)
