@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.routes_twilio import VOICE_MESSAGE, _build_twilio_signature
 from app.core.config import settings
-from app.db.models import Base, MessageOperation, Org
+from app.db.models import Base, MessageOperation, Org, ProviderWebhookEvent
 from app.db.repo.message_operations import create_message_operation
 from app.db.session import get_db
 from app.main import app
@@ -50,6 +50,19 @@ def test_twilio_voice_rejects_missing_signature(monkeypatch, client):
     response = client.post("/twilio/voice", data={"CallSid": "CA123"})
 
     assert response.status_code == 403
+
+
+def test_twilio_voice_persists_invalid_signature_event(monkeypatch, client, db_session):
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "secret")
+
+    response = client.post("/twilio/voice", data={"CallSid": "CA123"})
+
+    assert response.status_code == 403
+    webhook_event = db_session.query(ProviderWebhookEvent).first()
+    assert webhook_event is not None
+    assert webhook_event.signature_valid is False
+    assert webhook_event.status == "failed"
+    assert webhook_event.processing_outcome == "invalid_signature"
 
 
 def test_twilio_voice_accepts_valid_signature(monkeypatch, client):
@@ -99,3 +112,53 @@ def test_twilio_status_callback_reconciles_message_operation(monkeypatch, client
     op = db_session.query(MessageOperation).filter(MessageOperation.provider_message_id == "SM123").first()
     assert op is not None
     assert op.status == "delivered"
+
+    events = (
+        db_session.query(ProviderWebhookEvent)
+        .filter(ProviderWebhookEvent.event_type == "status_callback")
+        .all()
+    )
+    assert len(events) == 1
+    assert events[0].signature_valid is True
+    assert events[0].processing_outcome == "message_operation_updated"
+
+
+def test_twilio_status_callback_idempotency(monkeypatch, client, db_session):
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "secret")
+    org = Org(name="Test Org")
+    db_session.add(org)
+    db_session.commit()
+
+    create_message_operation(
+        db_session,
+        org_id=org.id,
+        provider="twilio",
+        domain="messaging",
+        purpose="safety_manager_sms_notification",
+        to_e164="+15551234567",
+        status="sent",
+        provider_message_id="SM123",
+    )
+
+    params = {"MessageSid": "SM123", "MessageStatus": "delivered"}
+    url = f"{client.base_url}/twilio/status"
+    signature = _build_twilio_signature("secret", url, params)
+    headers = {"X-Twilio-Signature": signature}
+
+    response_1 = client.post("/twilio/status", data=params, headers=headers)
+    response_2 = client.post("/twilio/status", data=params, headers=headers)
+
+    assert response_1.status_code == 200
+    assert response_2.status_code == 200
+    assert response_2.json()["status"] == "duplicate"
+
+    events = (
+        db_session.query(ProviderWebhookEvent)
+        .filter(ProviderWebhookEvent.event_type == "status_callback")
+        .order_by(ProviderWebhookEvent.received_at_utc.asc())
+        .all()
+    )
+    assert len(events) == 2
+    assert events[0].status == "processed"
+    assert events[1].status == "ignored"
+    assert events[1].processing_outcome == "duplicate"

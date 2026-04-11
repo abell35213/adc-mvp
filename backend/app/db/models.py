@@ -665,9 +665,19 @@ class ProviderWebhookEvent(Base):
         server_default="received",
         index=True,
     )
+    signature_valid = Column(Boolean, nullable=True, index=True)
+    idempotency_key = Column(Text, nullable=True, index=True)
+    processing_outcome = Column(Text, nullable=True, index=True)
     correlation_id = Column(Text, nullable=True, index=True)
     external_reference = Column(Text, nullable=True, index=True)
+    raw_payload = Column(Text, nullable=False, default="", server_default="")
     payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    error_details_json = Column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+    )
     error_message = Column(Text, nullable=True)
     received_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
