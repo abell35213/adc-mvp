@@ -771,6 +771,109 @@ class IntegrationHealthItem(BaseModel):
     details: str | None = None
 
 
+IntegrationConnectionStatus = Literal["pending", "active", "inactive", "error"]
+IntegrationOperationStatus = Literal[
+    "requested",
+    "submitted_to_provider",
+    "processing_at_provider",
+    "available",
+    "downloaded",
+    "unavailable",
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "canceled",
+]
+EvidenceRequestStatus = Literal["open", "in_progress", "fulfilled", "failed", "canceled"]
+
+
+class IntegrationConnectionHealthResponse(BaseModel):
+    integration_id: uuid.UUID
+    provider: str
+    domain: str | None = None
+    status: IntegrationConnectionStatus
+    healthy: bool
+    reason: str | None = None
+    last_synced_at_utc: datetime | None = None
+    updated_at_utc: datetime | None = None
+
+
+class IntegrationConnectionUpdateRequest(BaseModel):
+    status: IntegrationConnectionStatus | None = None
+    credentials_ref: str | None = None
+    config_json: dict[str, Any] | None = None
+
+
+class IntegrationConnectionValidateResponse(BaseModel):
+    integration_id: uuid.UUID
+    valid: bool
+    status: IntegrationConnectionStatus
+    message: str
+
+
+class IntegrationOperationDiagnosticsResponse(BaseModel):
+    operation_id: uuid.UUID
+    org_id: uuid.UUID | None = None
+    incident_id: uuid.UUID | None = None
+    connection_id: uuid.UUID | None = None
+    provider: str
+    domain: str | None = None
+    operation_type: str
+    status: IntegrationOperationStatus
+    correlation_id: str | None = None
+    external_reference: str | None = None
+    external_reference_id: str | None = None
+    payload_json: dict[str, Any] = Field(default_factory=dict)
+    result_json: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    error_code: str | None = None
+    error_category: str | None = None
+    error_provider_key: str | None = None
+    error_retryable: bool | None = None
+    error_user_facing_message: str | None = None
+    error_operator_message: str | None = None
+    requested_at_utc: datetime | None = None
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
+    updated_at_utc: datetime | None = None
+
+
+class EvidenceRequestSummary(BaseModel):
+    evidence_request_id: uuid.UUID
+    operation_id: uuid.UUID | None = None
+    provider: str
+    domain: str | None = None
+    status: EvidenceRequestStatus
+    external_reference: str | None = None
+    error_code: str | None = None
+    error_category: str | None = None
+    error_retryable: bool | None = None
+    error_user_facing_message: str | None = None
+    requested_at_utc: datetime | None = None
+    fulfilled_at_utc: datetime | None = None
+
+
+class EvidenceSummaryResponse(BaseModel):
+    incident_id: uuid.UUID
+    total_requests: int
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    provider_counts: dict[str, int] = Field(default_factory=dict)
+    retryable_failures: int = 0
+    requests: list[EvidenceRequestSummary] = Field(default_factory=list)
+
+
+class EvidenceRetryActionRequest(BaseModel):
+    evidence_request_ids: list[uuid.UUID] | None = None
+    retry_failed_only: bool = True
+
+
+class EvidenceRetryActionResponse(BaseModel):
+    incident_id: uuid.UUID
+    retried_count: int
+    queued_operation_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
 class OpsAnomalyItem(BaseModel):
     audit_event_id: uuid.UUID
     occurred_at_utc: datetime
