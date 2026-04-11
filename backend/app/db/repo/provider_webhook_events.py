@@ -1,6 +1,9 @@
 """Repository layer for provider webhook events."""
 
+from __future__ import annotations
+
 import uuid as _uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -17,7 +20,13 @@ def create_provider_webhook_event(
     domain: str | None = None,
     correlation_id: str | None = None,
     external_reference: str | None = None,
+    idempotency_key: str | None = None,
+    signature_valid: bool | None = None,
+    processing_outcome: str | None = None,
+    raw_payload: str | None = None,
     payload_json: dict | None = None,
+    error_message: str | None = None,
+    error_details_json: dict | None = None,
 ):
     webhook_event = ProviderWebhookEvent(
         org_id=org_id,
@@ -28,12 +37,65 @@ def create_provider_webhook_event(
         domain=domain,
         correlation_id=correlation_id,
         external_reference=external_reference,
+        idempotency_key=idempotency_key,
+        signature_valid=signature_valid,
+        processing_outcome=processing_outcome,
+        raw_payload=raw_payload or "",
         payload_json=payload_json or {},
+        error_message=error_message,
+        error_details_json=error_details_json or {},
     )
     db.add(webhook_event)
     db.commit()
     db.refresh(webhook_event)
     return webhook_event
+
+
+def update_provider_webhook_event(
+    db: Session,
+    webhook_event: ProviderWebhookEvent,
+    *,
+    status: str | None = None,
+    signature_valid: bool | None = None,
+    processing_outcome: str | None = None,
+    error_message: str | None = None,
+    error_details_json: dict | None = None,
+) -> ProviderWebhookEvent:
+    if status is not None:
+        webhook_event.status = status
+        if status in {"processed", "ignored", "failed"}:
+            webhook_event.processed_at_utc = datetime.now(timezone.utc)
+    if signature_valid is not None:
+        webhook_event.signature_valid = signature_valid
+    if processing_outcome is not None:
+        webhook_event.processing_outcome = processing_outcome
+    if error_message is not None:
+        webhook_event.error_message = error_message
+    if error_details_json is not None:
+        webhook_event.error_details_json = error_details_json
+    db.add(webhook_event)
+    db.commit()
+    db.refresh(webhook_event)
+    return webhook_event
+
+
+def get_provider_webhook_event_by_idempotency_key(
+    db: Session,
+    *,
+    provider: str,
+    event_type: str,
+    idempotency_key: str,
+) -> ProviderWebhookEvent | None:
+    return (
+        db.query(ProviderWebhookEvent)
+        .filter(
+            ProviderWebhookEvent.provider == provider,
+            ProviderWebhookEvent.event_type == event_type,
+            ProviderWebhookEvent.idempotency_key == idempotency_key,
+        )
+        .order_by(ProviderWebhookEvent.received_at_utc.desc())
+        .first()
+    )
 
 
 def list_provider_webhook_events(
