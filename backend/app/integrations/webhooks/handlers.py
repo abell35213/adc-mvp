@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.metrics import MetricNames, increment
 from app.db.repo.message_operations import (
     get_message_operation_by_provider_message_id,
     update_message_operation_status,
@@ -44,6 +45,7 @@ def process_twilio_status_callback(
     signature_valid: bool,
     signature_error: str | None,
 ) -> WebhookResult:
+    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
     message_sid = payload.get("MessageSid")
     idempotency_key = build_idempotency_key(
         provider="twilio",
@@ -75,6 +77,7 @@ def process_twilio_status_callback(
             error_message="duplicate_webhook",
             error_details_json={"duplicate_of": str(existing.webhook_event_id)},
         )
+        increment("webhook.twilio.duplicate")
         return WebhookResult(status_code=200, body={"status": "duplicate"})
 
     event = create_provider_webhook_event(
@@ -92,6 +95,8 @@ def process_twilio_status_callback(
     )
 
     if not signature_valid:
+        increment(MetricNames.WEBHOOK_SIGNATURE_FAILURES)
+        increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
         update_provider_webhook_event(
             db,
             event,
@@ -112,6 +117,7 @@ def process_twilio_status_callback(
         )
 
     if operation is None:
+        increment("webhook.twilio.orphaned")
         update_provider_webhook_event(
             db,
             event,
@@ -131,6 +137,7 @@ def process_twilio_status_callback(
     }
     mapped = status_map.get(message_status)
     if mapped is None:
+        increment("webhook.twilio.unsupported_status")
         update_provider_webhook_event(
             db,
             event,
@@ -148,6 +155,10 @@ def process_twilio_status_callback(
         normalized_error_code=f"TWILIO_{error_code}" if error_code else None,
         details_json=payload,
     )
+    if mapped in {"failed", "undelivered"}:
+        increment(MetricNames.OTP_DELIVERY_FAILURE)
+    if mapped == "delivered":
+        increment(MetricNames.OTP_DELIVERY_SUCCESS)
     update_provider_webhook_event(
         db,
         event,
@@ -166,6 +177,7 @@ def persist_twilio_voice_callback(
     signature_valid: bool,
     signature_error: str | None,
 ) -> WebhookResult:
+    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
     idempotency_key = build_idempotency_key(
         provider="twilio",
         event_type="voice_callback",
@@ -192,4 +204,6 @@ def persist_twilio_voice_callback(
     )
     if signature_valid:
         return WebhookResult(status_code=200, body={"status": "ok"})
+    increment(MetricNames.WEBHOOK_SIGNATURE_FAILURES)
+    increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
     return WebhookResult(status_code=403, body={"detail": "Invalid Twilio signature"})

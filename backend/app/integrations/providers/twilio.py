@@ -33,18 +33,36 @@ class TwilioMessagingProvider:
         return f"{TWILIO_API_BASE}/{account_sid}/{path}"
 
     def _post_twilio(self, path: str, data: dict[str, str]) -> dict[str, Any]:
-        with timed("twilio.http.post"):
+        increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS)
+        with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
             url = self._twilio_url(path)
             account_sid, auth_token = self._twilio_auth()
-            with httpx.Client() as client:
-                response = client.post(
-                    url,
-                    data=data,
-                    auth=(account_sid, auth_token),
-                    timeout=10.0,
-                )
-            response.raise_for_status()
-            payload = response.json()
+            try:
+                with httpx.Client() as client:
+                    response = client.post(
+                        url,
+                        data=data,
+                        auth=(account_sid, auth_token),
+                        timeout=10.0,
+                    )
+                response.raise_for_status()
+                payload = response.json()
+            except httpx.TimeoutException:
+                increment(MetricNames.INTEGRATION_PROVIDER_TIMEOUT)
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code in {401, 403}:
+                    increment(MetricNames.INTEGRATION_PROVIDER_AUTH_FAILURE)
+                elif status_code == 429:
+                    increment(MetricNames.INTEGRATION_PROVIDER_RATE_LIMIT)
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+            except httpx.HTTPError:
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+        increment(MetricNames.INTEGRATION_PROVIDER_SUCCESS)
 
         if not isinstance(payload, dict):
             raise ValueError(
@@ -128,17 +146,37 @@ class TwilioMessagingProvider:
         return f"https://verify.twilio.com/v2/Services/{service_sid}/{resource}"
 
     def start_verification(self, phone_e164: str) -> str:
-        response = httpx.post(
-            self._verify_url("Verifications"),
-            auth=self._twilio_auth(),
-            data={"To": phone_e164, "Channel": "sms"},
-            timeout=10.0,
-        )
-        response.raise_for_status()
+        increment(MetricNames.OTP_DELIVERY_ATTEMPTS)
+        try:
+            response = httpx.post(
+                self._verify_url("Verifications"),
+                auth=self._twilio_auth(),
+                data={"To": phone_e164, "Channel": "sms"},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+        except httpx.TimeoutException:
+            increment(MetricNames.OTP_DELIVERY_TIMEOUT)
+            increment(MetricNames.OTP_DELIVERY_FAILURE)
+            raise
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code in {401, 403}:
+                increment(MetricNames.OTP_DELIVERY_AUTH_FAILURE)
+            elif status_code == 429:
+                increment(MetricNames.OTP_DELIVERY_RATE_LIMIT)
+            increment(MetricNames.OTP_DELIVERY_FAILURE)
+            raise
+        except httpx.HTTPError:
+            increment(MetricNames.OTP_DELIVERY_FAILURE)
+            raise
+
         payload = response.json()
         sid = payload.get("sid")
         if not isinstance(sid, str) or not sid:
+            increment(MetricNames.OTP_DELIVERY_FAILURE)
             raise RuntimeError(f"Twilio Verify response missing sid: {payload!r}")
+        increment(MetricNames.OTP_DELIVERY_SUCCESS)
         logger.info("Twilio verification started sid=%s", sid)
         return sid
 

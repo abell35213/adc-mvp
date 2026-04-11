@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.metrics import MetricNames, increment, timed
 
 
 class SamsaraProvider:
@@ -22,14 +23,35 @@ class SamsaraProvider:
         self._clip_requests: dict[str, dict[str, str | None]] = {}
 
     def _get_json_data(self, path: str, params: Mapping[str, str]) -> list[dict[str, Any]]:
-        with httpx.Client() as client:
-            resp = client.get(
-                f"{self.BASE_URL}/{path}",
-                headers=self.headers,
-                params=params,
-            )
-            resp.raise_for_status()
-            return resp.json().get("data", [])
+        increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS)
+        with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
+            try:
+                with httpx.Client() as client:
+                    resp = client.get(
+                        f"{self.BASE_URL}/{path}",
+                        headers=self.headers,
+                        params=params,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json().get("data", [])
+            except httpx.TimeoutException:
+                increment(MetricNames.INTEGRATION_PROVIDER_TIMEOUT)
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code in {401, 403}:
+                    increment(MetricNames.INTEGRATION_PROVIDER_AUTH_FAILURE)
+                elif status_code == 429:
+                    increment(MetricNames.INTEGRATION_PROVIDER_RATE_LIMIT)
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+            except httpx.HTTPError:
+                increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+                raise
+
+        increment(MetricNames.INTEGRATION_PROVIDER_SUCCESS)
+        return data
 
     def _window_params(self, start: str | None = None, end: str | None = None) -> dict[str, str]:
         params: dict[str, str] = {}

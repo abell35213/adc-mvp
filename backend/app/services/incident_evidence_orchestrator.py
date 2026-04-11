@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.metrics import MetricNames, increment, timed
 from app.db.repo.evidence_requests import create_evidence_request
 from app.domain.system_event_types import SystemEventType
 from app.services.dashcam_capture_service import queue_dashcam_capture
@@ -40,42 +41,46 @@ class IncidentEvidenceOrchestrator:
         window_end: str | None,
         correlation_id: str,
     ) -> IncidentEvidenceOrchestrationResult:
-        dashcam_request_ids = [
-            create_evidence_request(
-                self.db,
-                org_id=org_id,
-                incident_id=incident_id,
-                provider="samsara",
-                domain="dashcam",
-                external_reference=stream,
-                status="open",
-                correlation_id=f"{correlation_id}:dashcam",
-                request_payload_json={
-                    "stream": stream,
-                    "window_start": window_start,
-                    "window_end": window_end,
-                },
-            ).evidence_request_id
-            for stream in ("road_facing", "driver_facing")
-        ]
-        telematics_request_ids = [
-            create_evidence_request(
-                self.db,
-                org_id=org_id,
-                incident_id=incident_id,
-                provider="samsara",
-                domain="telematics",
-                external_reference=dataset,
-                status="open",
-                correlation_id=f"{correlation_id}:telematics",
-                request_payload_json={
-                    "dataset": dataset,
-                    "window_start": window_start,
-                    "window_end": window_end,
-                },
-            ).evidence_request_id
-            for dataset in ("eld", "gps", "safety_events", "vehicle_state")
-        ]
+        with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
+            dashcam_request_ids = [
+                create_evidence_request(
+                    self.db,
+                    org_id=org_id,
+                    incident_id=incident_id,
+                    provider="samsara",
+                    domain="dashcam",
+                    external_reference=stream,
+                    status="open",
+                    correlation_id=f"{correlation_id}:dashcam",
+                    request_payload_json={
+                        "stream": stream,
+                        "window_start": window_start,
+                        "window_end": window_end,
+                    },
+                ).evidence_request_id
+                for stream in ("road_facing", "driver_facing")
+            ]
+            telematics_request_ids = [
+                create_evidence_request(
+                    self.db,
+                    org_id=org_id,
+                    incident_id=incident_id,
+                    provider="samsara",
+                    domain="telematics",
+                    external_reference=dataset,
+                    status="open",
+                    correlation_id=f"{correlation_id}:telematics",
+                    request_payload_json={
+                        "dataset": dataset,
+                        "window_start": window_start,
+                        "window_end": window_end,
+                    },
+                ).evidence_request_id
+                for dataset in ("eld", "gps", "safety_events", "vehicle_state")
+            ]
+
+        increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS, len(dashcam_request_ids))
+        increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS, len(telematics_request_ids))
 
         emit_timeline_event(
             self.db,

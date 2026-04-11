@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.core.metrics import MetricNames, increment
 from app.db.repo.job_execution_meta import upsert_job_execution_meta
 from app.jobs.retry_policy import (
     classify_retry_exception,
@@ -24,6 +25,7 @@ def record_task_queued(
     args: list[Any] | None,
     kwargs: dict[str, Any] | None,
 ) -> None:
+    increment(MetricNames.RETRY_SCHEDULER_QUEUED)
     upsert_job_execution_meta(
         task_id=task_id,
         task_name=task_name,
@@ -36,6 +38,7 @@ def record_task_queued(
 
 
 def record_task_started(*, task_name: str, task_id: str, max_retries: int) -> None:
+    increment(MetricNames.RETRY_SCHEDULER_STUCK_IN_PROGRESS)
     upsert_job_execution_meta(
         task_id=task_id,
         task_name=task_name,
@@ -59,6 +62,10 @@ def record_task_retrying(
     category = classify_retry_exception(exception)
     will_retry = should_retry(task_type, category, retry_count)
     status = "retrying" if will_retry else "failed"
+    if will_retry:
+        increment(MetricNames.RETRY_SCHEDULER_RETRYING)
+    else:
+        increment(MetricNames.RETRY_SCHEDULER_TERMINAL_FAILURES)
     next_retry = utc_now() + timedelta(seconds=30) if will_retry else None
     upsert_job_execution_meta(
         task_id=task_id,
@@ -84,6 +91,7 @@ def record_task_failed(
     max_retries: int,
     exception: BaseException,
 ) -> None:
+    increment(MetricNames.RETRY_SCHEDULER_TERMINAL_FAILURES)
     task_type = resolve_task_type(task_name)
     category = classify_retry_exception(exception)
     upsert_job_execution_meta(
