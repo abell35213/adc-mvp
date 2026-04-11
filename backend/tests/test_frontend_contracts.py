@@ -91,17 +91,12 @@ def _assert_iso_datetime(value: str):
     datetime.fromisoformat(normalized)
 
 
-@patch("app.api.routes_incidents.capture_telematics_bundle")
-@patch("app.api.routes_incidents.capture_dashcam")
+@patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
 def test_incident_list_contract_matches_frontend(
-    mock_dash,
-    mock_tele,
+    mock_begin_capture,
     client: TestClient,
     auth_headers: dict[str, str],
 ):
-    mock_dash.delay = MagicMock()
-    mock_tele.delay = MagicMock()
-
     create_resp = client.post(
         "/incidents/",
         json={
@@ -147,17 +142,12 @@ def test_incident_list_contract_matches_frontend(
         assert isinstance(item["evidence_total"], int)
 
 
-@patch("app.api.routes_incidents.capture_telematics_bundle")
-@patch("app.api.routes_incidents.capture_dashcam")
+@patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
 def test_incident_detail_contract_matches_frontend(
-    mock_dash,
-    mock_tele,
+    mock_begin_capture,
     client: TestClient,
     auth_headers: dict[str, str],
 ):
-    mock_dash.delay = MagicMock()
-    mock_tele.delay = MagicMock()
-
     create_resp = client.post(
         "/incidents/",
         json={
@@ -194,17 +184,13 @@ def test_incident_detail_contract_matches_frontend(
 
 
 @patch("app.api.routes_exports.build_export")
-@patch("app.api.routes_incidents.capture_telematics_bundle")
-@patch("app.api.routes_incidents.capture_dashcam")
+@patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
 def test_export_response_contract_matches_frontend(
-    mock_dash,
-    mock_tele,
+    mock_begin_capture,
     mock_build_export,
     client: TestClient,
     auth_headers: dict[str, str],
 ):
-    mock_dash.delay = MagicMock()
-    mock_tele.delay = MagicMock()
     mock_build_export.delay = MagicMock()
 
     create_resp = client.post(

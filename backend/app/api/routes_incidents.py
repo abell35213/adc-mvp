@@ -27,9 +27,9 @@ from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
-from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
 from app.tasks.export_tasks import build_export
 from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
+from app.services.incident_evidence_orchestrator import IncidentEvidenceOrchestrator
 from app.services.rate_limit_service import enforce_rate_limit
 from app.core.config import settings
 from app.security.authn import build_user_auth_context
@@ -81,6 +81,7 @@ def list_incidents_endpoint(
 @router.post("/", response_model=CreateIncidentResponse, status_code=201)
 def create_incident_endpoint(
     body: CreateIncidentRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -128,13 +129,27 @@ def create_incident_endpoint(
             actor_id=str(current_user.id),
         )
 
-        window_start = body.window_start or ""
-        window_end = body.window_end or ""
-        str_id = str(incident_id)
-
-        logger.info("Queueing evidence capture tasks", extra={"request_id": get_request_id()})
-        capture_dashcam.delay(str_id, window_start, window_end)
-        capture_telematics_bundle.delay(str_id, window_start, window_end)
+        window_start = body.window_start
+        window_end = body.window_end
+        request_correlation_id = (
+            request.headers.get("x-correlation-id") or get_request_id() or str(uuid.uuid4())
+        )
+        logger.info(
+            "Queueing orchestrated evidence capture",
+            extra={
+                "request_id": get_request_id(),
+                "correlation_id": request_correlation_id,
+            },
+        )
+        IncidentEvidenceOrchestrator(db).begin_capture(
+            org_id=org_id,
+            incident_id=incident_id,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            window_start=window_start,
+            window_end=window_end,
+            correlation_id=request_correlation_id,
+        )
 
     return CreateIncidentResponse(
         incident_id=incident_id,

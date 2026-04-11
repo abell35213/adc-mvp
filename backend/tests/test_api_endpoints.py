@@ -105,14 +105,10 @@ def client(db_session):
 
 
 class TestCreateIncident:
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_create_incident_returns_201(
-        self, mock_dash, mock_tele, client, auth_headers
+        self, mock_begin_capture, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         resp = client.post(
             "/incidents/",
             json={
@@ -128,14 +124,10 @@ class TestCreateIncident:
         assert "incident_id" in data
         assert data["status"] == "evidence_capturing"
 
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_create_incident_enqueues_tasks(
-        self, mock_dash, mock_tele, client, auth_headers
+        self, mock_begin_capture, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         resp = client.post(
             "/incidents/",
             json={
@@ -148,17 +140,14 @@ class TestCreateIncident:
         )
         assert resp.status_code == 201
         incident_id = resp.json()["incident_id"]
-        mock_dash.delay.assert_called_once_with(incident_id, "", "")
-        mock_tele.delay.assert_called_once_with(incident_id, "", "")
+        mock_begin_capture.assert_called_once()
+        call_kwargs = mock_begin_capture.call_args.kwargs
+        assert str(call_kwargs["incident_id"]) == incident_id
 
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_create_incident_writes_events(
-        self, mock_dash, mock_tele, client, db_session, auth_headers
+        self, mock_begin_capture, client, db_session, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         resp = client.post(
             "/incidents/",
             json={
@@ -205,14 +194,10 @@ class TestCreateIncident:
 
 
 class TestGetIncident:
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_detail(
-        self, mock_dash, mock_tele, client, auth_headers
+        self, mock_begin_capture, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         create_resp = client.post(
             "/incidents/",
             json={
@@ -234,14 +219,10 @@ class TestGetIncident:
         assert "evidence_inventory" in data
         assert "export_status" in data
 
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_timeline(
-        self, mock_dash, mock_tele, client, auth_headers
+        self, mock_begin_capture, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         create_resp = client.post(
             "/incidents/",
             json={
@@ -265,14 +246,10 @@ class TestGetIncident:
             assert "occurred_at_utc" in event
             assert "actor_type" in event
 
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(
-        self, mock_dash, mock_tele, client, auth_headers
+        self, mock_begin_capture, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         create_resp = client.post(
             "/incidents/",
             json={
@@ -289,14 +266,10 @@ class TestGetIncident:
         data = resp.json()
         assert "created_at_utc" in data
 
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_artifact_has_extra_fields(
-        self, mock_dash, mock_tele, client, db_session, auth_headers
+        self, mock_begin_capture, client, db_session, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         create_resp = client.post(
             "/incidents/",
             json={
@@ -354,14 +327,10 @@ class TestGetIncident:
 
 
 class TestListIncidents:
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_list_incidents_returns_evidence_counts(
-        self, mock_dash, mock_tele, client, db_session, auth_headers
+        self, mock_begin_capture, client, db_session, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
-
         create_resp = client.post(
             "/incidents/",
             json={
@@ -403,13 +372,10 @@ class TestListIncidents:
 
 class TestRequestExport:
     @patch("app.api.routes_exports.build_export")
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_request_export_returns_201(
-        self, mock_dash, mock_tele, mock_gen, client, auth_headers
+        self, mock_begin_capture, mock_gen, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
         mock_gen.delay = MagicMock()
 
         create_resp = client.post(
@@ -438,13 +404,10 @@ class TestRequestExport:
         assert data["created_at_utc"] is not None
 
     @patch("app.api.routes_exports.build_export")
-    @patch("app.api.routes_incidents.capture_telematics_bundle")
-    @patch("app.api.routes_incidents.capture_dashcam")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_request_export_enqueues_task(
-        self, mock_dash, mock_tele, mock_gen, client, auth_headers
+        self, mock_begin_capture, mock_gen, client, auth_headers
     ):
-        mock_dash.delay = MagicMock()
-        mock_tele.delay = MagicMock()
         mock_gen.delay = MagicMock()
 
         create_resp = client.post(
