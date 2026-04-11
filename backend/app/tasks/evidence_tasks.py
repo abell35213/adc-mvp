@@ -118,7 +118,12 @@ def _artifact_exists(db, artifact_id: _uuid.UUID) -> bool:
     time_limit=660,
 )
 def capture_dashcam(
-    self, incident_id: str, window_start: str | None, window_end: str | None
+    self,
+    incident_id: str,
+    window_start: str | None,
+    window_end: str | None,
+    operation_id: str | None = None,
+    correlation_id: str | None = None,
 ):
     """Capture dashcam footage for an incident.
 
@@ -131,15 +136,14 @@ def capture_dashcam(
     increment("evidence.capture_dashcam.attempts")
     from app.core.config import settings
     from app.db.repo.artifacts import create_artifact
-    from app.db.repo.evidence_requests import (
-        create_evidence_request,
-        update_evidence_request_error,
-    )
-    from app.db.repo.integration_operations import (
-        create_integration_operation,
-        update_integration_operation_error,
-    )
+    from app.db.models import EvidenceRequest, IntegrationOperation
+    from app.db.repo.evidence_requests import create_evidence_request, update_evidence_request_error
+    from app.db.repo.integration_operations import create_integration_operation, update_integration_operation_error
     from app.domain.system_event_types import SystemEventType
+    from app.services.integration_health_service import (
+        set_evidence_request_status,
+        transition_operation_status,
+    )
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
     from app.services.vault_s3 import VaultS3
@@ -193,19 +197,33 @@ def capture_dashcam(
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
-        operation = create_integration_operation(
+        operation = None
+        if operation_id:
+            operation = (
+                db.query(IntegrationOperation)
+                .filter(IntegrationOperation.operation_id == _uuid.UUID(operation_id))
+                .first()
+            )
+        if operation is None:
+            operation = create_integration_operation(
+                db,
+                org_id=_uuid.UUID(org_id),
+                incident_id=inc_uuid,
+                provider="samsara",
+                domain="dashcam",
+                operation_type="capture_dashcam",
+                status="queued",
+                correlation_id=correlation_id or workflow_key,
+                payload_json={
+                    "window_start": window_start,
+                    "window_end": window_end,
+                },
+            )
+        transition_operation_status(
             db,
-            org_id=_uuid.UUID(org_id),
-            incident_id=inc_uuid,
-            provider="samsara",
-            domain="dashcam",
-            operation_type="capture_dashcam",
-            status="running",
-            correlation_id=workflow_key,
-            payload_json={
-                "window_start": window_start,
-                "window_end": window_end,
-            },
+            operation=operation,
+            to_status="running",
+            message="Dashcam capture task started",
         )
 
         streams = {
@@ -216,22 +234,32 @@ def capture_dashcam(
         for stream_label, artifact_type in streams.items():
             evidence_request = None
             try:
-                evidence_request = create_evidence_request(
-                    db,
-                    org_id=_uuid.UUID(org_id),
-                    incident_id=inc_uuid,
-                    operation_id=operation.operation_id,
-                    provider="samsara",
-                    domain="dashcam",
-                    correlation_id=workflow_key,
-                    external_reference=stream_label,
-                    request_payload_json={
-                        "stream": stream_label,
-                        "window_start": window_start,
-                        "window_end": window_end,
-                    },
-                    status="in_progress",
+                evidence_request = (
+                    db.query(EvidenceRequest)
+                    .filter(
+                        EvidenceRequest.incident_id == inc_uuid,
+                        EvidenceRequest.operation_id == operation.operation_id,
+                        EvidenceRequest.external_reference == stream_label,
+                    )
+                    .first()
                 )
+                if evidence_request is None:
+                    evidence_request = create_evidence_request(
+                        db,
+                        org_id=_uuid.UUID(org_id),
+                        incident_id=inc_uuid,
+                        operation_id=operation.operation_id,
+                        provider="samsara",
+                        domain="dashcam",
+                        correlation_id=correlation_id or workflow_key,
+                        external_reference=stream_label,
+                        request_payload_json={
+                            "stream": stream_label,
+                            "window_start": window_start,
+                            "window_end": window_end,
+                        },
+                        status="in_progress",
+                    )
                 # 2. Attempt Samsara call for this stream
                 video_bytes = samsara.fetch_dashcam_stream(
                     stream=stream_label,
@@ -283,6 +311,8 @@ def capture_dashcam(
                     {
                         "artifact_type": artifact_type,
                         "sha256": sha,
+                        "correlation_id": correlation_id or workflow_key,
+                        "operation_id": str(operation.operation_id) if operation is not None else None,
                     },
                 )
 
@@ -300,13 +330,16 @@ def capture_dashcam(
                     sha256=sha,
                     byte_size=len(video_bytes),
                 )
-                evidence_request.status = "fulfilled"
-                evidence_request.response_payload_json = {
-                    "artifact_id": str(art_id),
-                    "artifact_type": artifact_type,
-                    "byte_size": len(video_bytes),
-                }
-                db.commit()
+                set_evidence_request_status(
+                    db,
+                    evidence_request=evidence_request,
+                    status="fulfilled",
+                    response_payload_json={
+                        "artifact_id": str(art_id),
+                        "artifact_type": artifact_type,
+                        "byte_size": len(video_bytes),
+                    },
+                )
 
             except Exception as stream_exc:
                 # Stream unavailable — document, don't crash
@@ -321,9 +354,12 @@ def capture_dashcam(
                 )
                 if evidence_request is not None:
                     update_evidence_request_error(db, evidence_request, normalized_error)
-                    evidence_request.status = "failed"
-                    evidence_request.response_payload_json = normalized_error.to_dict()
-                    db.commit()
+                    set_evidence_request_status(
+                        db,
+                        evidence_request=evidence_request,
+                        status="failed",
+                        response_payload_json=normalized_error.to_dict(),
+                    )
                 update_integration_operation_error(db, operation, normalized_error)
 
                 _emit_once(
@@ -338,6 +374,8 @@ def capture_dashcam(
                         "reason": normalized_error.user_facing_message,
                         "error_code": normalized_error.code,
                         "retryable": normalized_error.retryable,
+                        "correlation_id": correlation_id or workflow_key,
+                        "operation_id": str(operation.operation_id) if operation is not None else None,
                     },
                 )
 
@@ -368,8 +406,12 @@ def capture_dashcam(
                 "type": "dashcam",
             },
         )
-        operation.status = "succeeded"
-        db.commit()
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="succeeded",
+            message="Dashcam capture task succeeded",
+        )
 
         return {
             "incident_id": incident_id,
@@ -390,6 +432,13 @@ def capture_dashcam(
                 "reason": str(exc),
             },
         )
+        if "operation" in locals() and operation is not None:
+            transition_operation_status(
+                db,
+                operation=operation,
+                to_status="failed",
+                message=f"Dashcam capture task failed: {exc}",
+            )
         increment(MetricNames.CELERY_TASK_FAILURES)
         raise
 
@@ -410,7 +459,12 @@ def capture_dashcam(
     time_limit=360,
 )
 def capture_telematics_bundle(
-    self, incident_id: str, window_start: str | None, window_end: str | None
+    self,
+    incident_id: str,
+    window_start: str | None,
+    window_end: str | None,
+    operation_id: str | None = None,
+    correlation_id: str | None = None,
 ):
     """Capture telematics bundle for an incident.
 
@@ -428,8 +482,13 @@ def capture_telematics_bundle(
     import io
 
     from app.core.config import settings
+    from app.db.models import EvidenceRequest, IntegrationOperation
     from app.db.repo.artifacts import create_artifact
     from app.domain.system_event_types import SystemEventType
+    from app.services.integration_health_service import (
+        set_evidence_request_status,
+        transition_operation_status,
+    )
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
     from app.services.vault_s3 import VaultS3
@@ -488,6 +547,33 @@ def capture_telematics_bundle(
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
+        operation = None
+        if operation_id:
+            operation = (
+                db.query(IntegrationOperation)
+                .filter(IntegrationOperation.operation_id == _uuid.UUID(operation_id))
+                .first()
+            )
+        if operation is None:
+            from app.db.repo.integration_operations import create_integration_operation
+
+            operation = create_integration_operation(
+                db,
+                org_id=_uuid.UUID(org_id),
+                incident_id=inc_uuid,
+                provider="samsara",
+                domain="telematics",
+                operation_type="capture_telematics_bundle",
+                status="queued",
+                correlation_id=correlation_id or workflow_key,
+                payload_json={"window_start": window_start, "window_end": window_end},
+            )
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="running",
+            message="Telematics capture task started",
+        )
 
         datasets = {
             "eld": {
@@ -517,7 +603,36 @@ def capture_telematics_bundle(
         }
 
         for dataset_name, spec in datasets.items():
+            evidence_request = None
             try:
+                evidence_request = (
+                    db.query(EvidenceRequest)
+                    .filter(
+                        EvidenceRequest.incident_id == inc_uuid,
+                        EvidenceRequest.operation_id == operation.operation_id,
+                        EvidenceRequest.external_reference == dataset_name,
+                    )
+                    .first()
+                )
+                if evidence_request is None:
+                    from app.db.repo.evidence_requests import create_evidence_request
+
+                    evidence_request = create_evidence_request(
+                        db,
+                        org_id=_uuid.UUID(org_id),
+                        incident_id=inc_uuid,
+                        operation_id=operation.operation_id,
+                        provider="samsara",
+                        domain="telematics",
+                        correlation_id=correlation_id or workflow_key,
+                        external_reference=dataset_name,
+                        request_payload_json={
+                            "dataset": dataset_name,
+                            "window_start": window_start,
+                            "window_end": window_end,
+                        },
+                        status="in_progress",
+                    )
                 # 1. Fetch raw data
                 fetcher = getattr(samsara, spec["fetcher"], None)
                 if fetcher is None:
@@ -565,6 +680,8 @@ def capture_telematics_bundle(
                             "format": "json",
                             "s3_key": json_key,
                             "status": "captured",
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
                     _emit_once(
@@ -576,6 +693,8 @@ def capture_telematics_bundle(
                             "artifact_type": spec["artifact_type"],
                             "format": "json",
                             "sha256": json_sha,
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
 
@@ -628,6 +747,8 @@ def capture_telematics_bundle(
                             "format": "csv",
                             "s3_key": csv_key,
                             "status": "captured",
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
                     _emit_once(
@@ -639,6 +760,8 @@ def capture_telematics_bundle(
                             "artifact_type": spec["artifact_type"],
                             "format": "csv",
                             "sha256": csv_sha,
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
 
@@ -686,6 +809,8 @@ def capture_telematics_bundle(
                             "format": "pdf",
                             "s3_key": pdf_key,
                             "status": "captured",
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
                     _emit_once(
@@ -697,6 +822,8 @@ def capture_telematics_bundle(
                             "artifact_type": spec["artifact_type"],
                             "format": "pdf",
                             "sha256": pdf_sha,
+                            "correlation_id": correlation_id or workflow_key,
+                            "operation_id": str(operation.operation_id) if operation is not None else None,
                         },
                     )
 
@@ -713,6 +840,12 @@ def capture_telematics_bundle(
                         sha256=pdf_sha,
                         byte_size=len(pdf_bytes),
                     )
+                set_evidence_request_status(
+                    db,
+                    evidence_request=evidence_request,
+                    status="fulfilled",
+                    response_payload_json={"dataset": dataset_name, "status": "captured"},
+                )
 
             except Exception as ds_exc:
                 reason = str(ds_exc)
@@ -732,6 +865,8 @@ def capture_telematics_bundle(
                         "artifact_type": spec["artifact_type"],
                         "status": "unavailable",
                         "reason": reason,
+                        "correlation_id": correlation_id or workflow_key,
+                        "operation_id": str(operation.operation_id) if operation is not None else None,
                     },
                 )
 
@@ -751,6 +886,13 @@ def capture_telematics_bundle(
                         unavailable_reason_code="dataset_unavailable",
                         unavailable_reason_detail=reason,
                     )
+                if evidence_request is not None:
+                    set_evidence_request_status(
+                        db,
+                        evidence_request=evidence_request,
+                        status="failed",
+                        response_payload_json={"dataset": dataset_name, "error": reason},
+                    )
 
         _emit_once(
             db,
@@ -760,6 +902,12 @@ def capture_telematics_bundle(
             {
                 "type": "telematics",
             },
+        )
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="succeeded",
+            message="Telematics capture task succeeded",
         )
 
         return {
@@ -781,6 +929,13 @@ def capture_telematics_bundle(
                 "reason": str(exc),
             },
         )
+        if "operation" in locals() and operation is not None:
+            transition_operation_status(
+                db,
+                operation=operation,
+                to_status="failed",
+                message=f"Telematics capture task failed: {exc}",
+            )
         increment(MetricNames.CELERY_TASK_FAILURES)
         raise
 
