@@ -8,10 +8,17 @@ import hashlib
 import hmac
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.metrics import MetricNames, increment, timed
+from app.db.repo.message_operations import (
+    get_message_operation_by_provider_message_id,
+    update_message_operation_status,
+)
+from app.db.repo.provider_webhook_events import create_provider_webhook_event
+from app.db.session import get_db
 from app.services.twilio_notify import build_voice_twiml
 
 logger = logging.getLogger(__name__)
@@ -84,3 +91,46 @@ async def twilio_voice_webhook(request: Request):
         content=build_voice_twiml(VOICE_MESSAGE),
         media_type="application/xml",
     )
+
+
+@router.post("/status")
+async def twilio_status_webhook(request: Request, db: Session = Depends(get_db)):
+    body = await request.body()
+    raw_params = parse_qs(body.decode(), keep_blank_values=True)
+    params = _flatten_twilio_params(raw_params)
+    _validate_twilio_request(request, params)
+    create_provider_webhook_event(
+        db,
+        org_id=None,
+        provider="twilio",
+        domain="messaging",
+        event_type="status_callback",
+        status="processed",
+        external_reference=params.get("MessageSid"),
+        payload_json=params,
+    )
+    message_sid = params.get("MessageSid")
+    message_status = (params.get("MessageStatus") or "").strip().lower()
+    error_code = params.get("ErrorCode") or None
+    if message_sid:
+        operation = get_message_operation_by_provider_message_id(
+            db, provider="twilio", provider_message_id=message_sid
+        )
+        if operation is not None:
+            status_map = {
+                "queued": "queued",
+                "sent": "sent",
+                "delivered": "delivered",
+                "undelivered": "undelivered",
+                "failed": "failed",
+            }
+            mapped = status_map.get(message_status)
+            if mapped:
+                update_message_operation_status(
+                    db,
+                    operation,
+                    to_status=mapped,
+                    normalized_error_code=f"TWILIO_{error_code}" if error_code else None,
+                    details_json=params,
+                )
+    return {"status": "ok"}

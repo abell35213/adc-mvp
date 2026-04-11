@@ -29,7 +29,9 @@ from app.db.repo.drivers import (
     increment_otp_attempts,
     mark_otp_verified,
 )
+from app.db.repo.message_operations import create_message_operation, update_message_operation_status
 from app.db.session import get_db
+from app.integrations.errors import as_normalized_error
 from app.security.session import create_session, revoke_session, rotate_refresh_token
 from app.services.phone_normalize import normalize_phone
 
@@ -132,12 +134,37 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
         )
     _enforce_rate_limit("request", phone_e164, _REQUEST_LIMIT)
 
+    msg_op = create_message_operation(
+        db,
+        org_id=None,
+        provider="twilio",
+        domain="auth",
+        purpose="otp_request",
+        to_e164=phone_e164,
+        status="queued",
+        payload_json={"flow": "driver_auth"},
+    )
     twilio_sid: str | None = None
     try:
         from app.services import twilio_verify
 
         twilio_sid = twilio_verify.start_verification(phone_e164)
-    except Exception:
+        update_message_operation_status(
+            db,
+            msg_op,
+            to_status="sent",
+            provider_message_id=twilio_sid,
+            details_json={"verify_sid": twilio_sid},
+        )
+    except Exception as exc:
+        normalized_error = as_normalized_error(exc, provider_hint="twilio", category="auth")
+        update_message_operation_status(
+            db,
+            msg_op,
+            to_status="failed",
+            normalized_error_code=normalized_error.code,
+            details_json={"reason": "twilio_verify_start_failed"},
+        )
         logger.warning(
             "Twilio verify start failed for phone hash=%s", _phone_hash(phone_e164)
         )
@@ -163,6 +190,16 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             detail="Invalid phone number",
         )
     _enforce_rate_limit("verify", phone_e164, _VERIFY_LIMIT)
+    verify_operation = create_message_operation(
+        db,
+        org_id=None,
+        provider="twilio",
+        domain="auth",
+        purpose="otp_verify",
+        to_e164=phone_e164,
+        status="queued",
+        payload_json={"flow": "driver_auth"},
+    )
 
     challenge = get_latest_otp_challenge_by_phone(db, phone_e164)
     if challenge is None:
@@ -231,7 +268,15 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         from app.services import twilio_verify
 
         otp_ok = twilio_verify.check_verification(phone_e164, body.otp_code)
-    except Exception:
+    except Exception as exc:
+        normalized_error = as_normalized_error(exc, provider_hint="twilio", category="auth")
+        update_message_operation_status(
+            db,
+            verify_operation,
+            to_status="failed",
+            normalized_error_code=normalized_error.code,
+            details_json={"reason": "twilio_verify_check_failed"},
+        )
         logger.exception("Twilio verify check failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -239,6 +284,13 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         )
 
     if not otp_ok:
+        update_message_operation_status(
+            db,
+            verify_operation,
+            to_status="undelivered",
+            normalized_error_code="AUTH_INVALID_OTP",
+            details_json={"reason": "invalid_otp"},
+        )
         challenge = increment_otp_attempts(db, challenge)
         logger.info(
             "DRIVER_OTP_FAILED phone_hash=%s attempts=%d status=%s",
@@ -275,6 +327,12 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid OTP",
         )
+    update_message_operation_status(
+        db,
+        verify_operation,
+        to_status="delivered",
+        details_json={"reason": "otp_approved"},
+    )
 
     driver = get_driver_by_phone(db, phone_e164)
     if driver is None:

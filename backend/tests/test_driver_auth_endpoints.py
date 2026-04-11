@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api import routes_driver_auth
-from app.db.models import Base, Driver, Org, OtpChallenge
+from app.db.models import Base, Driver, MessageOperation, Org, OtpChallenge
 from app.db.session import get_db
 from app.main import app
 from tests.helpers.fake_redis import FakeRedisRateLimiter
@@ -94,6 +94,17 @@ def test_driver_otp_flow(client, db_session, driver):
         )
         assert challenge is not None
         assert challenge.twilio_sid == "VE123"
+        otp_request_operation = (
+            db_session.query(MessageOperation)
+            .filter(
+                MessageOperation.purpose == "otp_request",
+                MessageOperation.to_e164 == driver.phone_e164,
+            )
+            .first()
+        )
+        assert otp_request_operation is not None
+        assert otp_request_operation.status == "sent"
+        assert otp_request_operation.provider_message_id == "VE123"
 
         verify_resp = client.post(
             "/driver/auth/verify-otp",
@@ -102,6 +113,14 @@ def test_driver_otp_flow(client, db_session, driver):
         assert verify_resp.status_code == 200
         token = verify_resp.json()["access_token"]
         assert token
+        otp_verify_operation = (
+            db_session.query(MessageOperation)
+            .filter(MessageOperation.purpose == "otp_verify")
+            .order_by(MessageOperation.created_at_utc.desc())
+            .first()
+        )
+        assert otp_verify_operation is not None
+        assert otp_verify_operation.status == "delivered"
 
         me_resp = client.get(
             "/driver/me",

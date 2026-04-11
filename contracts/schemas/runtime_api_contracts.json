@@ -802,6 +802,13 @@
           "title": "Incident Id",
           "type": "string"
         },
+        "messaging_reliability": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Messaging Reliability",
+          "type": "object"
+        },
         "samsara_vehicle_id": {
           "anyOf": [
             {
