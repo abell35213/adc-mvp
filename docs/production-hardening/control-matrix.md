@@ -17,6 +17,8 @@
 
 ## CI requirement for hardening-related pull requests
 
+Last update: added dashcam provider-state transitions (`requested` → `submitted_to_provider` → `processing_at_provider` → terminal `downloaded|unavailable|failed`) and canonical missing-reason mappings in evidence/export flows.
+
 Any pull request that touches hardening-related code **must** update `docs/production-hardening/control-matrix.md` in the same change.
 
 This repository enforces that requirement using:

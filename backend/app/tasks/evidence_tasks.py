@@ -144,6 +144,7 @@ def capture_dashcam(
         set_evidence_request_status,
         transition_operation_status,
     )
+    from app.services.dashcam_reason_codes import map_dashcam_missing_reason_code
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
     from app.services.vault_s3 import VaultS3
@@ -212,7 +213,7 @@ def capture_dashcam(
                 provider="samsara",
                 domain="dashcam",
                 operation_type="capture_dashcam",
-                status="queued",
+                status="requested",
                 correlation_id=correlation_id or workflow_key,
                 payload_json={
                     "window_start": window_start,
@@ -222,18 +223,35 @@ def capture_dashcam(
         transition_operation_status(
             db,
             operation=operation,
-            to_status="running",
-            message="Dashcam capture task started",
+            to_status="submitted_to_provider",
+            message="Dashcam request submitted to provider",
+        )
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="processing_at_provider",
+            message="Dashcam request processing at provider",
         )
 
         streams = {
             "road_facing": "dash_cam_video_road",
             "driver_facing": "dash_cam_video_driver",
         }
+        captured_stream_count = 0
+        unavailable_stream_count = 0
+        stream_count = len(streams)
 
         for stream_label, artifact_type in streams.items():
             evidence_request = None
             try:
+                provider_request_id = f"{incident_id}:{stream_label}:{window_start or 'na'}:{window_end or 'na'}"
+                transition_operation_status(
+                    db,
+                    operation=operation,
+                    to_status="processing_at_provider",
+                    message=f"Polling provider for {stream_label}",
+                    external_reference_id=provider_request_id,
+                )
                 evidence_request = (
                     db.query(EvidenceRequest)
                     .filter(
@@ -269,6 +287,13 @@ def capture_dashcam(
 
                 if video_bytes is None:
                     raise ValueError(f"No footage returned for {stream_label}")
+                transition_operation_status(
+                    db,
+                    operation=operation,
+                    to_status="available",
+                    message=f"Dashcam clip available for {stream_label}",
+                    external_reference_id=provider_request_id,
+                )
 
                 # 3a. Upload to S3
                 artifact_key = _idempotency_key(
@@ -340,6 +365,7 @@ def capture_dashcam(
                         "byte_size": len(video_bytes),
                     },
                 )
+                captured_stream_count += 1
 
             except Exception as stream_exc:
                 # Stream unavailable — document, don't crash
@@ -383,6 +409,10 @@ def capture_dashcam(
                     workflow_key, stream_label, artifact_type, "unavailable"
                 )
                 unavailable_art_id = _deterministic_uuid(unavailable_key)
+                reason_code = map_dashcam_missing_reason_code(
+                    normalized_error=normalized_error,
+                    operator_message=str(stream_exc),
+                )
                 if not _artifact_exists(db, unavailable_art_id):
                     create_artifact(
                         db,
@@ -392,9 +422,10 @@ def capture_dashcam(
                         artifact_id=unavailable_art_id,
                         capture_window_start_utc=ws_dt,
                         capture_window_end_utc=we_dt,
-                        unavailable_reason_code="stream_unavailable",
+                        unavailable_reason_code=reason_code,
                         unavailable_reason_detail=normalized_error.user_facing_message,
                     )
+                unavailable_stream_count += 1
 
         # 4. Emit EVIDENCE_CAPTURE_SUCCEEDED
         _emit_once(
@@ -406,18 +437,17 @@ def capture_dashcam(
                 "type": "dashcam",
             },
         )
-        transition_operation_status(
-            db,
-            operation=operation,
-            to_status="succeeded",
-            message="Dashcam capture task succeeded",
-        )
+        final_status = "downloaded" if captured_stream_count > 0 else "unavailable"
+        transition_operation_status(db, operation=operation, to_status=final_status, message="Dashcam task finalized")
 
         return {
             "incident_id": incident_id,
             "type": "dashcam",
-            "status": "captured",
+            "status": "captured" if captured_stream_count else "unavailable",
             "idempotency_key": workflow_key,
+            "captured_streams": captured_stream_count,
+            "unavailable_streams": unavailable_stream_count,
+            "stream_count": stream_count,
         }
 
     except Exception as exc:

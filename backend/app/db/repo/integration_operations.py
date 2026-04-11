@@ -19,6 +19,7 @@ def create_integration_operation(
     domain: str | None = None,
     correlation_id: str | None = None,
     external_reference: str | None = None,
+    external_reference_id: str | None = None,
     payload_json: dict | None = None,
     normalized_error: NormalizedIntegrationError | None = None,
 ):
@@ -33,6 +34,7 @@ def create_integration_operation(
         domain=domain,
         correlation_id=correlation_id,
         external_reference=external_reference,
+        external_reference_id=external_reference_id or external_reference,
         payload_json=payload_json or {},
         error_code=normalized_payload["code"] if normalized_payload else None,
         error_category=normalized_payload["category"] if normalized_payload else None,
@@ -81,6 +83,7 @@ def list_integration_operations(
     provider: str | None = None,
     correlation_id: str | None = None,
     external_reference: str | None = None,
+    external_reference_id: str | None = None,
 ):
     query = db.query(IntegrationOperation)
     if org_id is not None:
@@ -96,5 +99,9 @@ def list_integration_operations(
     if external_reference is not None:
         query = query.filter(
             IntegrationOperation.external_reference == external_reference
+        )
+    if external_reference_id is not None:
+        query = query.filter(
+            IntegrationOperation.external_reference_id == external_reference_id
         )
     return query.order_by(IntegrationOperation.requested_at_utc.desc()).all()

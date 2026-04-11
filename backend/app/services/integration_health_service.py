@@ -16,13 +16,24 @@ def transition_operation_status(
     operation: IntegrationOperation,
     to_status: str,
     message: str | None = None,
+    external_reference_id: str | None = None,
 ):
     """Transition an operation status and write history."""
     from_status = operation.status
+    if external_reference_id:
+        operation.external_reference_id = external_reference_id
+        operation.external_reference = external_reference_id
+
+    if from_status == to_status:
+        db.add(operation)
+        db.commit()
+        db.refresh(operation)
+        return operation
+
     operation.status = to_status
     if to_status == "running" and operation.started_at_utc is None:
         operation.started_at_utc = datetime.now(timezone.utc)
-    if to_status in {"succeeded", "failed", "canceled"}:
+    if to_status in {"succeeded", "failed", "canceled", "downloaded", "unavailable"}:
         operation.completed_at_utc = datetime.now(timezone.utc)
     db.add(operation)
     db.commit()
@@ -39,6 +50,7 @@ def transition_operation_status(
         to_status=to_status,
         correlation_id=operation.correlation_id,
         external_reference=operation.external_reference,
+        external_reference_id=operation.external_reference_id,
         message=message,
     )
     return operation
