@@ -9,7 +9,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base, Incident, Artifact, Event, Export, User, Org, UserOrg
+from app.db.models import (
+    Base,
+    Incident,
+    Artifact,
+    Event,
+    Export,
+    User,
+    Org,
+    UserOrg,
+    IntegrationConnection,
+    IntegrationOperation,
+    EvidenceRequest,
+)
 from app.db.session import get_db
 from app.core.security import hash_password, create_access_token
 from app.main import app
@@ -245,6 +257,87 @@ class TestGetIncident:
         for event in data["timeline"]:
             assert "occurred_at_utc" in event
             assert "actor_type" in event
+
+
+class TestIntegrationDiagnosticsRoutes:
+    def test_org_integrations_and_details(self, client, db_session, test_org, auth_headers):
+        connection = IntegrationConnection(
+            org_id=test_org.id,
+            provider="samsara",
+            domain="telematics",
+            status="active",
+            credentials_ref="vault://samsara",
+        )
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+
+        list_resp = client.get("/org/integrations", headers=auth_headers)
+        assert list_resp.status_code == 200
+        assert len(list_resp.json()) == 1
+
+        detail_resp = client.get(f"/org/integrations/{connection.connection_id}", headers=auth_headers)
+        assert detail_resp.status_code == 200
+        assert detail_resp.json()["provider"] == "samsara"
+
+    def test_integration_operations_and_evidence_summary(self, client, db_session, test_org, auth_headers):
+        incident = Incident(
+            org_id=test_org.id,
+            status="evidence_capturing",
+            severity="serious",
+            adc_vehicle_id="veh-123",
+            samsara_vehicle_id="sm-veh-123",
+            adc_driver_id="drv-123",
+        )
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        operation = IntegrationOperation(
+            org_id=test_org.id,
+            incident_id=incident.incident_id,
+            provider="samsara",
+            domain="dashcam",
+            operation_type="capture_dashcam",
+            status="failed",
+            payload_json={},
+            result_json={},
+        )
+        db_session.add(operation)
+        db_session.commit()
+        db_session.refresh(operation)
+
+        evidence = EvidenceRequest(
+            org_id=test_org.id,
+            incident_id=incident.incident_id,
+            operation_id=operation.operation_id,
+            provider="samsara",
+            domain="dashcam",
+            status="failed",
+            error_retryable=True,
+            request_payload_json={},
+            response_payload_json={},
+        )
+        db_session.add(evidence)
+        db_session.commit()
+
+        ops_resp = client.get("/integration-operations", headers=auth_headers)
+        assert ops_resp.status_code == 200
+        assert len(ops_resp.json()) == 1
+
+        evidence_list = client.get(
+            f"/incidents/{incident.incident_id}/evidence-requests",
+            headers=auth_headers,
+        )
+        assert evidence_list.status_code == 200
+        assert len(evidence_list.json()) == 1
+
+        summary_resp = client.get(
+            f"/incidents/{incident.incident_id}/evidence-summary",
+            headers=auth_headers,
+        )
+        assert summary_resp.status_code == 200
+        assert summary_resp.json()["retryable_failures"] == 1
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(
