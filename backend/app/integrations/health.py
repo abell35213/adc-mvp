@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.integrations.errors import ProviderHealthError
+from app.integrations.errors import NormalizedIntegrationError, ProviderHealthError
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,16 @@ class ProviderHealth:
 def ensure_healthy(health: ProviderHealth) -> ProviderHealth:
     if not health.healthy:
         raise ProviderHealthError(
-            f"Provider {health.provider} is unhealthy: {health.details or 'unknown reason'}"
+            NormalizedIntegrationError(
+                code="INTEGRATION_PROVIDER_ERROR",
+                category="integration",
+                provider_key=health.provider,
+                retryable=True,
+                user_facing_message="Integration provider health check failed.",
+                operator_message=(
+                    f"Provider {health.provider} is unhealthy: "
+                    f"{health.details or 'unknown reason'}"
+                ),
+            )
         )
     return health

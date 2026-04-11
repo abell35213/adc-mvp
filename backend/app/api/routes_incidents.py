@@ -184,6 +184,7 @@ def get_incident_endpoint(
                     else None
                 ),
                 unavailable_reason=a.unavailable_reason_code,
+                unavailable_message=a.unavailable_reason_detail,
             )
             for a in artifacts
         ],

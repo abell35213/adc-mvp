@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from app.integrations.errors import ProviderNotRegisteredError
+from app.integrations.errors import NormalizedIntegrationError, ProviderNotRegisteredError
 from app.integrations.models import ProviderCapability
 
 
@@ -22,7 +22,16 @@ class IntegrationRegistry:
         provider = self._providers.get(capability)
         if provider is None:
             raise ProviderNotRegisteredError(
-                f"No provider registered for capability={capability.value}"
+                NormalizedIntegrationError(
+                    code="MAPPING_NOT_FOUND",
+                    category="mapping",
+                    provider_key="registry",
+                    retryable=False,
+                    user_facing_message="Integration provider is not configured.",
+                    operator_message=(
+                        f"No provider registered for capability={capability.value}"
+                    ),
+                )
             )
         return provider
 
