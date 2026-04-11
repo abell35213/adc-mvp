@@ -436,6 +436,18 @@
               "title": "Status",
               "type": "string"
             },
+            "unavailable_message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Unavailable Message"
+            },
             "unavailable_reason": {
               "anyOf": [
                 {

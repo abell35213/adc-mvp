@@ -247,6 +247,7 @@ class ArtifactSummary(BaseModel):
     status: ArtifactStatus
     captured_at_utc: Optional[datetime] = None
     unavailable_reason: Optional[ShortText] = None
+    unavailable_message: Optional[str] = None
 
 
 class ExportSummary(BaseModel):

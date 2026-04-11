@@ -5,6 +5,7 @@ import uuid as _uuid
 from sqlalchemy.orm import Session
 
 from app.db.models import IntegrationOperation
+from app.integrations.errors import NormalizedIntegrationError
 
 
 def create_integration_operation(
@@ -19,7 +20,9 @@ def create_integration_operation(
     correlation_id: str | None = None,
     external_reference: str | None = None,
     payload_json: dict | None = None,
+    normalized_error: NormalizedIntegrationError | None = None,
 ):
+    normalized_payload = normalized_error.to_dict() if normalized_error else None
     operation = IntegrationOperation(
         org_id=org_id,
         provider=provider,
@@ -31,7 +34,39 @@ def create_integration_operation(
         correlation_id=correlation_id,
         external_reference=external_reference,
         payload_json=payload_json or {},
+        error_code=normalized_payload["code"] if normalized_payload else None,
+        error_category=normalized_payload["category"] if normalized_payload else None,
+        error_provider_key=(
+            normalized_payload["provider_key"] if normalized_payload else None
+        ),
+        error_retryable=normalized_payload["retryable"] if normalized_payload else None,
+        error_user_facing_message=(
+            normalized_payload["user_facing_message"] if normalized_payload else None
+        ),
+        error_operator_message=(
+            normalized_payload["operator_message"] if normalized_payload else None
+        ),
+        error_message=normalized_payload["operator_message"] if normalized_payload else None,
     )
+    db.add(operation)
+    db.commit()
+    db.refresh(operation)
+    return operation
+
+
+def update_integration_operation_error(
+    db: Session,
+    operation: IntegrationOperation,
+    normalized_error: NormalizedIntegrationError,
+) -> IntegrationOperation:
+    payload = normalized_error.to_dict()
+    operation.error_code = str(payload["code"])
+    operation.error_category = str(payload["category"])
+    operation.error_provider_key = str(payload["provider_key"])
+    operation.error_retryable = bool(payload["retryable"])
+    operation.error_user_facing_message = str(payload["user_facing_message"])
+    operation.error_operator_message = str(payload["operator_message"])
+    operation.error_message = str(payload["operator_message"])
     db.add(operation)
     db.commit()
     db.refresh(operation)

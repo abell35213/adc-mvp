@@ -7,6 +7,7 @@ import uuid as _uuid
 import httpx
 
 from app.core.metrics import MetricNames, increment
+from app.integrations.errors import IntegrationError, as_normalized_error
 from app.tasks.celery_app import celery_app
 
 
@@ -174,7 +175,10 @@ def notify_safety_manager(self, incident_id: str):
                             "sms_sid": sms_sid,
                         },
                     )
-                except (httpx.HTTPError, ValueError) as exc:
+                except (httpx.HTTPError, ValueError, IntegrationError) as exc:
+                    normalized_error = as_normalized_error(
+                        exc, provider_hint="twilio", category="messaging"
+                    )
                     _emit_once(
                         db,
                         inc_uuid,
@@ -182,10 +186,12 @@ def notify_safety_manager(self, incident_id: str):
                         f"{workflow_key}:sms_failed",
                         {
                             "phone": phone,
-                            "reason": str(exc),
+                            "reason": normalized_error.user_facing_message,
+                            "error_code": normalized_error.code,
+                            "retryable": normalized_error.retryable,
                         },
                     )
-                    errors.append(f"SMS failed: {exc}")
+                    errors.append(f"SMS failed: {normalized_error.operator_message}")
 
         if org.voice_enabled:
             call_event_key = f"{workflow_key}:call_placed"
@@ -207,7 +213,10 @@ def notify_safety_manager(self, incident_id: str):
                             "call_sid": call_sid,
                         },
                     )
-                except (httpx.HTTPError, ValueError) as exc:
+                except (httpx.HTTPError, ValueError, IntegrationError) as exc:
+                    normalized_error = as_normalized_error(
+                        exc, provider_hint="twilio", category="messaging"
+                    )
                     _emit_once(
                         db,
                         inc_uuid,
@@ -215,10 +224,12 @@ def notify_safety_manager(self, incident_id: str):
                         f"{workflow_key}:call_failed",
                         {
                             "phone": phone,
-                            "reason": str(exc),
+                            "reason": normalized_error.user_facing_message,
+                            "error_code": normalized_error.code,
+                            "retryable": normalized_error.retryable,
                         },
                     )
-                    errors.append(f"Call failed: {exc}")
+                    errors.append(f"Call failed: {normalized_error.operator_message}")
 
         if errors:
             raise RuntimeError(f"Notification failures: {'; '.join(errors)}")

@@ -6,6 +6,7 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 from app.core.metrics import MetricNames, increment
+from app.integrations.errors import as_normalized_error
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,14 @@ def capture_dashcam(
     increment("evidence.capture_dashcam.attempts")
     from app.core.config import settings
     from app.db.repo.artifacts import create_artifact
+    from app.db.repo.evidence_requests import (
+        create_evidence_request,
+        update_evidence_request_error,
+    )
+    from app.db.repo.integration_operations import (
+        create_integration_operation,
+        update_integration_operation_error,
+    )
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
@@ -184,6 +193,20 @@ def capture_dashcam(
 
         samsara = SamsaraClient()
         s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
+        operation = create_integration_operation(
+            db,
+            org_id=_uuid.UUID(org_id),
+            incident_id=inc_uuid,
+            provider="samsara",
+            domain="dashcam",
+            operation_type="capture_dashcam",
+            status="running",
+            correlation_id=workflow_key,
+            payload_json={
+                "window_start": window_start,
+                "window_end": window_end,
+            },
+        )
 
         streams = {
             "road_facing": "dash_cam_video_road",
@@ -191,7 +214,24 @@ def capture_dashcam(
         }
 
         for stream_label, artifact_type in streams.items():
+            evidence_request = None
             try:
+                evidence_request = create_evidence_request(
+                    db,
+                    org_id=_uuid.UUID(org_id),
+                    incident_id=inc_uuid,
+                    operation_id=operation.operation_id,
+                    provider="samsara",
+                    domain="dashcam",
+                    correlation_id=workflow_key,
+                    external_reference=stream_label,
+                    request_payload_json={
+                        "stream": stream_label,
+                        "window_start": window_start,
+                        "window_end": window_end,
+                    },
+                    status="in_progress",
+                )
                 # 2. Attempt Samsara call for this stream
                 video_bytes = samsara.fetch_dashcam_stream(
                     stream=stream_label,
@@ -260,16 +300,31 @@ def capture_dashcam(
                     sha256=sha,
                     byte_size=len(video_bytes),
                 )
+                evidence_request.status = "fulfilled"
+                evidence_request.response_payload_json = {
+                    "artifact_id": str(art_id),
+                    "artifact_type": artifact_type,
+                    "byte_size": len(video_bytes),
+                }
+                db.commit()
 
             except Exception as stream_exc:
                 # Stream unavailable — document, don't crash
-                reason = str(stream_exc)
+                normalized_error = as_normalized_error(
+                    stream_exc, provider_hint="samsara", category="dashcam"
+                )
                 logger.warning(
                     "Dashcam stream %s unavailable for incident %s: %s",
                     stream_label,
                     incident_id,
-                    reason,
+                    normalized_error.operator_message,
                 )
+                if evidence_request is not None:
+                    update_evidence_request_error(db, evidence_request, normalized_error)
+                    evidence_request.status = "failed"
+                    evidence_request.response_payload_json = normalized_error.to_dict()
+                    db.commit()
+                update_integration_operation_error(db, operation, normalized_error)
 
                 _emit_once(
                     db,
@@ -280,7 +335,9 @@ def capture_dashcam(
                         "artifact_type": artifact_type,
                         "stream": stream_label,
                         "status": "unavailable",
-                        "reason": reason,
+                        "reason": normalized_error.user_facing_message,
+                        "error_code": normalized_error.code,
+                        "retryable": normalized_error.retryable,
                     },
                 )
 
@@ -298,7 +355,7 @@ def capture_dashcam(
                         capture_window_start_utc=ws_dt,
                         capture_window_end_utc=we_dt,
                         unavailable_reason_code="stream_unavailable",
-                        unavailable_reason_detail=reason,
+                        unavailable_reason_detail=normalized_error.user_facing_message,
                     )
 
         # 4. Emit EVIDENCE_CAPTURE_SUCCEEDED
@@ -311,6 +368,8 @@ def capture_dashcam(
                 "type": "dashcam",
             },
         )
+        operation.status = "succeeded"
+        db.commit()
 
         return {
             "incident_id": incident_id,

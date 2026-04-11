@@ -5,6 +5,7 @@ import uuid as _uuid
 from sqlalchemy.orm import Session
 
 from app.db.models import EvidenceRequest
+from app.integrations.errors import NormalizedIntegrationError
 
 
 def create_evidence_request(
@@ -18,7 +19,9 @@ def create_evidence_request(
     correlation_id: str | None = None,
     external_reference: str | None = None,
     request_payload_json: dict | None = None,
+    normalized_error: NormalizedIntegrationError | None = None,
 ):
+    normalized_payload = normalized_error.to_dict() if normalized_error else None
     evidence_request = EvidenceRequest(
         org_id=org_id,
         provider=provider,
@@ -29,7 +32,37 @@ def create_evidence_request(
         correlation_id=correlation_id,
         external_reference=external_reference,
         request_payload_json=request_payload_json or {},
+        error_code=normalized_payload["code"] if normalized_payload else None,
+        error_category=normalized_payload["category"] if normalized_payload else None,
+        error_provider_key=(
+            normalized_payload["provider_key"] if normalized_payload else None
+        ),
+        error_retryable=normalized_payload["retryable"] if normalized_payload else None,
+        error_user_facing_message=(
+            normalized_payload["user_facing_message"] if normalized_payload else None
+        ),
+        error_operator_message=(
+            normalized_payload["operator_message"] if normalized_payload else None
+        ),
     )
+    db.add(evidence_request)
+    db.commit()
+    db.refresh(evidence_request)
+    return evidence_request
+
+
+def update_evidence_request_error(
+    db: Session,
+    evidence_request: EvidenceRequest,
+    normalized_error: NormalizedIntegrationError,
+) -> EvidenceRequest:
+    payload = normalized_error.to_dict()
+    evidence_request.error_code = str(payload["code"])
+    evidence_request.error_category = str(payload["category"])
+    evidence_request.error_provider_key = str(payload["provider_key"])
+    evidence_request.error_retryable = bool(payload["retryable"])
+    evidence_request.error_user_facing_message = str(payload["user_facing_message"])
+    evidence_request.error_operator_message = str(payload["operator_message"])
     db.add(evidence_request)
     db.commit()
     db.refresh(evidence_request)

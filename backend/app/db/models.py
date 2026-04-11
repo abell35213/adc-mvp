@@ -419,6 +419,12 @@ class IntegrationOperation(Base):
     payload_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
     result_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
     error_message = Column(Text, nullable=True)
+    error_code = Column(Text, nullable=True, index=True)
+    error_category = Column(Text, nullable=True, index=True)
+    error_provider_key = Column(Text, nullable=True, index=True)
+    error_retryable = Column(Boolean, nullable=True)
+    error_user_facing_message = Column(Text, nullable=True)
+    error_operator_message = Column(Text, nullable=True)
     requested_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -541,6 +547,12 @@ class EvidenceRequest(Base):
     response_payload_json = Column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
+    error_code = Column(Text, nullable=True, index=True)
+    error_category = Column(Text, nullable=True, index=True)
+    error_provider_key = Column(Text, nullable=True, index=True)
+    error_retryable = Column(Boolean, nullable=True)
+    error_user_facing_message = Column(Text, nullable=True)
+    error_operator_message = Column(Text, nullable=True)
     requested_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
