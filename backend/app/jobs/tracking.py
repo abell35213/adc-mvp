@@ -9,6 +9,7 @@ from app.core.metrics import MetricNames, increment
 from app.db.repo.job_execution_meta import upsert_job_execution_meta
 from app.jobs.retry_policy import (
     classify_retry_exception,
+    get_policy_for_task,
     resolve_task_type,
     should_retry,
 )
@@ -59,14 +60,17 @@ def record_task_retrying(
     exception: BaseException,
 ) -> None:
     task_type = resolve_task_type(task_name)
-    category = classify_retry_exception(exception)
-    will_retry = should_retry(task_type, category, retry_count)
+    retry_class = classify_retry_exception(exception)
+    will_retry = should_retry(task_type, retry_class, retry_count)
     status = "retrying" if will_retry else "failed"
     if will_retry:
         increment(MetricNames.RETRY_SCHEDULER_RETRYING)
     else:
         increment(MetricNames.RETRY_SCHEDULER_TERMINAL_FAILURES)
-    next_retry = utc_now() + timedelta(seconds=30) if will_retry else None
+    policy = get_policy_for_task(task_name)
+    delay_seconds = policy.base_delay_seconds * (2 ** max(retry_count, 0))
+    delay_seconds = min(delay_seconds, policy.backoff_cap_seconds)
+    next_retry = utc_now() + timedelta(seconds=delay_seconds) if will_retry else None
     upsert_job_execution_meta(
         task_id=task_id,
         task_name=task_name,
@@ -74,7 +78,7 @@ def record_task_retrying(
         status=status,
         retry_count=retry_count,
         max_retries=max_retries,
-        retry_category=category,
+        retry_category=retry_class,
         should_retry=will_retry,
         next_retry_at_utc=next_retry,
         last_error=str(exception),
@@ -93,7 +97,7 @@ def record_task_failed(
 ) -> None:
     increment(MetricNames.RETRY_SCHEDULER_TERMINAL_FAILURES)
     task_type = resolve_task_type(task_name)
-    category = classify_retry_exception(exception)
+    retry_class = classify_retry_exception(exception)
     upsert_job_execution_meta(
         task_id=task_id,
         task_name=task_name,
@@ -101,7 +105,7 @@ def record_task_failed(
         status="failed",
         retry_count=retry_count,
         max_retries=max_retries,
-        retry_category=category,
+        retry_category=retry_class,
         should_retry=False,
         last_error=str(exception),
         finished_at_utc=utc_now(),

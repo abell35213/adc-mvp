@@ -31,6 +31,7 @@ from app.jobs.tracking import (
     record_task_started,
     record_task_succeeded,
 )
+from app.jobs.retry_policy import get_policy_for_capability
 from app.observability.redaction import redact_log_data
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,11 @@ celery_app = Celery(
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
 )
+
+dashcam_retry_policy = get_policy_for_capability("dashcam")
+telematics_retry_policy = get_policy_for_capability("telematics")
+export_retry_policy = get_policy_for_capability("export")
+messaging_retry_policy = get_policy_for_capability("messaging")
 
 celery_app.conf.update(
     task_serializer="json",
@@ -67,27 +73,29 @@ celery_app.conf.update(
     },
     task_annotations={
         "app.tasks.evidence_tasks.capture_dashcam": {
-            "autoretry_for": (Exception,),
-            "retry_backoff": True,
-            "retry_backoff_max": 300,
+            "max_retries": dashcam_retry_policy.max_retries,
+            "retry_backoff": dashcam_retry_policy.base_delay_seconds,
+            "retry_backoff_max": dashcam_retry_policy.backoff_cap_seconds,
             "retry_jitter": True,
         },
         "app.tasks.evidence_tasks.capture_telematics_bundle": {
-            "autoretry_for": (Exception,),
-            "retry_backoff": True,
-            "retry_backoff_max": 300,
+            "max_retries": telematics_retry_policy.max_retries,
+            "retry_backoff": telematics_retry_policy.base_delay_seconds,
+            "retry_backoff_max": telematics_retry_policy.backoff_cap_seconds,
             "retry_jitter": True,
         },
         "app.tasks.export_tasks.build_export": {
             "autoretry_for": (Exception,),
-            "retry_backoff": True,
-            "retry_backoff_max": 180,
+            "max_retries": export_retry_policy.max_retries,
+            "retry_backoff": export_retry_policy.base_delay_seconds,
+            "retry_backoff_max": export_retry_policy.backoff_cap_seconds,
             "retry_jitter": True,
         },
         "app.tasks.notification_tasks.notify_safety_manager": {
             "autoretry_for": (Exception,),
-            "retry_backoff": True,
-            "retry_backoff_max": 120,
+            "max_retries": messaging_retry_policy.max_retries,
+            "retry_backoff": messaging_retry_policy.base_delay_seconds,
+            "retry_backoff_max": messaging_retry_policy.backoff_cap_seconds,
             "retry_jitter": True,
         },
     },

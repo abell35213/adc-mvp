@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 
 from app.core.metrics import MetricNames, increment
 from app.integrations.errors import as_normalized_error
+from app.jobs.retry_policy import (
+    classify_normalized_error,
+    compute_retry_delay_seconds,
+    get_policy_for_capability,
+)
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -105,6 +110,23 @@ def _artifact_exists(db, artifact_id: _uuid.UUID) -> bool:
     return db.query(Artifact).filter(Artifact.artifact_id == artifact_id).first() is not None
 
 
+def _admin_action_for_reason(reason_code: str) -> str:
+    if reason_code == "credentials_invalid":
+        return "reauth_required"
+    if reason_code == "vehicle_mapping_missing":
+        return "mapping_fix_required"
+    return "manual_investigation_required"
+
+
+def _reason_from_normalized_error(normalized_error) -> str:
+    code = normalized_error.code
+    if code in {"AUTH_INVALID_CREDENTIALS", "TELEMATICS_AUTH_FAILED"}:
+        return "credentials_invalid"
+    if code in {"TELEMATICS_NOT_MAPPED", "MAPPING_NOT_FOUND", "MAPPING_INVALID_REFERENCE"}:
+        return "vehicle_mapping_missing"
+    return normalized_error.code.lower()
+
+
 # ---------------------------------------------------------------------------
 # Task: capture_dashcam
 # ---------------------------------------------------------------------------
@@ -113,7 +135,7 @@ def _artifact_exists(db, artifact_id: _uuid.UUID) -> bool:
 @celery_app.task(
     bind=True,
     acks_late=True,
-    max_retries=3,
+    max_retries=4,
     soft_time_limit=600,
     time_limit=660,
 )
@@ -521,6 +543,7 @@ def capture_telematics_bundle(
     from app.domain.system_event_types import SystemEventType
     from app.integrations.errors import NormalizedIntegrationError
     from app.services.integration_health_service import (
+        mark_connection_intervention_required,
         set_evidence_request_status,
         transition_operation_status,
     )
@@ -671,6 +694,15 @@ def capture_telematics_bundle(
                 operator_message="vehicle_mapping_missing",
             )
             update_integration_operation_error(db, operation, mapping_error)
+            mark_connection_intervention_required(
+                db,
+                org_id=_uuid.UUID(org_id),
+                provider="samsara",
+                domain="telematics",
+                reason_code="vehicle_mapping_missing",
+                admin_action="mapping_fix_required",
+                message="Vehicle mapping is missing for telematics capture.",
+            )
             transition_operation_status(
                 db,
                 operation=operation,
@@ -1067,6 +1099,33 @@ def capture_telematics_bundle(
 
     except Exception as exc:
         logger.exception("Telematics capture failed for incident %s", incident_id)
+        error_message = str(exc).lower()
+        if "credentials_invalid" in error_message:
+            normalized_error = NormalizedIntegrationError(
+                code="TELEMATICS_AUTH_FAILED",
+                category="telematics",
+                provider_key="samsara",
+                retryable=False,
+                user_facing_message="Integration credentials are invalid. Re-authentication is required.",
+                operator_message="credentials_invalid",
+            )
+        elif "vehicle_mapping_missing" in error_message:
+            normalized_error = NormalizedIntegrationError(
+                code="TELEMATICS_NOT_MAPPED",
+                category="telematics",
+                provider_key="samsara",
+                retryable=False,
+                user_facing_message="Vehicle mapping is missing for telematics capture.",
+                operator_message="vehicle_mapping_missing",
+            )
+        else:
+            normalized_error = as_normalized_error(
+                exc,
+                provider_hint="samsara",
+                category="telematics",
+            )
+        reason_code = _reason_from_normalized_error(normalized_error)
+        retry_class = classify_normalized_error(normalized_error)
         _emit_once(
             db,
             inc_uuid,
@@ -1078,11 +1137,49 @@ def capture_telematics_bundle(
             },
         )
         if "operation" in locals() and operation is not None:
+            update_integration_operation_error(db, operation, normalized_error)
             transition_operation_status(
                 db,
                 operation=operation,
                 to_status="failed",
                 message=f"Telematics capture task failed: {exc}",
+            )
+        if retry_class == "non_retryable_intervention_required":
+            if "org_id" in locals():
+                mark_connection_intervention_required(
+                    db,
+                    org_id=_uuid.UUID(org_id),
+                    provider="samsara",
+                    domain="telematics",
+                    reason_code=reason_code,
+                    admin_action=_admin_action_for_reason(reason_code),
+                    message=normalized_error.user_facing_message,
+                )
+            increment(MetricNames.CELERY_TASK_FAILURES)
+            return {
+                "incident_id": incident_id,
+                "type": "telematics",
+                "status": "failed",
+                "reason_code": reason_code,
+                "action_required": _admin_action_for_reason(reason_code),
+                "idempotency_key": workflow_key,
+            }
+        policy = get_policy_for_capability("telematics")
+        if self.request.retries < policy.max_retries:
+            delay = compute_retry_delay_seconds(
+                retry_count=self.request.retries,
+                policy=policy,
+            )
+            raise self.retry(exc=exc, countdown=delay, max_retries=policy.max_retries)
+        if "org_id" in locals():
+            mark_connection_intervention_required(
+                db,
+                org_id=_uuid.UUID(org_id),
+                provider="samsara",
+                domain="telematics",
+                reason_code="retry_ceiling_exceeded",
+                admin_action="manual_investigation_required",
+                message="Retry ceiling reached for telematics capture.",
             )
         increment(MetricNames.CELERY_TASK_FAILURES)
         raise
