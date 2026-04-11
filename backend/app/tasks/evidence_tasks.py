@@ -957,6 +957,10 @@ def capture_telematics_bundle(
             except Exception as ds_exc:
                 reason = str(ds_exc)
                 reason_code = _telematics_reason(ds_exc)
+                if reason_code == "credentials_invalid":
+                    increment(MetricNames.INTEGRATION_PROVIDER_AUTH_FAILURE)
+                elif reason_code == "provider_unavailable":
+                    increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
                 logger.warning(
                     "Telematics dataset %s unavailable for incident %s: %s",
                     dataset_name,
@@ -1026,8 +1030,10 @@ def capture_telematics_bundle(
             overall_status = "failed"
         elif failed_count > 0 or unavailable_count > 0:
             overall_status = "partial"
+            increment(MetricNames.EVIDENCE_PARTIAL_RESULT)
         elif available_count == 0:
             overall_status = "unavailable"
+            increment(MetricNames.EVIDENCE_UNAVAILABLE_RESULT)
         operation.result_json = {
             "status": overall_status,
             "request_statuses": request_statuses,

@@ -185,3 +185,108 @@ alert_policies:
       org: adc
       service: adc-api
       environment: prod
+
+  - id: integration_credentials_invalid_spike_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "credential invalid errors spike above 5 in 10m"
+    expression: "sum(increase(integration_provider_auth_failure_total{service='adc-worker',environment='prod'}[10m])) > 5"
+    for: 10m
+    routing:
+      pager: secondary
+      escalation: integrations_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: integration_provider_outage_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "provider failure ratio > 40% for 10m"
+    expression: "sum(rate(integration_provider_failure_total{service='adc-worker',environment='prod'}[10m])) / clamp_min(sum(rate(integration_provider_requests_total{service='adc-worker',environment='prod'}[10m])), 1) > 0.40"
+    for: 10m
+    routing:
+      pager: primary
+      escalation: backend_oncall
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: retry_scheduler_stuck_in_progress_critical
+    section_ref: "7.4"
+    severity: critical
+    condition: "stuck in-progress jobs > 25 for 15m"
+    expression: "max(job_execution_stuck_total{service='adc-worker',environment='prod'}) > 25"
+    for: 15m
+    routing:
+      pager: primary
+      escalation: backend_oncall
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: dashcam_capture_failure_ratio_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "dashcam failure/unavailable ratio > 15% for 15m"
+    expression: "sum(rate(integration_operations_total{service='adc-worker',environment='prod',domain='dashcam',status=~'failed|unavailable'}[15m])) / clamp_min(sum(rate(integration_operations_total{service='adc-worker',environment='prod',domain='dashcam'}[15m])), 1) > 0.15"
+    for: 15m
+    routing:
+      pager: secondary
+      escalation: integrations_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod
+
+  - id: otp_delivery_failure_ratio_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "otp delivery failure ratio > 8% for 10m"
+    expression: "sum(rate(otp_delivery_failure_total{service='adc-api',environment='prod'}[10m])) / clamp_min(sum(rate(otp_delivery_attempts_total{service='adc-api',environment='prod'}[10m])), 1) > 0.08"
+    for: 10m
+    routing:
+      pager: secondary
+      escalation: auth_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
+
+  - id: webhook_signature_failure_spike_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "webhook signature failures exceed 10 in 10m"
+    expression: "sum(increase(webhook_signature_failures_total{service='adc-api',environment='prod'}[10m])) > 10"
+    for: 10m
+    routing:
+      pager: secondary
+      escalation: backend_service_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-api
+      environment: prod
+
+  - id: retry_queue_backlog_warning
+    section_ref: "7.4"
+    severity: warning
+    condition: "celery queue depth exceeds 500 for 15m"
+    expression: "max(celery_queue_depth{service='adc-worker',environment='prod'}) > 500"
+    for: 15m
+    routing:
+      pager: secondary
+      escalation: backend_service_owner
+    runbook: docs/reliability-and-incident-response-runbook.md
+    tags:
+      org: adc
+      service: adc-worker
+      environment: prod

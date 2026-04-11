@@ -6,8 +6,16 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.metrics import MetricNames, increment
 from app.db.models import EvidenceRequest, IntegrationOperation
 from app.db.repo.integration_operation_status_history import create_operation_status_history
+
+
+def _safe_duration_ms(start: datetime, end: datetime) -> int:
+    """Return non-negative elapsed milliseconds handling naive/aware mismatches."""
+    start_dt = start if start.tzinfo is not None else start.replace(tzinfo=timezone.utc)
+    end_dt = end if end.tzinfo is not None else end.replace(tzinfo=timezone.utc)
+    return max(int((end_dt - start_dt).total_seconds() * 1000), 0)
 
 
 def transition_operation_status(
@@ -33,11 +41,25 @@ def transition_operation_status(
     operation.status = to_status
     if to_status == "running" and operation.started_at_utc is None:
         operation.started_at_utc = datetime.now(timezone.utc)
-    if to_status in {"succeeded", "failed", "canceled", "downloaded", "unavailable"}:
+    if to_status in {"succeeded", "failed", "canceled", "downloaded", "unavailable", "partial"}:
         operation.completed_at_utc = datetime.now(timezone.utc)
+        if to_status == "unavailable":
+            increment(MetricNames.EVIDENCE_UNAVAILABLE_RESULT)
+        if to_status == "partial":
+            increment(MetricNames.EVIDENCE_PARTIAL_RESULT)
     db.add(operation)
     db.commit()
     db.refresh(operation)
+
+    if (
+        operation.started_at_utc is not None
+        and operation.completed_at_utc is not None
+        and to_status in {"succeeded", "downloaded", "failed", "unavailable"}
+    ):
+        completion_time_ms = _safe_duration_ms(
+            operation.started_at_utc, operation.completed_at_utc
+        )
+        increment(MetricNames.EVIDENCE_COMPLETION_TIME, completion_time_ms)
 
     create_operation_status_history(
         db,
@@ -69,6 +91,12 @@ def set_evidence_request_status(
         evidence_request.response_payload_json = response_payload_json
     if status == "fulfilled":
         evidence_request.fulfilled_at_utc = datetime.now(timezone.utc)
+        if evidence_request.created_at_utc is not None:
+            completion_time_ms = _safe_duration_ms(
+                evidence_request.created_at_utc,
+                evidence_request.fulfilled_at_utc,
+            )
+            increment(MetricNames.EVIDENCE_COMPLETION_TIME, completion_time_ms)
     db.add(evidence_request)
     db.commit()
     db.refresh(evidence_request)
