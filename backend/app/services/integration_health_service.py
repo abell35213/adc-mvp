@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.core.metrics import MetricNames, increment
-from app.db.models import EvidenceRequest, IntegrationOperation
+from app.db.models import EvidenceRequest, IntegrationConnection, IntegrationOperation
 from app.db.repo.integration_operation_status_history import create_operation_status_history
 
 
@@ -101,3 +101,34 @@ def set_evidence_request_status(
     db.commit()
     db.refresh(evidence_request)
     return evidence_request
+
+
+def mark_connection_intervention_required(
+    db: Session,
+    *,
+    org_id,
+    provider: str,
+    domain: str | None,
+    reason_code: str,
+    admin_action: str,
+    message: str,
+):
+    """Mark matching integration connections as requiring admin intervention."""
+    query = db.query(IntegrationConnection).filter(
+        IntegrationConnection.org_id == org_id,
+        IntegrationConnection.provider == provider,
+    )
+    if domain is not None:
+        query = query.filter(IntegrationConnection.domain == domain)
+    connections = query.all()
+    for connection in connections:
+        config_json = dict(connection.config_json or {})
+        config_json["admin_action_required"] = admin_action
+        config_json["admin_action_reason_code"] = reason_code
+        config_json["admin_action_message"] = message
+        connection.config_json = config_json
+        connection.status = "error"
+        connection.last_synced_at_utc = datetime.now(timezone.utc)
+        db.add(connection)
+    db.commit()
+    return connections

@@ -17,7 +17,7 @@
 
 ## CI requirement for hardening-related pull requests
 
-Last update: hardened integration/webhook diagnostics by enforcing admin-only integration validation + operation diagnostics access, mandatory org-scoped integration query helpers, and redaction of webhook raw payloads/logged dead-letter task payloads.
+Last update: hardened queue/integration retry controls with normalized error-class retry policies, capability-specific retry ceilings/backoff, and admin-intervention escalation for non-retryable credential/mapping failures.
 
 Any pull request that touches hardening-related code **must** update `docs/production-hardening/control-matrix.md` in the same change.
 
