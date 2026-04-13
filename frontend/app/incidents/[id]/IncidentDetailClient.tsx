@@ -82,7 +82,8 @@ export default function IncidentDetailClient() {
     );
     return { hasCollected, hasValidated, hasExported, hasDownloaded };
   }, [timelineTypes]);
-  const completenessPercent = Math.round((captured / total) * 100);
+  const completenessPercent =
+    incident?.completeness_percent ?? Math.round((captured / total) * 100);
   const continuityChecks = [
     lifecycleCoverage.hasCollected,
     lifecycleCoverage.hasValidated,
@@ -218,6 +219,12 @@ export default function IncidentDetailClient() {
               <p className="text-xs text-gray-500">Unavailable Artifacts</p>
               <p className="font-semibold text-gray-900 dark:text-white">
                 {unavailable}
+              </p>
+            </div>
+            <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">
+              <p className="text-xs text-gray-500">Readiness State</p>
+              <p className="font-semibold text-gray-900 capitalize dark:text-white">
+                {(incident.readiness_state ?? "not_ready").replaceAll("_", " ")}
               </p>
             </div>
             <div className="rounded border bg-gray-50 p-3 dark:bg-gray-700">

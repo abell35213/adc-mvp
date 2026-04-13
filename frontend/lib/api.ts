@@ -206,6 +206,10 @@ export interface Incident {
   created_at_utc?: string;
   evidence_captured?: number;
   evidence_total?: number;
+  completeness_percent?: number;
+  completeness_status?: string;
+  readiness_state?: string;
+  blocker_counts?: Record<string, number>;
   driver_response?: DriverResponseSummary | null;
   driver_protocol_summary?: DriverProtocolSummary | null;
 }
@@ -347,6 +351,8 @@ export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
   timeline: EventSummary[];
+  completeness_missing_items?: string[];
+  blockers?: Array<{ code: string; message: string; severity: string }>;
 }
 
 export function listIncidents() {
