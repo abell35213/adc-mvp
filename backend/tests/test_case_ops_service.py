@@ -6,6 +6,7 @@ from app.case_ops.service import (
     build_dashboard_snapshot,
     validate_case_status_transition,
 )
+from app.case_ops.blockers import detect_blockers
 
 
 def _artifact(status: str, artifact_type: str = "dash_cam_video_front"):
@@ -73,3 +74,34 @@ def test_validate_case_status_transition_blocks_invalid_hops():
 
     assert blocked.allowed is False
     assert allowed.allowed is True
+
+
+def test_detect_blockers_classifies_dashcam_and_readiness_linkage():
+    summary = detect_blockers(
+        artifacts=[_artifact("pending", "dash_cam_video_front"), _artifact("captured", "telematics_gps")],
+        events=[_event("incident_started"), _event("capture_completed")],
+        exports=[],
+    )
+
+    by_code = {blocker.code: blocker for blocker in summary.items}
+    assert by_code["evidence_capture_incomplete"].missing_item.category == "dashcam"
+    assert by_code["evidence_capture_incomplete"].blocks_readiness is True
+    assert "evidence_capture_incomplete" in summary.readiness_blocker_codes
+    assert by_code["export_not_requested"].missing_item.category == "document"
+    assert by_code["export_not_requested"].blocks_readiness is False
+
+
+def test_detect_blockers_classifies_driver_input_and_telematics_unavailable():
+    summary = detect_blockers(
+        artifacts=[
+            _artifact("unavailable", "driver_statement"),
+            _artifact("unavailable", "telematics_snapshot"),
+            _artifact("captured", "incident_photo"),
+        ],
+        events=[_event("incident_started"), _event("hash_validated")],
+        exports=[_export("ready")],
+    )
+
+    blocker = next(item for item in summary.items if item.code == "evidence_unavailable")
+    assert blocker.missing_item.category == "driver_input"
+    assert blocker.missing_item.severity == "important"

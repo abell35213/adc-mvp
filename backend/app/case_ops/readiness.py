@@ -18,9 +18,9 @@ def derive_readiness_state(
         state = "closed"
     elif normalized_case_status == "exported":
         state = "exported"
-    elif blockers.critical_count > 0:
+    elif blockers.readiness_blocker_codes and blockers.critical_count > 0:
         state = "not_ready"
-    elif blockers.important_count > 0 or completeness_percent < 90:
+    elif blockers.readiness_blocker_codes or completeness_percent < 90:
         state = "conditionally_ready"
     else:
         state = "ready_for_export"
@@ -31,4 +31,5 @@ def derive_readiness_state(
         completeness_percent=completeness_percent,
         completeness_status=completeness_status,
         blockers=blockers,
+        blocking_codes=list(blockers.readiness_blocker_codes),
     )
