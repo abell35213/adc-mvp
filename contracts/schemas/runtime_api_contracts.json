@@ -770,6 +770,35 @@
           "default": null,
           "title": "Adc Vehicle Id"
         },
+        "blockers": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "completeness_missing_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Completeness Missing Items",
+          "type": "array"
+        },
+        "completeness_percent": {
+          "default": 0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Completeness Percent",
+          "type": "integer"
+        },
+        "completeness_status": {
+          "default": "incomplete",
+          "title": "Completeness Status",
+          "type": "string"
+        },
         "created_at_utc": {
           "anyOf": [
             {
@@ -808,6 +837,11 @@
           },
           "title": "Messaging Reliability",
           "type": "object"
+        },
+        "readiness_state": {
+          "default": "not_ready",
+          "title": "Readiness State",
+          "type": "string"
         },
         "samsara_vehicle_id": {
           "anyOf": [
@@ -897,6 +931,25 @@
           "default": null,
           "title": "Adc Vehicle Id"
         },
+        "blocker_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Blocker Counts",
+          "type": "object"
+        },
+        "completeness_percent": {
+          "default": 0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Completeness Percent",
+          "type": "integer"
+        },
+        "completeness_status": {
+          "default": "incomplete",
+          "title": "Completeness Status",
+          "type": "string"
+        },
         "created_at_utc": {
           "anyOf": [
             {
@@ -925,6 +978,11 @@
         "incident_id": {
           "format": "uuid",
           "title": "Incident Id",
+          "type": "string"
+        },
+        "readiness_state": {
+          "default": "not_ready",
+          "title": "Readiness State",
           "type": "string"
         },
         "samsara_vehicle_id": {

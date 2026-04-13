@@ -290,6 +290,10 @@ class IncidentListItem(BaseModel):
     created_at_utc: Optional[datetime] = None
     evidence_captured: int = Field(default=0, ge=0)
     evidence_total: int = Field(default=0, ge=0)
+    completeness_percent: int = Field(default=0, ge=0, le=100)
+    completeness_status: str = "incomplete"
+    readiness_state: str = "not_ready"
+    blocker_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class IncidentDetailResponse(BaseModel):
@@ -304,6 +308,11 @@ class IncidentDetailResponse(BaseModel):
     export_status: list[ExportSummary] = Field(default_factory=list)
     timeline: list[EventSummary] = Field(default_factory=list)
     messaging_reliability: dict[str, int] = Field(default_factory=dict)
+    completeness_percent: int = Field(default=0, ge=0, le=100)
+    completeness_status: str = "incomplete"
+    readiness_state: str = "not_ready"
+    completeness_missing_items: list[str] = Field(default_factory=list)
+    blockers: list[dict[str, str]] = Field(default_factory=list)
 
 
 class MessagingReliabilityResponse(BaseModel):
@@ -894,6 +903,7 @@ class OpsDashboardResponse(BaseModel):
     org_messaging_reliability: MessagingReliabilityResponse = Field(
         default_factory=MessagingReliabilityResponse
     )
+    case_metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuditSearchResponseItem(BaseModel):

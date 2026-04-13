@@ -19,6 +19,7 @@ from app.api.schemas import (
 from app.core.deps import get_current_user
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
+from app.case_ops.service import build_case_snapshot
 from app.db.models import User
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
@@ -62,6 +63,12 @@ def list_incidents_endpoint(
     for inc in incidents:
         artifacts = get_artifacts_by_incident(db, inc.incident_id)
         captured = sum(1 for a in artifacts if a.status == "captured")
+        snapshot = build_case_snapshot(
+            incident=inc,
+            artifacts=artifacts,
+            events=[],
+            exports=[],
+        )
         result.append(
             IncidentListItem(
                 incident_id=inc.incident_id,
@@ -75,6 +82,14 @@ def list_incidents_endpoint(
                 else None,
                 evidence_captured=captured,
                 evidence_total=len(artifacts),
+                completeness_percent=snapshot.completeness.percent,
+                completeness_status=snapshot.completeness.status,
+                readiness_state=snapshot.readiness.state,
+                blocker_counts={
+                    "critical": snapshot.blockers.critical_count,
+                    "important": snapshot.blockers.important_count,
+                    "optional": snapshot.blockers.optional_count,
+                },
             )
         )
     return result
@@ -179,6 +194,12 @@ def get_incident_endpoint(
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
     events = get_events_by_incident(db, incident_id)
+    snapshot = build_case_snapshot(
+        incident=incident,
+        artifacts=artifacts,
+        events=events,
+        exports=exports,
+    )
 
     return IncidentDetailResponse(
         incident_id=incident.incident_id,
@@ -255,6 +276,18 @@ def get_incident_endpoint(
         )
         if incident.org_id
         else {},
+        completeness_percent=snapshot.completeness.percent,
+        completeness_status=snapshot.completeness.status,
+        readiness_state=snapshot.readiness.state,
+        completeness_missing_items=snapshot.completeness.missing_items,
+        blockers=[
+            {
+                "code": blocker.code,
+                "message": blocker.message,
+                "severity": blocker.severity,
+            }
+            for blocker in snapshot.blockers.items
+        ],
     )
 
 
