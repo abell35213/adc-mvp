@@ -205,6 +205,208 @@ class Incident(Base):
     samsara_vehicle_id = Column(Text, nullable=True)
     adc_driver_id = Column(Text, nullable=True)
     severity = Column(Text, nullable=True)
+    case_status = Column(
+        Enum(
+            "new",
+            "in_review",
+            "awaiting_evidence",
+            "awaiting_follow_up",
+            "ready_for_export",
+            "exported",
+            "escalated",
+            "closed",
+            name="incident_case_status",
+        ),
+        nullable=False,
+        default="new",
+        server_default="new",
+    )
+    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    owner_assigned_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    team_queue = Column(Text, nullable=True)
+    readiness_state = Column(Text, nullable=True)
+    completeness_percent = Column(Integer, nullable=True)
+    completeness_status = Column(Text, nullable=True)
+    first_reviewed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_activity_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    ready_for_export_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_incidents_org_case_status_owner", "org_id", "case_status", "owner_user_id"),
+        Index("ix_incidents_org_readiness_state", "org_id", "readiness_state"),
+        Index("ix_incidents_org_updated_at_utc", "org_id", "updated_at_utc"),
+        Index("ix_incidents_org_last_activity_at_utc", "org_id", "last_activity_at_utc"),
+    )
+
+
+class CaseNote(Base):
+    """Internal-only case notes with edit and soft-delete metadata."""
+
+    __tablename__ = "case_notes"
+
+    note_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=False,
+        index=True,
+    )
+    body = Column(Text, nullable=False)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    edited_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    edited_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    deleted_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_deleted = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_case_notes_org_incident_created", "org_id", "incident_id", "created_at_utc"),
+        Index(
+            "ix_case_notes_org_incident_deleted_created",
+            "org_id",
+            "incident_id",
+            "is_deleted",
+            "created_at_utc",
+        ),
+    )
+
+
+class CaseTask(Base):
+    """Action items tracked for each case."""
+
+    __tablename__ = "case_tasks"
+
+    task_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=False,
+        index=True,
+    )
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    task_type = Column(
+        Enum(
+            "review",
+            "evidence",
+            "follow_up",
+            "export",
+            "other",
+            name="case_task_type",
+        ),
+        nullable=False,
+        default="other",
+        server_default="other",
+    )
+    status = Column(
+        Enum(
+            "open",
+            "in_progress",
+            "blocked",
+            "completed",
+            "canceled",
+            name="case_task_status",
+        ),
+        nullable=False,
+        default="open",
+        server_default="open",
+    )
+    priority = Column(
+        Enum("low", "medium", "high", "urgent", name="case_task_priority"),
+        nullable=False,
+        default="medium",
+        server_default="medium",
+    )
+    due_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    assigned_to_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    assigned_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    canceled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    canceled_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    canceled_reason = Column(Text, nullable=True)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_case_tasks_org_incident_status", "org_id", "incident_id", "status"),
+        Index("ix_case_tasks_org_status_due_at_utc", "org_id", "status", "due_at_utc"),
+    )
+
+
+class CaseReadinessOverride(Base):
+    """Manual readiness override snapshots for cases."""
+
+    __tablename__ = "case_readiness_overrides"
+
+    override_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id"),
+        nullable=False,
+        index=True,
+    )
+    readiness_state = Column(Text, nullable=True)
+    completeness_percent = Column(Integer, nullable=True)
+    completeness_status = Column(Text, nullable=True)
+    reason = Column(Text, nullable=False)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cleared_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cleared_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_case_readiness_overrides_org_incident_created",
+            "org_id",
+            "incident_id",
+            "created_at_utc",
+        ),
+    )
 
 
 class Artifact(Base):

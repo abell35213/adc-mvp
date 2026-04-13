@@ -8,7 +8,17 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app.db.models import Base, Org, Incident, Event, Artifact, Export
+from app.db.models import (
+    Artifact,
+    Base,
+    CaseNote,
+    CaseReadinessOverride,
+    CaseTask,
+    Event,
+    Export,
+    Incident,
+    Org,
+)
 
 
 @pytest.fixture
@@ -77,6 +87,15 @@ class TestForeignKeyConstraints:
         with pytest.raises(IntegrityError):
             db.commit()
 
+    def test_case_note_incident_foreign_key_enforced(self, db):
+        """CaseNote.incident_id must reference a valid Incident."""
+        invalid_incident_id = uuid.uuid4()
+        note = CaseNote(incident_id=invalid_incident_id, body="Internal note")
+        db.add(note)
+
+        with pytest.raises(IntegrityError):
+            db.commit()
+
     def test_foreign_key_allows_valid_incident(self, db):
         """Foreign key constraints allow valid incident references."""
         org = Org(name="Test Org")
@@ -123,6 +142,28 @@ class TestStatusEnums:
             db.add(incident)
             db.commit()
             assert incident.status == status
+
+    def test_incident_case_status_valid_values(self, db):
+        """Incident case_status accepts valid enum values."""
+        org = Org(name="Test Org")
+        db.add(org)
+        db.commit()
+
+        valid_case_statuses = [
+            "new",
+            "in_review",
+            "awaiting_evidence",
+            "awaiting_follow_up",
+            "ready_for_export",
+            "exported",
+            "escalated",
+            "closed",
+        ]
+        for case_status in valid_case_statuses:
+            incident = Incident(status="open", case_status=case_status, org_id=org.id)
+            db.add(incident)
+            db.commit()
+            assert incident.case_status == case_status
 
     def test_artifact_status_valid_values(self, db):
         """Artifact status accepts valid enum values."""
@@ -238,6 +279,27 @@ class TestCompositeIndexes:
         index_names = [idx.name for idx in table_args if hasattr(idx, "name")]
         assert "ix_exports_org_incident" in index_names
 
+    def test_incident_has_case_management_indexes(self):
+        """Incident model has case queue indexes defined."""
+        assert hasattr(Incident, "__table_args__")
+        table_args = Incident.__table_args__
+        assert isinstance(table_args, tuple)
+
+        index_names = [idx.name for idx in table_args if hasattr(idx, "name")]
+        assert "ix_incidents_org_case_status_owner" in index_names
+        assert "ix_incidents_org_readiness_state" in index_names
+        assert "ix_incidents_org_updated_at_utc" in index_names
+        assert "ix_incidents_org_last_activity_at_utc" in index_names
+
+    def test_case_task_has_overdue_index(self):
+        """CaseTask model has overdue query index defined."""
+        assert hasattr(CaseTask, "__table_args__")
+        table_args = CaseTask.__table_args__
+        assert isinstance(table_args, tuple)
+
+        index_names = [idx.name for idx in table_args if hasattr(idx, "name")]
+        assert "ix_case_tasks_org_status_due_at_utc" in index_names
+
 
 class TestDefaultValues:
     """Test default values work correctly."""
@@ -252,6 +314,7 @@ class TestDefaultValues:
         db.add(incident)
         db.commit()
         assert incident.status == "open"
+        assert incident.case_status == "new"
 
     def test_artifact_default_status_is_pending(self, db):
         """Artifact defaults to 'pending' status."""
@@ -279,3 +342,51 @@ class TestDefaultValues:
         db.add(export)
         db.commit()
         assert export.status == "requested"
+
+    def test_case_task_defaults(self, db):
+        """CaseTask defaults status, type, and priority values."""
+        org = Org(name="Test Org")
+        incident = Incident(status="open", org_id=org.id)
+        db.add_all([org, incident])
+        db.commit()
+
+        task = CaseTask(incident_id=incident.incident_id, title="Collect witness statement")
+        db.add(task)
+        db.commit()
+
+        assert task.status == "open"
+        assert task.task_type == "other"
+        assert task.priority == "medium"
+
+    def test_case_note_soft_delete_defaults(self, db):
+        """CaseNote defaults to non-deleted state."""
+        org = Org(name="Test Org")
+        incident = Incident(status="open", org_id=org.id)
+        db.add_all([org, incident])
+        db.commit()
+
+        note = CaseNote(incident_id=incident.incident_id, body="Hidden internal note")
+        db.add(note)
+        db.commit()
+
+        assert note.is_deleted is False
+
+    def test_case_readiness_override_persists(self, db):
+        """CaseReadinessOverride persists manual override snapshots."""
+        org = Org(name="Test Org")
+        incident = Incident(status="open", org_id=org.id)
+        db.add_all([org, incident])
+        db.commit()
+
+        override = CaseReadinessOverride(
+            incident_id=incident.incident_id,
+            reason="Investigator approved manual readiness override.",
+            readiness_state="ready",
+            completeness_percent=100,
+            completeness_status="complete",
+        )
+        db.add(override)
+        db.commit()
+
+        assert override.reason.startswith("Investigator")
+        assert override.completeness_percent == 100
