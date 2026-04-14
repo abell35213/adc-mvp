@@ -31,6 +31,13 @@ from app.api.schemas import (
     OrgLaunchReadinessResponse,
     OrgInviteUserRequest,
     OrgInviteUserResponse,
+    OrgMappingsAssignmentConfidence,
+    OrgMappingsIssue,
+    OrgMappingsIssuesResponse,
+    OrgMappingsPilotReadinessFlags,
+    OrgMappingsStaleWarnings,
+    OrgMappingsSummaryCounts,
+    OrgMappingsSummaryResponse,
     OrgOnboardingStepUpdateRequest,
     OrgSettingsResponse,
     OrgSettingsUpdateRequest,
@@ -54,6 +61,10 @@ from app.db.models import (
     User,
     UserOrg,
     DriverImportJob,
+    Driver,
+    DriverVehicleAssignment,
+    ExternalMapping,
+    OrgVehicleRegistry,
     VehicleImportJob,
 )
 from app.db.session import get_db
@@ -95,6 +106,10 @@ router = APIRouter()
 
 _integration_admin = require_user_role("system_admin", "org_admin")
 _org_user_admin = require_user_role("system_admin", "org_admin")
+_PILOT_MIN_MAPPED_DRIVERS = 3
+_PILOT_MIN_MAPPED_VEHICLES = 3
+_ASSIGNMENT_CONFIDENCE_MEDIUM_THRESHOLD = 0.7
+_ASSIGNMENT_CONFIDENCE_HIGH_THRESHOLD = 0.9
 
 
 def _first_org_id(context) -> uuid.UUID:
@@ -150,6 +165,187 @@ def _role_violations(*, role_counts: dict[str, int]) -> list[str]:
     if safety_capable_count < 1:
         violations.append("no safety manager assigned")
     return violations
+
+
+def _build_org_mapping_summary(
+    db: Session, *, org_id: uuid.UUID
+) -> OrgMappingsSummaryResponse:
+    active_drivers = (
+        db.query(Driver)
+        .filter(Driver.org_id == org_id, Driver.is_active.is_(True))
+        .all()
+    )
+    active_vehicles = (
+        db.query(OrgVehicleRegistry)
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.is_active.is_(True),
+        )
+        .all()
+    )
+    active_driver_ids = {str(row.driver_id).lower() for row in active_drivers}
+    active_vehicle_unit_numbers = {row.unit_number.lower() for row in active_vehicles}
+
+    mapped_driver_ids = {
+        row.internal_entity_id.lower()
+        for row in db.query(ExternalMapping)
+        .filter(
+            ExternalMapping.org_id == org_id,
+            ExternalMapping.internal_entity_type == "driver",
+            ExternalMapping.status == "active",
+        )
+        .all()
+    }
+    mapped_vehicle_unit_numbers = {
+        row.internal_entity_id.lower()
+        for row in db.query(ExternalMapping)
+        .filter(
+            ExternalMapping.org_id == org_id,
+            ExternalMapping.internal_entity_type == "vehicle",
+            ExternalMapping.status == "active",
+        )
+        .all()
+    }
+
+    mapped_drivers = len(active_driver_ids.intersection(mapped_driver_ids))
+    mapped_vehicles = len(
+        active_vehicle_unit_numbers.intersection(mapped_vehicle_unit_numbers)
+    )
+
+    assigned_driver_ids = {
+        str(row.driver_id).lower()
+        for row in db.query(DriverVehicleAssignment)
+        .filter(
+            DriverVehicleAssignment.org_id == org_id,
+            DriverVehicleAssignment.unassigned_at_utc.is_(None),
+        )
+        .all()
+    }
+    assigned_mapped_drivers = len(
+        assigned_driver_ids.intersection(active_driver_ids.intersection(mapped_driver_ids))
+    )
+    assignment_score = (
+        assigned_mapped_drivers / mapped_drivers if mapped_drivers > 0 else 0.0
+    )
+    if assignment_score >= _ASSIGNMENT_CONFIDENCE_HIGH_THRESHOLD:
+        assignment_level = "high"
+    elif assignment_score >= _ASSIGNMENT_CONFIDENCE_MEDIUM_THRESHOLD:
+        assignment_level = "medium"
+    else:
+        assignment_level = "low"
+
+    blocking_credential_count = (
+        db.query(IntegrationConnection)
+        .filter(
+            IntegrationConnection.org_id == org_id,
+            IntegrationConnection.status.in_(["inactive", "error"]),
+            IntegrationConnection.credentials_ref.is_(None),
+        )
+        .count()
+    )
+    no_blocking_integration_credentials = blocking_credential_count == 0
+    enough_mapped_drivers_for_pilot = mapped_drivers >= _PILOT_MIN_MAPPED_DRIVERS
+    enough_mapped_vehicles_for_pilot = mapped_vehicles >= _PILOT_MIN_MAPPED_VEHICLES
+
+    return OrgMappingsSummaryResponse(
+        drivers=OrgMappingsSummaryCounts(
+            total=len(active_driver_ids),
+            mapped=mapped_drivers,
+            unmapped=max(0, len(active_driver_ids) - mapped_drivers),
+        ),
+        vehicles=OrgMappingsSummaryCounts(
+            total=len(active_vehicle_unit_numbers),
+            mapped=mapped_vehicles,
+            unmapped=max(0, len(active_vehicle_unit_numbers) - mapped_vehicles),
+        ),
+        assignment_confidence=OrgMappingsAssignmentConfidence(
+            level=assignment_level,
+            score=round(assignment_score, 4),
+            assigned_mapped_drivers=assigned_mapped_drivers,
+            mapped_drivers=mapped_drivers,
+        ),
+        stale_warnings=OrgMappingsStaleWarnings(
+            placeholder_supported=True,
+            stale_count=0,
+            stale_warning_codes=[],
+        ),
+        pilot_readiness=OrgMappingsPilotReadinessFlags(
+            enough_mapped_drivers_for_pilot=enough_mapped_drivers_for_pilot,
+            enough_mapped_vehicles_for_pilot=enough_mapped_vehicles_for_pilot,
+            no_blocking_integration_credentials=no_blocking_integration_credentials,
+            pilot_scope_ready=(
+                enough_mapped_drivers_for_pilot
+                and enough_mapped_vehicles_for_pilot
+                and no_blocking_integration_credentials
+            ),
+        ),
+    )
+
+
+def _build_org_mapping_issues(
+    summary: OrgMappingsSummaryResponse,
+) -> OrgMappingsIssuesResponse:
+    issues: list[OrgMappingsIssue] = []
+
+    if summary.drivers.unmapped > 0:
+        issues.append(
+            OrgMappingsIssue(
+                code="MAPPED_DRIVERS_REQUIRED",
+                message=(
+                    f"{summary.drivers.unmapped} active driver(s) are not mapped to a provider reference."
+                ),
+                severity="error",
+                blocker_panel_action="open_driver_mappings",
+            )
+        )
+
+    if summary.vehicles.unmapped > 0:
+        issues.append(
+            OrgMappingsIssue(
+                code="MAPPED_VEHICLES_REQUIRED",
+                message=(
+                    f"{summary.vehicles.unmapped} active vehicle(s) are not mapped to a provider reference."
+                ),
+                severity="error",
+                blocker_panel_action="open_vehicle_mappings",
+            )
+        )
+
+    if summary.assignment_confidence.level == "low":
+        issues.append(
+            OrgMappingsIssue(
+                code="ASSIGNMENT_CONFIDENCE_LOW",
+                message=(
+                    "Driver-to-vehicle assignment confidence is low for currently mapped drivers."
+                ),
+                severity="warning",
+                blocker_panel_action="review_driver_assignments",
+            )
+        )
+
+    if not summary.pilot_readiness.no_blocking_integration_credentials:
+        issues.append(
+            OrgMappingsIssue(
+                code="BLOCKING_INTEGRATION_CREDENTIALS",
+                message=(
+                    "One or more integration connections are missing required credentials."
+                ),
+                severity="error",
+                blocker_panel_action="fix_integration_credentials",
+            )
+        )
+
+    if summary.stale_warnings.stale_count > 0:
+        issues.append(
+            OrgMappingsIssue(
+                code="STALE_MAPPING_WARNINGS",
+                message="Stale mapping warnings were detected and require review.",
+                severity="warning",
+                blocker_panel_action="review_stale_mapping_warnings",
+            )
+        )
+
+    return OrgMappingsIssuesResponse(issues=issues)
 
 
 def _run_vehicle_import_background(
@@ -304,6 +500,25 @@ def get_org_onboarding_status(
     context = build_user_auth_context(db, current_user)
     readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
     return _to_readiness_response(readiness)
+
+
+@router.get("/org/mappings/summary", response_model=OrgMappingsSummaryResponse)
+def get_org_mappings_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    return _build_org_mapping_summary(db, org_id=_first_org_id(context))
+
+
+@router.get("/org/mappings/issues", response_model=OrgMappingsIssuesResponse)
+def get_org_mappings_issues(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    summary = _build_org_mapping_summary(db, org_id=_first_org_id(context))
+    return _build_org_mapping_issues(summary)
 
 
 @router.post("/org/onboarding/mark-step", response_model=OrgLaunchReadinessResponse)
