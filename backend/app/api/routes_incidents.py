@@ -606,6 +606,50 @@ def request_export_endpoint(
                         progress_stage=row.progress_stage,
                     )
 
+    artifacts = get_artifacts_by_incident(db, incident_id)
+    events = get_events_by_incident(db, incident_id)
+    prior_exports = get_exports_by_incident(db, incident_id)
+    snapshot = build_case_snapshot(
+        incident=incident,
+        artifacts=artifacts,
+        events=events,
+        exports=prior_exports,
+    )
+    readiness_reasons = [
+        {
+            "code": blocker.code,
+            "message": blocker.message,
+            "severity": blocker.severity,
+            "blocks_readiness": blocker.blocks_readiness,
+        }
+        for blocker in snapshot.blockers.items
+    ]
+    readiness_snapshot = {
+        "state": snapshot.readiness.state,
+        "completeness_percent": snapshot.completeness.percent,
+        "completeness_status": snapshot.completeness.status,
+        "blocking_codes": snapshot.readiness.blocking_codes,
+        "reasons": readiness_reasons,
+        "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if snapshot.readiness.state == "not_ready":
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Case is not ready for export.",
+                "readiness_state": snapshot.readiness.state,
+                "reasons": readiness_reasons,
+            },
+        )
+    readiness_warning = None
+    if snapshot.readiness.state == "conditionally_ready":
+        readiness_warning = {
+            "code": "conditional_export_readiness",
+            "message": "Case is conditionally ready for export. Exporting may omit or flag unresolved evidence.",
+            "blocking_codes": snapshot.readiness.blocking_codes,
+        }
+
     export = create_export(
         db,
         incident_id=incident_id,
@@ -614,6 +658,10 @@ def request_export_endpoint(
         export_type="court_defense",
         profile_id=get_default_packet_profile("court_defense").profile_id,
         requested_by_user_id=current_user.id,
+        options_json={
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
+        },
         progress_stage="request_accepted",
     )
 
@@ -628,6 +676,8 @@ def request_export_endpoint(
             "incident_id": str(incident_id),
             "export_type": "court_defense",
             "status": "requested",
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
             "actor": {"type": "user", "id": str(current_user.id)},
         },
     )

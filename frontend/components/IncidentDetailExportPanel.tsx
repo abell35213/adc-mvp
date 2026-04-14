@@ -87,6 +87,15 @@ export default function IncidentDetailExportPanel({
       }, 0),
     [recentExports]
   );
+  const latestReadinessSnapshot = latestExport?.options_json?.readiness_snapshot as
+    | {
+        state?: string;
+        reasons?: Array<{ message?: string; code?: string }>;
+      }
+    | undefined;
+  const latestReadinessWarning = latestExport?.options_json?.readiness_warning as
+    | { message?: string }
+    | undefined;
 
   const integrationStatusItems = useMemo<EvidenceStatusItem[]>(() => {
     const source = latestExport?.options_json?.evidence_statuses;
@@ -242,6 +251,22 @@ export default function IncidentDetailExportPanel({
           New export
         </button>
       </div>
+
+      {latestReadinessSnapshot && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">
+            Readiness at request time: {(latestReadinessSnapshot.state ?? "unknown").replaceAll("_", " ")}
+          </p>
+          {latestReadinessWarning?.message && <p className="text-xs">{latestReadinessWarning.message}</p>}
+          {Array.isArray(latestReadinessSnapshot.reasons) && latestReadinessSnapshot.reasons.length > 0 && (
+            <ul className="mt-1 list-disc pl-5 text-xs">
+              {latestReadinessSnapshot.reasons.slice(0, 3).map((reason, index) => (
+                <li key={`${reason.code ?? "reason"}-${index}`}>{reason.message ?? reason.code ?? "Readiness reason unavailable"}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {isProcessing && (
         <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">

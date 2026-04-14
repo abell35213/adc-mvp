@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -258,6 +259,101 @@ class TestGetIncident:
         for event in data["timeline"]:
             assert "occurred_at_utc" in event
             assert "actor_type" in event
+
+
+class TestIncidentExportReadiness:
+    @patch("app.api.routes_incidents.build_export.delay")
+    @patch("app.api.routes_incidents.build_case_snapshot")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_incident_export_blocks_not_ready(
+        self,
+        mock_begin_capture,
+        mock_snapshot,
+        mock_delay,
+        client,
+        auth_headers,
+    ):
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["incident_id"]
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="not_ready", blocking_codes=["evidence_capture_incomplete"]),
+            completeness=SimpleNamespace(percent=45, status="incomplete"),
+            blockers=SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        code="evidence_capture_incomplete",
+                        message="Evidence capture incomplete.",
+                        severity="critical",
+                        blocks_readiness=True,
+                    )
+                ]
+            ),
+        )
+
+        resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
+        assert resp.status_code == 409
+        payload = resp.json()["detail"]
+        assert payload["readiness_state"] == "not_ready"
+        assert payload["reasons"][0]["code"] == "evidence_capture_incomplete"
+        mock_delay.assert_not_called()
+
+    @patch("app.api.routes_incidents.build_export.delay")
+    @patch("app.api.routes_incidents.build_case_snapshot")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_incident_export_allows_conditionally_ready_and_persists_snapshot(
+        self,
+        mock_begin_capture,
+        mock_snapshot,
+        mock_delay,
+        client,
+        db_session,
+        auth_headers,
+    ):
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-123",
+                "samsara_vehicle_id": "sm-veh-987",
+                "adc_driver_id": "drv-555",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["incident_id"]
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="conditionally_ready", blocking_codes=["driver_statement_missing"]),
+            completeness=SimpleNamespace(percent=88, status="mostly_complete"),
+            blockers=SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        code="driver_statement_missing",
+                        message="Driver statement still pending.",
+                        severity="important",
+                        blocks_readiness=False,
+                    )
+                ]
+            ),
+        )
+        mock_delay.return_value = MagicMock(id="task-123")
+
+        resp = client.post(f"/incidents/{incident_id}/exports", headers=auth_headers)
+        assert resp.status_code == 201
+
+        export = db_session.query(Export).one()
+        readiness_snapshot = export.options_json.get("readiness_snapshot")
+        readiness_warning = export.options_json.get("readiness_warning")
+        assert readiness_snapshot["state"] == "conditionally_ready"
+        assert readiness_snapshot["blocking_codes"] == ["driver_statement_missing"]
+        assert readiness_warning["code"] == "conditional_export_readiness"
 
 
 class TestIntegrationDiagnosticsRoutes:
