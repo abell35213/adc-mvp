@@ -150,6 +150,21 @@ ArtifactUploadContentType = Literal[
     "image/png",
     "video/mp4",
 ]
+OnboardingReadinessStatus = Literal[
+    "not_started",
+    "in_progress",
+    "pilot_ready",
+    "launch_ready",
+    "blocked",
+]
+OnboardingReadinessStepStatus = Literal[
+    "not_started",
+    "in_progress",
+    "completed",
+    "blocked",
+]
+ImportJobStatus = Literal["pending", "running", "succeeded", "failed"]
+ValidationSeverity = Literal["info", "warning", "error"]
 
 
 ApiErrorCode = Literal[
@@ -519,8 +534,6 @@ class CaseOpsWorkspaceResponse(BaseModel):
     activity: list[CaseOpsWorkspaceActivityItem] = Field(default_factory=list)
 
 
-
-
 TaskStatus = Literal["open", "completed", "cancelled"]
 TaskType = Literal["review", "evidence", "follow_up", "export", "other"]
 TaskPriority = Literal["low", "medium", "high", "urgent"]
@@ -572,6 +585,7 @@ class IncidentTaskItem(BaseModel):
 class IncidentTaskListResponse(BaseModel):
     items: list[IncidentTaskItem] = Field(default_factory=list)
 
+
 class IncidentNoteCreateRequest(BaseModel):
     body: LongText
     note_type: Literal["standard", "tagged", "decision"] = "standard"
@@ -616,6 +630,82 @@ class MessagingReliabilityResponse(BaseModel):
     undelivered: int = Field(default=0, ge=0)
     failed: int = Field(default=0, ge=0)
     success_rate_pct: int = Field(default=0, ge=0, le=100)
+
+
+# ── Onboarding contracts ─────────────────────────────────────────────
+
+
+class ReadinessStepResponse(BaseModel):
+    key: ShortText
+    label: ShortText
+    status: OnboardingReadinessStepStatus = "not_started"
+    order: int = Field(default=0, ge=0)
+    completed_at_utc: Optional[datetime] = None
+    updated_at_utc: Optional[datetime] = None
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class ReadinessBlockerResponse(BaseModel):
+    code: ShortText
+    title: ShortText
+    detail: str
+    severity: ValidationSeverity = "warning"
+    blocking_step_key: Optional[ShortText] = None
+    created_at_utc: Optional[datetime] = None
+    resolved_at_utc: Optional[datetime] = None
+    is_resolved: bool = False
+
+
+class ImportJobResponse(BaseModel):
+    import_job_id: ShortText
+    provider: ShortText
+    status: ImportJobStatus
+    started_at_utc: Optional[datetime] = None
+    completed_at_utc: Optional[datetime] = None
+    records_total: int = Field(default=0, ge=0)
+    records_succeeded: int = Field(default=0, ge=0)
+    records_failed: int = Field(default=0, ge=0)
+    error_message: Optional[str] = None
+
+
+class IntegrationValidationResultResponse(BaseModel):
+    integration_key: ShortText
+    status: OnboardingReadinessStepStatus
+    checked_at_utc: datetime
+    detail: str
+    severity: ValidationSeverity = "info"
+    errors: list[str] = Field(default_factory=list)
+
+
+class VehicleQrDeploymentResponse(BaseModel):
+    status: OnboardingReadinessStepStatus = "not_started"
+    vehicles_total: int = Field(default=0, ge=0)
+    qr_codes_generated: int = Field(default=0, ge=0)
+    qr_codes_activated: int = Field(default=0, ge=0)
+    last_rotated_at_utc: Optional[datetime] = None
+
+
+class TestIncidentRunResponse(BaseModel):
+    status: OnboardingReadinessStepStatus = "not_started"
+    incident_id: Optional[uuid.UUID] = None
+    started_at_utc: Optional[datetime] = None
+    completed_at_utc: Optional[datetime] = None
+    findings: list[str] = Field(default_factory=list)
+
+
+class OrgLaunchReadinessResponse(BaseModel):
+    org_id: uuid.UUID
+    status: OnboardingReadinessStatus = "not_started"
+    percent_complete: int = Field(default=0, ge=0, le=100)
+    steps: list[ReadinessStepResponse] = Field(default_factory=list)
+    blockers: list[ReadinessBlockerResponse] = Field(default_factory=list)
+    import_jobs: list[ImportJobResponse] = Field(default_factory=list)
+    integration_validations: list[IntegrationValidationResultResponse] = Field(
+        default_factory=list
+    )
+    vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
+    test_incident_run: Optional[TestIncidentRunResponse] = None
+    snapshot_created_at_utc: Optional[datetime] = None
 
 
 # ── Exports ─────────────────────────────────────────────────────────
