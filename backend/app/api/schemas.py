@@ -1311,6 +1311,50 @@ class IntegrationOperationDiagnosticsResponse(BaseModel):
     updated_at_utc: datetime | None = None
 
 
+class VehicleImportJobCreateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    csv_content: str = Field(min_length=1)
+    header_mapping: dict[str, str] = Field(default_factory=dict)
+    inactive_unit_numbers: list[str] = Field(default_factory=list)
+
+
+class VehicleImportJobCreateResponse(BaseModel):
+    job_id: uuid.UUID
+    status: ImportJobStatus
+
+
+class VehicleImportJobSummary(BaseModel):
+    missing_qr_count: int = Field(default=0, ge=0)
+    missing_provider_mapping_count: int = Field(default=0, ge=0)
+    duplicate_like_count: int = Field(default=0, ge=0)
+    inactive_count: int = Field(default=0, ge=0)
+
+
+class VehicleImportJobOutcome(BaseModel):
+    imported: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    errored: list[str] = Field(default_factory=list)
+
+
+class VehicleImportJobResponse(BaseModel):
+    job_id: uuid.UUID
+    provider: str
+    status: ImportJobStatus
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
+    records_total: int = Field(default=0, ge=0)
+    records_processed: int = Field(default=0, ge=0)
+    records_imported: int = Field(default=0, ge=0)
+    records_updated: int = Field(default=0, ge=0)
+    records_skipped: int = Field(default=0, ge=0)
+    records_errored: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    outcomes: VehicleImportJobOutcome = Field(default_factory=VehicleImportJobOutcome)
+    summary: VehicleImportJobSummary = Field(default_factory=VehicleImportJobSummary)
+    error_message: str | None = None
+
+
 class EvidenceRequestSummary(BaseModel):
     evidence_request_id: uuid.UUID
     operation_id: uuid.UUID | None = None

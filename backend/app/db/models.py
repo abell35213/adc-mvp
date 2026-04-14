@@ -1440,6 +1440,76 @@ class DriverVehicleAssignment(Base):
     )
 
 
+class OrgVehicleRegistry(Base):
+    """Organization vehicle records imported from provider feeds and CSV uploads."""
+
+    __tablename__ = "org_vehicle_registry"
+
+    vehicle_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    unit_number = Column(Text, nullable=False)
+    vin = Column(Text, nullable=True)
+    provider = Column(Text, nullable=True)
+    provider_vehicle_id = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_org_vehicle_registry_org_unit", "org_id", "unit_number", unique=True),
+        Index("ix_org_vehicle_registry_org_provider_ext", "org_id", "provider", "provider_vehicle_id"),
+    )
+
+
+class VehicleImportJob(Base):
+    """Asynchronous vehicle import job state and review summary."""
+
+    __tablename__ = "vehicle_import_jobs"
+
+    job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    provider = Column(Text, nullable=False)
+    status = Column(
+        Enum("pending", "running", "succeeded", "failed", name="vehicle_import_job_status"),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+    )
+    records_total = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_processed = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_imported = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_updated = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_skipped = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_errored = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    warnings_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
+    outcomes_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    summary_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    error_message = Column(Text, nullable=True)
+    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class VehicleQrToken(Base):
     """Vehicle QR tokens for driver app onboarding."""
 
