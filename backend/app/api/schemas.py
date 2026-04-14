@@ -95,6 +95,13 @@ IncidentCaseStatus = Literal[
     "escalated",
     "closed",
 ]
+IncidentQueue = Literal[
+    "Unassigned",
+    "Safety Review",
+    "Claims Review",
+    "Escalated",
+    "Export Queue",
+]
 ArtifactStatus = Literal["pending", "captured", "unavailable"]
 ExportType = Literal[
     "court_defense", "insurer_packet", "internal_review", "compliance_audit"
@@ -346,6 +353,31 @@ class IncidentStatusPatchResponse(BaseModel):
     incident_id: uuid.UUID
     case_status: IncidentCaseStatus
     transition_reason: LongText
+
+
+IncidentOwnerPatchOperation = Literal["assign", "reassign", "clear"]
+
+
+class IncidentOwnerPatchRequest(BaseModel):
+    operation: IncidentOwnerPatchOperation
+    owner_user_id: Optional[uuid.UUID] = None
+
+    @model_validator(mode="after")
+    def validate_operation(self):
+        if self.operation == "clear" and self.owner_user_id is not None:
+            raise ValueError("owner_user_id must be null when operation is 'clear'.")
+        if self.operation in {"assign", "reassign"} and self.owner_user_id is None:
+            raise ValueError("owner_user_id is required for assign/reassign.")
+        return self
+
+
+class IncidentOwnerPatchResponse(BaseModel):
+    incident_id: uuid.UUID
+    owner_user_id: Optional[uuid.UUID] = None
+    assigned_at: Optional[datetime] = None
+    assigned_by: Optional[uuid.UUID] = None
+    team_queue: Optional[IncidentQueue] = None
+    last_activity_at_utc: Optional[datetime] = None
 
 
 class MessagingReliabilityResponse(BaseModel):

@@ -595,6 +595,127 @@ class TestPatchIncidentStatus:
         assert response.json()["transition_reason"] == "Reopened for legal review"
 
 
+# ── PATCH /incidents/{incident_id}/owner ───────────────────────────
+
+
+class TestPatchIncidentOwner:
+    def _create_incident(self, client, auth_headers) -> str:
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "owner-v1",
+                "samsara_vehicle_id": "owner-s1",
+                "adc_driver_id": "owner-d1",
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        return create_resp.json()["incident_id"]
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_owner_assign_reassign_clear(
+        self, mock_begin_capture, client, db_session, test_org, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+
+        owner_one = User(
+            email="owner-one@example.com",
+            password_hash=hash_password("testpass"),
+            role="safety_manager",
+        )
+        owner_two = User(
+            email="owner-two@example.com",
+            password_hash=hash_password("testpass"),
+            role="safety_manager",
+        )
+        db_session.add_all([owner_one, owner_two])
+        db_session.commit()
+        db_session.refresh(owner_one)
+        db_session.refresh(owner_two)
+        db_session.add_all(
+            [
+                UserOrg(user_id=owner_one.id, org_id=test_org.id),
+                UserOrg(user_id=owner_two.id, org_id=test_org.id),
+            ]
+        )
+        db_session.commit()
+
+        assign_resp = client.patch(
+            f"/incidents/{incident_id}/owner",
+            json={"operation": "assign", "owner_user_id": str(owner_one.id)},
+            headers=auth_headers,
+        )
+        assert assign_resp.status_code == 200
+        assign_payload = assign_resp.json()
+        assert assign_payload["owner_user_id"] == str(owner_one.id)
+        assert assign_payload["assigned_by"] is not None
+        assert assign_payload["assigned_at"] is not None
+        assert assign_payload["last_activity_at_utc"] is not None
+
+        reassign_resp = client.patch(
+            f"/incidents/{incident_id}/owner",
+            json={"operation": "reassign", "owner_user_id": str(owner_two.id)},
+            headers=auth_headers,
+        )
+        assert reassign_resp.status_code == 200
+        reassign_payload = reassign_resp.json()
+        assert reassign_payload["owner_user_id"] == str(owner_two.id)
+        assert reassign_payload["assigned_by"] is not None
+        assert reassign_payload["assigned_at"] is not None
+        assert reassign_payload["last_activity_at_utc"] is not None
+
+        clear_resp = client.patch(
+            f"/incidents/{incident_id}/owner",
+            json={"operation": "clear"},
+            headers=auth_headers,
+        )
+        assert clear_resp.status_code == 200
+        clear_payload = clear_resp.json()
+        assert clear_payload["owner_user_id"] is None
+        assert clear_payload["assigned_by"] is None
+        assert clear_payload["assigned_at"] is None
+        assert clear_payload["team_queue"] == "Unassigned"
+        assert clear_payload["last_activity_at_utc"] is not None
+
+        incident = (
+            db_session.query(Incident)
+            .filter(Incident.incident_id == uuid.UUID(incident_id))
+            .one()
+        )
+        assert incident.owner_user_id is None
+        assert incident.owner_assigned_at_utc is None
+        assert incident.owner_assigned_by_user_id is None
+        assert incident.team_queue == "Unassigned"
+        assert incident.last_activity_at_utc is not None
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_owner_enforces_org_isolation(
+        self, mock_begin_capture, client, db_session, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+        other_org = Org(name="Other Owner Org")
+        foreign_owner = User(
+            email="foreign-owner@example.com",
+            password_hash=hash_password("testpass"),
+            role="safety_manager",
+        )
+        db_session.add_all([other_org, foreign_owner])
+        db_session.commit()
+        db_session.refresh(other_org)
+        db_session.refresh(foreign_owner)
+        db_session.add(UserOrg(user_id=foreign_owner.id, org_id=other_org.id))
+        db_session.commit()
+
+        response = client.patch(
+            f"/incidents/{incident_id}/owner",
+            json={"operation": "assign", "owner_user_id": str(foreign_owner.id)},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Owner user not found"
+
+
 # ── GET /incidents (list) ───────────────────────────────────────────
 
 

@@ -15,6 +15,8 @@ from app.api.schemas import (
     ExportSummary,
     IncidentDetailResponse,
     IncidentListItem,
+    IncidentOwnerPatchRequest,
+    IncidentOwnerPatchResponse,
     IncidentStatusPatchRequest,
     IncidentStatusPatchResponse,
 )
@@ -40,6 +42,7 @@ from app.services.idempotency_service import (
 from app.services.incident_evidence_orchestrator import IncidentEvidenceOrchestrator
 from app.services.dashcam_reason_codes import dashcam_reason_message
 from app.services.rate_limit_service import enforce_rate_limit
+from app.services.incident_ownership_service import patch_incident_owner
 from app.core.config import settings
 from app.security.authn import build_user_auth_context
 from app.security.authz import (
@@ -393,6 +396,40 @@ def patch_incident_status(
         incident_id=incident.incident_id,
         case_status=incident.case_status,
         transition_reason=body.reason,
+    )
+
+
+@router.patch("/{incident_id}/owner", response_model=IncidentOwnerPatchResponse)
+def patch_incident_owner_endpoint(
+    incident_id: uuid.UUID,
+    body: IncidentOwnerPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_modify_incident(context, incident))
+
+    incident = patch_incident_owner(
+        db=db,
+        incident=incident,
+        org_ids=org_ids,
+        actor_user_id=current_user.id,
+        operation=body.operation,
+        owner_user_id=body.owner_user_id,
+    )
+    db.commit()
+
+    return IncidentOwnerPatchResponse(
+        incident_id=incident.incident_id,
+        owner_user_id=incident.owner_user_id,
+        assigned_at=incident.owner_assigned_at_utc,
+        assigned_by=incident.owner_assigned_by_user_id,
+        team_queue=incident.team_queue,
+        last_activity_at_utc=incident.last_activity_at_utc,
     )
 
 
