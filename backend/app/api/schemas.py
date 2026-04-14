@@ -380,6 +380,70 @@ class IncidentOwnerPatchResponse(BaseModel):
     last_activity_at_utc: Optional[datetime] = None
 
 
+CaseOpsQueueSort = Literal["urgency", "readiness", "newest"]
+CaseOpsBlockerFilter = Literal["any", "critical", "important", "none"]
+
+
+class CaseOpsQueueBlockerCounts(BaseModel):
+    total: int = 0
+    critical: int = 0
+    important: int = 0
+    optional: int = 0
+
+
+class CaseOpsQueueItem(BaseModel):
+    incident_id: uuid.UUID
+    case_status: IncidentCaseStatus
+    owner_user_id: Optional[uuid.UUID] = None
+    readiness_state: str = "not_ready"
+    created_at_utc: Optional[datetime] = None
+    last_activity_at_utc: Optional[datetime] = None
+    severity: Optional[IncidentSeverity] = None
+    adc_vehicle_id: Optional[VehicleId] = None
+    adc_driver_id: Optional[DriverId] = None
+    completeness_percent: int = Field(default=0, ge=0, le=100)
+    blockers: CaseOpsQueueBlockerCounts = Field(default_factory=CaseOpsQueueBlockerCounts)
+
+
+class CaseOpsQueueResponse(BaseModel):
+    items: list[CaseOpsQueueItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 25
+
+
+class CaseOpsSummaryMetricsResponse(BaseModel):
+    open_incidents: int = 0
+    unassigned_incidents: int = 0
+    blocked_incidents: int = 0
+    export_aging_incidents: int = 0
+    stalled_incidents: int = 0
+    overdue_tasks: int = 0
+
+
+class CaseOpsAlertsResponse(BaseModel):
+    stalled: int = 0
+    unassigned: int = 0
+    overdue: int = 0
+    blocked: int = 0
+    export_aging: int = 0
+
+
+class CaseTaskWidgetItem(BaseModel):
+    task_id: uuid.UUID
+    incident_id: uuid.UUID
+    title: str
+    status: str
+    priority: str
+    due_at_utc: Optional[datetime] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    created_at_utc: Optional[datetime] = None
+
+
+class CaseTaskWidgetResponse(BaseModel):
+    items: list[CaseTaskWidgetItem] = Field(default_factory=list)
+
+
 class MessagingReliabilityResponse(BaseModel):
     total: int = Field(default=0, ge=0)
     delivered: int = Field(default=0, ge=0)
