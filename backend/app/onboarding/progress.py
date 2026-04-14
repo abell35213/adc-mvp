@@ -18,6 +18,8 @@ class OnboardingSignals:
     active_user_count: int = 0
     successful_import_count: int = 0
     failed_import_count: int = 0
+    successful_driver_import_count: int = 0
+    failed_driver_import_count: int = 0
     mapping_count: int = 0
     active_integration_count: int = 0
     total_integration_count: int = 0
@@ -42,6 +44,7 @@ STEP_DEFINITIONS: tuple[StepDefinition, ...] = (
     StepDefinition("org_settings", "Organization basics", 10),
     StepDefinition("users_roles", "Users and roles", 20),
     StepDefinition("imports", "Data imports", 30),
+    StepDefinition("driversImported", "Drivers imported", 35),
     StepDefinition("mappings", "External mappings", 40),
     StepDefinition("integrations", "Integrations", 50),
     StepDefinition("vehicle_qr", "Vehicle QR deployment", 60),
@@ -68,6 +71,13 @@ def derive_step_statuses(
         if signals.successful_import_count > 0 and signals.failed_import_count == 0
         else "in_progress"
         if signals.successful_import_count > 0 or signals.failed_import_count > 0
+        else "not_started",
+        "driversImported": "completed"
+        if signals.successful_driver_import_count > 0
+        and signals.failed_driver_import_count == 0
+        else "in_progress"
+        if signals.successful_driver_import_count > 0
+        or signals.failed_driver_import_count > 0
         else "not_started",
         "mappings": "completed" if signals.mapping_count > 0 else "not_started",
         "integrations": "completed"

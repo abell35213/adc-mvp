@@ -23,6 +23,8 @@ from app.db.models import (
     IntegrationConnection,
     IntegrationOperation,
     EvidenceRequest,
+    Driver,
+    DriverVehicleAssignment,
     ExternalMapping,
     VehicleQrToken,
     OrgVehicleRegistry,
@@ -288,7 +290,9 @@ class TestIncidentExportReadiness:
         )
         incident_id = create_resp.json()["incident_id"]
         mock_snapshot.return_value = SimpleNamespace(
-            readiness=SimpleNamespace(state="not_ready", blocking_codes=["evidence_capture_incomplete"]),
+            readiness=SimpleNamespace(
+                state="not_ready", blocking_codes=["evidence_capture_incomplete"]
+            ),
             completeness=SimpleNamespace(percent=45, status="incomplete"),
             blockers=SimpleNamespace(
                 items=[
@@ -333,7 +337,9 @@ class TestIncidentExportReadiness:
         )
         incident_id = create_resp.json()["incident_id"]
         mock_snapshot.return_value = SimpleNamespace(
-            readiness=SimpleNamespace(state="conditionally_ready", blocking_codes=["driver_statement_missing"]),
+            readiness=SimpleNamespace(
+                state="conditionally_ready", blocking_codes=["driver_statement_missing"]
+            ),
             completeness=SimpleNamespace(percent=88, status="mostly_complete"),
             blockers=SimpleNamespace(
                 items=[
@@ -360,7 +366,9 @@ class TestIncidentExportReadiness:
 
 
 class TestIntegrationDiagnosticsRoutes:
-    def test_org_settings_read_and_patch(self, client, db_session, test_org, auth_headers):
+    def test_org_settings_read_and_patch(
+        self, client, db_session, test_org, auth_headers
+    ):
         read = client.get("/org/settings", headers=auth_headers)
         assert read.status_code == 200
         assert read.json()["display_name"] == "Test Org"
@@ -374,7 +382,10 @@ class TestIntegrationDiagnosticsRoutes:
                 "timezone": "America/Chicago",
                 "region": "US",
                 "contacts": [{"name": "Safety Lead", "email": "safety@test.org"}],
-                "implementation_contact": {"name": "Impl Lead", "email": "impl@test.org"},
+                "implementation_contact": {
+                    "name": "Impl Lead",
+                    "email": "impl@test.org",
+                },
                 "logo_url": "https://cdn.example.com/logo.png",
             },
         )
@@ -530,7 +541,9 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert patch_role.status_code == 200
         updated_user = next(
-            item for item in patch_role.json()["users"] if item["user_id"] == str(test_user.id)
+            item
+            for item in patch_role.json()["users"]
+            if item["user_id"] == str(test_user.id)
         )
         assert updated_user["role"] == "org_admin"
 
@@ -2118,7 +2131,9 @@ class TestVehicleImportJobs:
         assert create_resp.status_code == 202
         job_id = create_resp.json()["job_id"]
 
-        read_resp = client.get(f"/org/vehicles/import-jobs/{job_id}", headers=auth_headers)
+        read_resp = client.get(
+            f"/org/vehicles/import-jobs/{job_id}", headers=auth_headers
+        )
         assert read_resp.status_code == 200
         payload = read_resp.json()
         assert payload["status"] == "failed"
@@ -2133,16 +2148,128 @@ class TestVehicleImportJobs:
         assert payload["summary"]["duplicate_like_count"] == 2
         assert payload["summary"]["inactive_count"] == 1
         assert any("VIN" in warning for warning in payload["warnings"])
-        assert any("duplicate unitNumber" in row for row in payload["outcomes"]["errored"])
-        assert any("unitNumber is required" in row for row in payload["outcomes"]["errored"])
+        assert any(
+            "duplicate unitNumber" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "unitNumber is required" in row for row in payload["outcomes"]["errored"]
+        )
 
-        vehicles = db_session.query(OrgVehicleRegistry).filter(OrgVehicleRegistry.org_id == test_org.id).all()
+        vehicles = (
+            db_session.query(OrgVehicleRegistry)
+            .filter(OrgVehicleRegistry.org_id == test_org.id)
+            .all()
+        )
         assert len(vehicles) == 2
         unit_two = next(item for item in vehicles if item.unit_number == "UNIT-002")
         assert unit_two.is_active is False
 
     def test_get_vehicle_import_job_not_found(self, client, auth_headers):
-        resp = client.get(f"/org/vehicles/import-jobs/{uuid.uuid4()}", headers=auth_headers)
+        resp = client.get(
+            f"/org/vehicles/import-jobs/{uuid.uuid4()}", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+
+class TestDriverImportJobs:
+    def test_create_driver_import_job_and_read_results(
+        self, client, db_session, test_org, auth_headers
+    ):
+        existing = Driver(
+            org_id=test_org.id,
+            phone_e164="+15550001111",
+            display_name="Existing Driver",
+            is_active=True,
+        )
+        db_session.add(existing)
+        db_session.commit()
+        db_session.refresh(existing)
+        db_session.add(
+            DriverVehicleAssignment(
+                org_id=test_org.id,
+                driver_id=existing.driver_id,
+                adc_vehicle_id="UNIT-001",
+                source="manual",
+            )
+        )
+        db_session.add(
+            ExternalMapping(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                internal_entity_type="driver",
+                internal_entity_id=str(existing.driver_id),
+                external_reference="provider-driver-1",
+                status="active",
+            )
+        )
+        db_session.commit()
+
+        csv_content = (
+            "firstName,lastName,mobile,status\n"
+            "Alice,Example,(555) 000-1111,active\n"
+            "Bob,Builder,invalid-phone,active\n"
+            "Chris,Driver,5550002222,inactive\n"
+            "Dana,Dupe,5550002222,active\n"
+            ",NoFirst,5550003333,active\n"
+            "NoLast,,5550004444,active\n"
+        )
+
+        create_resp = client.post(
+            "/org/drivers/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"phone": "mobile"},
+                "inactive_mobile_phones": ["5550002222"],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(
+            f"/org/drivers/import-jobs/{job_id}", headers=auth_headers
+        )
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_total"] == 2
+        assert payload["records_processed"] == 2
+        assert payload["records_imported"] == 1
+        assert payload["records_updated"] == 1
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 4
+        assert payload["summary"]["invalid_phone_count"] == 1
+        assert payload["summary"]["duplicate_warning_count"] == 1
+        assert payload["summary"]["missing_assignment_count"] == 1
+        assert payload["summary"]["missing_external_mapping_count"] == 1
+        assert payload["summary"]["needs_review_count"] == 3
+        assert payload["summary"]["inactive_count"] == 1
+        assert len(payload["outcomes"]["invalid_phone"]) == 1
+        assert len(payload["outcomes"]["duplicate_warning"]) == 1
+        assert len(payload["outcomes"]["missing_assignment_or_mapping"]) == 1
+        assert len(payload["outcomes"]["needs_review"]) == 3
+        assert any(
+            "firstName is required" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "lastName is required" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "missing assignment, external_mapping" in row for row in payload["warnings"]
+        )
+
+        drivers = db_session.query(Driver).filter(Driver.org_id == test_org.id).all()
+        assert len(drivers) == 2
+        imported = next(row for row in drivers if row.phone_e164 == "+15550002222")
+        assert imported.display_name == "Chris Driver"
+        assert imported.is_active is False
+
+    def test_get_driver_import_job_not_found(self, client, auth_headers):
+        resp = client.get(
+            f"/org/drivers/import-jobs/{uuid.uuid4()}", headers=auth_headers
+        )
         assert resp.status_code == 404
 
 

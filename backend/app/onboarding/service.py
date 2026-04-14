@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     DriverInstructionSet,
     DriverInstructionStep,
+    DriverImportJob,
     DriverVehicleAssignment,
     Event,
     Export,
@@ -82,7 +83,9 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
     ]
     org_admin_count = sum(1 for user in active_users if str(user.role) == "org_admin")
     safety_capable_user_count = sum(
-        1 for user in active_users if has_capability(user.role, Capability.INCIDENT_WRITE)
+        1
+        for user in active_users
+        if has_capability(user.role, Capability.INCIDENT_WRITE)
     )
 
     import_operations = (
@@ -97,6 +100,15 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         1 for op in import_operations if op.status == "succeeded"
     )
     failed_import_count = sum(1 for op in import_operations if op.status == "failed")
+    driver_import_jobs = (
+        db.query(DriverImportJob).filter(DriverImportJob.org_id == org_id).all()
+    )
+    successful_driver_import_count = sum(
+        1 for row in driver_import_jobs if row.status == "succeeded"
+    )
+    failed_driver_import_count = sum(
+        1 for row in driver_import_jobs if row.status == "failed"
+    )
 
     mapping_count = (
         db.query(ExternalMapping.mapping_id)
@@ -170,6 +182,7 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         [
             len(active_users) > 0,
             len(import_operations) > 0,
+            len(driver_import_jobs) > 0,
             mapping_count > 0,
             len(integration_rows) > 0,
             qr_codes_generated > 0,
@@ -185,6 +198,8 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         active_user_count=len(active_users),
         successful_import_count=successful_import_count,
         failed_import_count=failed_import_count,
+        successful_driver_import_count=successful_driver_import_count,
+        failed_driver_import_count=failed_driver_import_count,
         mapping_count=mapping_count,
         active_integration_count=active_integration_count,
         total_integration_count=len(integration_rows),
@@ -224,7 +239,9 @@ def build_onboarding_readiness(
                 "completion_source": completion.completion_source or "unknown",
             }
         else:
-            step.metadata = {"completion_source": completion.completion_source or "unknown"}
+            step.metadata = {
+                "completion_source": completion.completion_source or "unknown"
+            }
         step.updated_at_utc = completion.updated_at_utc
     percent_complete = completion_percent(steps)
     status = derive_readiness_status(steps=steps, percent_complete=percent_complete)
@@ -237,7 +254,18 @@ def build_onboarding_readiness(
             records_total=signals.successful_import_count + signals.failed_import_count,
             records_succeeded=signals.successful_import_count,
             records_failed=signals.failed_import_count,
-        )
+        ),
+        ImportJob(
+            import_job_id="drivers_imported",
+            provider="driver_csv",
+            status="succeeded"
+            if signals.successful_driver_import_count > 0
+            else "pending",
+            records_total=signals.successful_driver_import_count
+            + signals.failed_driver_import_count,
+            records_succeeded=signals.successful_driver_import_count,
+            records_failed=signals.failed_driver_import_count,
+        ),
     ]
 
     integration_validations = [

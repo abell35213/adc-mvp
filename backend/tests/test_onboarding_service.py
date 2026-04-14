@@ -103,3 +103,15 @@ def test_build_onboarding_readiness_uses_blocked_status_when_critical_exists():
     assert "org_settings" in blocked
     assert "integrations" in blocked
     assert len(snapshot.blockers) >= 1
+
+
+def test_driver_import_step_completion_signal():
+    steps = derive_step_statuses(
+        signals=OnboardingSignals(
+            successful_driver_import_count=1,
+            failed_driver_import_count=0,
+        ),
+        blocked_step_keys=set(),
+    )
+    by_key = {step.key: step for step in steps}
+    assert by_key["driversImported"].status == "completed"

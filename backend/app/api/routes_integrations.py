@@ -6,10 +6,20 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+)
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
+    DriverImportJobCreateRequest,
+    DriverImportJobCreateResponse,
+    DriverImportJobResponse,
     EvidenceRequestSummary,
     EvidenceRetryActionRequest,
     EvidenceRetryActionResponse,
@@ -43,6 +53,7 @@ from app.db.models import (
     Org,
     User,
     UserOrg,
+    DriverImportJob,
     VehicleImportJob,
 )
 from app.db.session import get_db
@@ -58,14 +69,27 @@ from app.security.authn import build_user_auth_context
 from app.observability.redaction import redact_payload_for_storage
 from app.services.dashcam_capture_service import queue_dashcam_capture
 from app.services.telematics_capture_service import queue_telematics_capture
-from app.services.vehicle_import_service import create_vehicle_import_job, run_vehicle_import_job
+from app.services.phone_normalize import normalize_phone
+from app.services.vehicle_import_service import (
+    create_vehicle_import_job,
+    run_vehicle_import_job,
+)
+from app.services.driver_import_service import (
+    create_driver_import_job,
+    run_driver_import_job,
+)
 from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
     collect_onboarding_signals,
     get_org_onboarding_readiness,
     set_step_completion_override,
 )
-from app.security.permissions import CANONICAL_ROLES, Capability, has_capability, normalize_role
+from app.security.permissions import (
+    CANONICAL_ROLES,
+    Capability,
+    has_capability,
+    normalize_role,
+)
 
 router = APIRouter()
 
@@ -86,7 +110,9 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
             "steps": [asdict(item) for item in readiness.steps],
             "blockers": [asdict(item) for item in readiness.blockers],
             "import_jobs": [asdict(item) for item in readiness.import_jobs],
-            "integration_validations": [asdict(item) for item in readiness.integration_validations],
+            "integration_validations": [
+                asdict(item) for item in readiness.integration_validations
+            ],
             "vehicle_qr_deployment": asdict(readiness.vehicle_qr_deployment)
             if readiness.vehicle_qr_deployment is not None
             else None,
@@ -141,12 +167,61 @@ def _run_vehicle_import_background(
         org_id=org_id,
         csv_content=csv_content,
         header_mapping=header_mapping,
-        inactive_unit_numbers={item.strip().lower() for item in inactive_unit_numbers if item.strip()},
+        inactive_unit_numbers={
+            item.strip().lower() for item in inactive_unit_numbers if item.strip()
+        },
     )
 
 
 def _to_vehicle_import_job_response(job: VehicleImportJob) -> VehicleImportJobResponse:
     return VehicleImportJobResponse(
+        job_id=job.job_id,
+        provider=job.provider,
+        status=job.status,
+        started_at_utc=job.started_at_utc,
+        completed_at_utc=job.completed_at_utc,
+        records_total=job.records_total,
+        records_processed=job.records_processed,
+        records_imported=job.records_imported,
+        records_updated=job.records_updated,
+        records_skipped=job.records_skipped,
+        records_errored=job.records_errored,
+        warnings=job.warnings_json or [],
+        outcomes=job.outcomes_json or {},
+        summary=job.summary_json or {},
+        error_message=job.error_message,
+    )
+
+
+def _run_driver_import_background(
+    db: Session,
+    *,
+    job_id: uuid.UUID,
+    org_id: uuid.UUID,
+    csv_content: str,
+    header_mapping: dict[str, str],
+    inactive_mobile_phones: list[str],
+) -> None:
+    inactive_phones: set[str] = set()
+    for raw in inactive_mobile_phones:
+        if not raw or not raw.strip():
+            continue
+        try:
+            inactive_phones.add(normalize_phone(raw))
+        except ValueError:
+            continue
+    run_driver_import_job(
+        db,
+        job_id=job_id,
+        org_id=org_id,
+        csv_content=csv_content,
+        header_mapping=header_mapping,
+        inactive_phones=inactive_phones,
+    )
+
+
+def _to_driver_import_job_response(job: DriverImportJob) -> DriverImportJobResponse:
+    return DriverImportJobResponse(
         job_id=job.job_id,
         provider=job.provider,
         status=job.status,
@@ -251,7 +326,9 @@ def mark_org_onboarding_step(
                     "code": "users_roles_prerequisites_not_met",
                     "message": "Cannot complete users_roles step until role requirements are satisfied.",
                     "role_counts": _role_counts_for_org(db, org_id=org_id),
-                    "violations": _role_violations(role_counts=_role_counts_for_org(db, org_id=org_id)),
+                    "violations": _role_violations(
+                        role_counts=_role_counts_for_org(db, org_id=org_id)
+                    ),
                 },
             )
     set_step_completion_override(
@@ -304,12 +381,64 @@ def get_org_vehicle_import_job(
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(VehicleImportJob)
-        .filter(VehicleImportJob.job_id == job_id, VehicleImportJob.org_id == _first_org_id(context))
+        .filter(
+            VehicleImportJob.job_id == job_id,
+            VehicleImportJob.org_id == _first_org_id(context),
+        )
         .first()
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Import job not found")
     return _to_vehicle_import_job_response(row)
+
+
+@router.post(
+    "/org/drivers/import",
+    response_model=DriverImportJobCreateResponse,
+    status_code=202,
+)
+def create_org_driver_import_job(
+    payload: DriverImportJobCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    job = create_driver_import_job(db, org_id=org_id, provider=payload.provider)
+    background_tasks.add_task(
+        _run_driver_import_background,
+        db,
+        job_id=job.job_id,
+        org_id=org_id,
+        csv_content=payload.csv_content,
+        header_mapping=payload.header_mapping,
+        inactive_mobile_phones=payload.inactive_mobile_phones,
+    )
+    return DriverImportJobCreateResponse(job_id=job.job_id, status=job.status)
+
+
+@router.get(
+    "/org/drivers/import-jobs/{job_id}",
+    response_model=DriverImportJobResponse,
+)
+def get_org_driver_import_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    row = (
+        db.query(DriverImportJob)
+        .filter(
+            DriverImportJob.job_id == job_id,
+            DriverImportJob.org_id == _first_org_id(context),
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    return _to_driver_import_job_response(row)
 
 
 @router.get("/org/users", response_model=OrgUsersResponse)
@@ -418,7 +547,9 @@ def patch_org_user_role(
     return list_org_users(db=db, current_user=current_user)
 
 
-@router.post("/org/users/invite/{invite_id}/resend", response_model=OrgInviteUserResponse)
+@router.post(
+    "/org/users/invite/{invite_id}/resend", response_model=OrgInviteUserResponse
+)
 def resend_org_user_invite(
     invite_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -455,7 +586,9 @@ def resend_org_user_invite(
     )
 
 
-@router.post("/org/users/invite/{invite_id}/deactivate", response_model=OrgInviteUserResponse)
+@router.post(
+    "/org/users/invite/{invite_id}/deactivate", response_model=OrgInviteUserResponse
+)
 def deactivate_org_user_invite(
     invite_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -491,7 +624,9 @@ def deactivate_org_user_invite(
     )
 
 
-@router.get("/org/integrations", response_model=list[IntegrationConnectionHealthResponse])
+@router.get(
+    "/org/integrations", response_model=list[IntegrationConnectionHealthResponse]
+)
 def list_org_integrations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -510,7 +645,9 @@ def list_org_integrations(
             domain=row.domain,
             status=row.status,
             healthy=row.status in {"active", "pending"},
-            reason=None if row.status in {"active", "pending"} else "Connection not healthy",
+            reason=None
+            if row.status in {"active", "pending"}
+            else "Connection not healthy",
             last_synced_at_utc=row.last_synced_at_utc,
             updated_at_utc=row.updated_at_utc,
         )
@@ -518,7 +655,10 @@ def list_org_integrations(
     ]
 
 
-@router.get("/org/integrations/{integration_id}", response_model=IntegrationConnectionHealthResponse)
+@router.get(
+    "/org/integrations/{integration_id}",
+    response_model=IntegrationConnectionHealthResponse,
+)
 def get_org_integration(
     integration_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -541,7 +681,9 @@ def get_org_integration(
         domain=row.domain,
         status=row.status,
         healthy=row.status in {"active", "pending"},
-        reason=None if row.status in {"active", "pending"} else "Connection not healthy",
+        reason=None
+        if row.status in {"active", "pending"}
+        else "Connection not healthy",
         last_synced_at_utc=row.last_synced_at_utc,
         updated_at_utc=row.updated_at_utc,
     )
@@ -573,11 +715,16 @@ def validate_org_integration(
         integration_id=row.connection_id,
         valid=valid,
         status=row.status,
-        message="Connection validated" if valid else "Connection missing credentials or disabled",
+        message="Connection validated"
+        if valid
+        else "Connection missing credentials or disabled",
     )
 
 
-@router.patch("/org/integrations/{integration_id}", response_model=IntegrationConnectionHealthResponse)
+@router.patch(
+    "/org/integrations/{integration_id}",
+    response_model=IntegrationConnectionHealthResponse,
+)
 def patch_org_integration(
     integration_id: uuid.UUID,
     payload: IntegrationConnectionUpdateRequest,
@@ -610,13 +757,18 @@ def patch_org_integration(
         domain=row.domain,
         status=row.status,
         healthy=row.status in {"active", "pending"},
-        reason=None if row.status in {"active", "pending"} else "Connection not healthy",
+        reason=None
+        if row.status in {"active", "pending"}
+        else "Connection not healthy",
         last_synced_at_utc=row.last_synced_at_utc,
         updated_at_utc=row.updated_at_utc,
     )
 
 
-@router.post("/org/integrations/{integration_id}/disable", response_model=IntegrationConnectionHealthResponse)
+@router.post(
+    "/org/integrations/{integration_id}/disable",
+    response_model=IntegrationConnectionHealthResponse,
+)
 def disable_org_integration(
     integration_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -651,7 +803,10 @@ def disable_org_integration(
     )
 
 
-@router.get("/integration-operations", response_model=list[IntegrationOperationDiagnosticsResponse])
+@router.get(
+    "/integration-operations",
+    response_model=list[IntegrationOperationDiagnosticsResponse],
+)
 def list_integration_operations(
     incident_id: uuid.UUID | None = None,
     status: str | None = None,
@@ -660,7 +815,9 @@ def list_integration_operations(
     current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
-    query = db.query(IntegrationOperation).filter(IntegrationOperation.org_id.in_(context.org_ids))
+    query = db.query(IntegrationOperation).filter(
+        IntegrationOperation.org_id.in_(context.org_ids)
+    )
     if incident_id is not None:
         query = query.filter(IntegrationOperation.incident_id == incident_id)
     if status is not None:
@@ -694,8 +851,12 @@ def get_integration_operation(
     return _to_diagnostics_response(row)
 
 
-def _to_diagnostics_response(row: IntegrationOperation) -> IntegrationOperationDiagnosticsResponse:
-    response = IntegrationOperationDiagnosticsResponse.model_validate(row, from_attributes=True)
+def _to_diagnostics_response(
+    row: IntegrationOperation,
+) -> IntegrationOperationDiagnosticsResponse:
+    response = IntegrationOperationDiagnosticsResponse.model_validate(
+        row, from_attributes=True
+    )
     response.payload_json = redact_payload_for_storage(response.payload_json)
     response.result_json = redact_payload_for_storage(response.result_json)
     return response
@@ -720,7 +881,9 @@ def list_incident_evidence_requests(
         .order_by(EvidenceRequest.requested_at_utc.desc())
         .all()
     )
-    return [EvidenceRequestSummary.model_validate(row, from_attributes=True) for row in rows]
+    return [
+        EvidenceRequestSummary.model_validate(row, from_attributes=True) for row in rows
+    ]
 
 
 @router.post(
@@ -739,22 +902,30 @@ def retry_incident_evidence_requests(
         EvidenceRequest.org_id.in_(context.org_ids),
     )
     if payload.evidence_request_ids:
-        query = query.filter(EvidenceRequest.evidence_request_id.in_(payload.evidence_request_ids))
+        query = query.filter(
+            EvidenceRequest.evidence_request_id.in_(payload.evidence_request_ids)
+        )
     if payload.retry_failed_only:
         query = query.filter(EvidenceRequest.status == "failed")
 
     rows = query.order_by(EvidenceRequest.requested_at_utc.desc()).all()
     if not rows:
-        return EvidenceRetryActionResponse(incident_id=incident_id, retried_count=0, queued_operation_ids=[])
+        return EvidenceRetryActionResponse(
+            incident_id=incident_id, retried_count=0, queued_operation_ids=[]
+        )
 
     correlation_id = get_request_id() or str(uuid.uuid4())
     operation_ids: list[uuid.UUID] = []
 
     dashcam_ids = [row.evidence_request_id for row in rows if row.domain == "dashcam"]
-    telematics_ids = [row.evidence_request_id for row in rows if row.domain == "telematics"]
+    telematics_ids = [
+        row.evidence_request_id for row in rows if row.domain == "telematics"
+    ]
     org_id = rows[0].org_id
     if org_id is None:
-        raise HTTPException(status_code=422, detail="Evidence requests are missing org_id")
+        raise HTTPException(
+            status_code=422, detail="Evidence requests are missing org_id"
+        )
 
     if dashcam_ids:
         operation_ids.append(
@@ -788,7 +959,9 @@ def retry_incident_evidence_requests(
     )
 
 
-@router.get("/incidents/{incident_id}/evidence-summary", response_model=EvidenceSummaryResponse)
+@router.get(
+    "/incidents/{incident_id}/evidence-summary", response_model=EvidenceSummaryResponse
+)
 def get_incident_evidence_summary(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -820,12 +993,17 @@ def get_incident_evidence_summary(
         status_counts=status_counts,
         provider_counts=provider_counts,
         retryable_failures=retryable_failures,
-        requests=[EvidenceRequestSummary.model_validate(row, from_attributes=True) for row in rows],
+        requests=[
+            EvidenceRequestSummary.model_validate(row, from_attributes=True)
+            for row in rows
+        ],
     )
 
 
 @router.post("/provider-webhooks/twilio/voice")
-async def provider_twilio_voice_webhook(request: Request, db: Session = Depends(get_db)):
+async def provider_twilio_voice_webhook(
+    request: Request, db: Session = Depends(get_db)
+):
     raw_body = await request.body()
     params = parse_form_encoded_body(raw_body)
     signature_valid, signature_error = validate_twilio_signature(
@@ -841,11 +1019,15 @@ async def provider_twilio_voice_webhook(request: Request, db: Session = Depends(
         signature_valid=signature_valid,
         signature_error=signature_error,
     )
-    return Response(status_code=result.status_code, content=result.body.get("detail", "ok"))
+    return Response(
+        status_code=result.status_code, content=result.body.get("detail", "ok")
+    )
 
 
 @router.post("/provider-webhooks/twilio/status")
-async def provider_twilio_status_webhook(request: Request, db: Session = Depends(get_db)):
+async def provider_twilio_status_webhook(
+    request: Request, db: Session = Depends(get_db)
+):
     raw_body = await request.body()
     params = parse_form_encoded_body(raw_body)
     signature_valid, signature_error = validate_twilio_signature(
