@@ -60,9 +60,6 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
         {
             Capability.INCIDENT_READ,
             Capability.INCIDENT_WRITE,
-            Capability.INCIDENT_CLOSE,
-            Capability.INCIDENT_REOPEN,
-            Capability.INCIDENT_ESCALATE,
             Capability.EXPORT_READ,
             Capability.EXPORT_WRITE,
         }
