@@ -38,7 +38,7 @@ class StepDefinition:
 
 
 STEP_DEFINITIONS: tuple[StepDefinition, ...] = (
-    StepDefinition("org_settings", "Organization settings", 10),
+    StepDefinition("org_settings", "Organization basics", 10),
     StepDefinition("users_roles", "Users and roles", 20),
     StepDefinition("imports", "Data imports", 30),
     StepDefinition("mappings", "External mappings", 40),

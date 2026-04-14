@@ -18,6 +18,7 @@ from app.db.models import (
     IntegrationConnection,
     IntegrationOperation,
     Org,
+    OrgOnboardingStepCompletion,
     User,
     UserOrg,
     VehicleQrToken,
@@ -38,15 +39,36 @@ from app.onboarding.progress import (
 from app.onboarding.readiness import derive_readiness_status
 
 
+def _organization_basics_complete(org: Org) -> bool:
+    contacts = org.contacts_json or []
+    implementation_contact = org.implementation_contact_json or {}
+    has_contact = any(
+        bool((contact or {}).get("name")) and bool((contact or {}).get("email"))
+        for contact in contacts
+        if isinstance(contact, dict)
+    )
+    has_implementation_contact = bool(implementation_contact.get("name")) and bool(
+        implementation_contact.get("email")
+    )
+    return all(
+        [
+            bool(org.legal_name),
+            bool(org.display_name or org.name),
+            bool(org.timezone),
+            bool(org.region),
+            has_contact,
+            has_implementation_contact,
+        ]
+    )
+
+
 def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingSignals:
     """Collect normalized onboarding signals from persisted org state."""
     org = db.query(Org).filter(Org.id == org_id).first()
     if org is None:
         return OnboardingSignals()
 
-    org_settings_configured = bool(org.safety_manager_phone) and bool(
-        org.sms_enabled or org.voice_enabled
-    )
+    org_settings_configured = _organization_basics_complete(org)
 
     user_rows = (
         db.query(User)
@@ -173,13 +195,32 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
 
 
 def build_onboarding_readiness(
-    *, org_id: uuid.UUID, signals: OnboardingSignals
+    *,
+    org_id: uuid.UUID,
+    signals: OnboardingSignals,
+    step_completion_overrides: dict[str, OrgOnboardingStepCompletion] | None = None,
 ) -> OrgLaunchReadiness:
     """Build a typed readiness snapshot from normalized onboarding signals."""
     classified = classify_blockers(signals=signals)
     steps = derive_step_statuses(
         signals=signals, blocked_step_keys=blocked_step_keys(classified)
     )
+    for step in steps:
+        completion = (step_completion_overrides or {}).get(step.key)
+        if completion is None:
+            continue
+        if completion.is_completed:
+            step.status = "completed"
+            step.completed_at_utc = completion.completed_at_utc
+            step.metadata = {
+                "completed_by_user_id": str(completion.completed_by_user_id)
+                if completion.completed_by_user_id
+                else "",
+                "completion_source": completion.completion_source or "unknown",
+            }
+        else:
+            step.metadata = {"completion_source": completion.completion_source or "unknown"}
+        step.updated_at_utc = completion.updated_at_utc
     percent_complete = completion_percent(steps)
     status = derive_readiness_status(steps=steps, percent_complete=percent_complete)
 
@@ -245,4 +286,48 @@ def get_org_onboarding_readiness(
 ) -> OrgLaunchReadiness:
     """Reusable facade for API routes and background jobs."""
     signals = collect_onboarding_signals(db, org_id=org_id)
-    return build_onboarding_readiness(org_id=org_id, signals=signals)
+    overrides = list_step_completion_overrides(db, org_id=org_id)
+    return build_onboarding_readiness(
+        org_id=org_id, signals=signals, step_completion_overrides=overrides
+    )
+
+
+def list_step_completion_overrides(
+    db: Session, *, org_id: uuid.UUID
+) -> dict[str, OrgOnboardingStepCompletion]:
+    rows = (
+        db.query(OrgOnboardingStepCompletion)
+        .filter(OrgOnboardingStepCompletion.org_id == org_id)
+        .all()
+    )
+    return {row.step_key: row for row in rows}
+
+
+def set_step_completion_override(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    step_key: str,
+    is_completed: bool,
+    actor_user_id: uuid.UUID,
+    source: str,
+) -> OrgOnboardingStepCompletion:
+    row = (
+        db.query(OrgOnboardingStepCompletion)
+        .filter(
+            OrgOnboardingStepCompletion.org_id == org_id,
+            OrgOnboardingStepCompletion.step_key == step_key,
+        )
+        .first()
+    )
+    if row is None:
+        row = OrgOnboardingStepCompletion(org_id=org_id, step_key=step_key)
+    row.is_completed = is_completed
+    row.completed_by_user_id = actor_user_id if is_completed else None
+    row.completed_at_utc = datetime.now(timezone.utc) if is_completed else None
+    row.completion_source = source
+    row.updated_at_utc = datetime.now(timezone.utc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row

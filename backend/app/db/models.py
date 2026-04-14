@@ -33,6 +33,17 @@ class Org(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(Text, nullable=False)
+    legal_name = Column(Text, nullable=True)
+    display_name = Column(Text, nullable=True)
+    timezone = Column(Text, nullable=True)
+    region = Column(Text, nullable=True)
+    contacts_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    implementation_contact_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    logo_url = Column(Text, nullable=True)
     require_driver_ack = Column(Boolean, nullable=False, default=False)
     sms_enabled = Column(Boolean, nullable=False, default=False)
     voice_enabled = Column(Boolean, nullable=False, default=False)
@@ -1316,6 +1327,31 @@ class OrgLaunchReadinessBlocker(Base):
             "snapshot_id",
             "is_resolved",
         ),
+    )
+
+
+class OrgOnboardingStepCompletion(Base):
+    """Latest persisted completion metadata for each onboarding step."""
+
+    __tablename__ = "org_onboarding_step_completions"
+
+    completion_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    step_key = Column(Text, nullable=False)
+    is_completed = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    completed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    completion_source = Column(Text, nullable=True)
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_org_onboarding_step_completion_org_step", "org_id", "step_key", unique=True),
     )
 
 
