@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 42 system event types."""
-        assert len(SystemEventType) == 42
+        """There must be exactly 58 system event types."""
+        assert len(SystemEventType) == 58
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -124,6 +124,22 @@ class TestSystemEventType:
             "incident_started",
             "incident_updated",
             "evidence_lockdown_started",
+            "incident_owner_assigned",
+            "incident_owner_reassigned",
+            "incident_owner_cleared",
+            "incident_status_changed",
+            "incident_status_escalated",
+            "incident_status_closed",
+            "incident_status_reopened",
+            "incident_note_added",
+            "incident_note_edited",
+            "incident_note_deleted",
+            "incident_task_created",
+            "incident_task_completed",
+            "incident_task_cancelled",
+            "incident_task_reassigned",
+            "incident_readiness_override_set",
+            "incident_readiness_override_cleared",
         }
         values = {m.value for m in SystemEventType}
         assert expected.issubset(values)

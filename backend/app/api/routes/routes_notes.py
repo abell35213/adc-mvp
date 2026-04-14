@@ -16,10 +16,13 @@ from app.api.schemas import (
     IncidentNotePatchRequest,
     IncidentNotesResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_user
 from app.db.models import CaseNote, User
+from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
 from app.db.session import get_db
+from app.domain.system_event_types import SystemEventType
 from app.security.authn import build_user_auth_context
 from app.security.authz import can_modify_incident, can_view_incident, require_policy
 
@@ -70,6 +73,34 @@ def create_incident_note(
     db.add(note)
     db.commit()
     db.refresh(note)
+    event_payload = _event_payload(
+        actor_id=current_user.id,
+        incident_id=incident.incident_id,
+        org_id=incident.org_id,
+        reason=None,
+        previous={"body": None, "note_type": None},
+        new={"body": note.body, "note_type": str(note.note_type)},
+        note_id=note.note_id,
+    )
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=SystemEventType.INCIDENT_NOTE_ADDED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=event_payload,
+    )
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="incident.note.add",
+        event_type="incident_note_added",
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata=event_payload,
+    )
     return _to_note_item(note)
 
 
@@ -97,6 +128,11 @@ def patch_incident_note(
         raise HTTPException(status_code=409, detail="Cannot edit deleted note")
     require_policy(_can_edit_note(current_user=current_user, note=note))
 
+    previous_values = {
+        "body": note.body,
+        "note_type": str(note.note_type),
+        "tags": list(note.tags_json or []),
+    }
     did_change = False
     if request.body is not None:
         note.body = request.body
@@ -115,6 +151,39 @@ def patch_incident_note(
     db.add(note)
     db.commit()
     db.refresh(note)
+    if did_change:
+        event_payload = _event_payload(
+            actor_id=current_user.id,
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            reason="edit",
+            previous=previous_values,
+            new={
+                "body": note.body,
+                "note_type": str(note.note_type),
+                "tags": list(note.tags_json or []),
+            },
+            note_id=note.note_id,
+        )
+        create_event(
+            db,
+            incident_id=incident.incident_id,
+            event_type=SystemEventType.INCIDENT_NOTE_EDITED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=event_payload,
+        )
+        emit_audit_event(
+            db,
+            org_id=incident.org_id,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            action="incident.note.edit",
+            event_type="incident_note_edited",
+            outcome="success",
+            incident_id=incident.incident_id,
+            metadata=event_payload,
+        )
     return _to_note_item(note)
 
 
@@ -141,13 +210,69 @@ def delete_incident_note(
     require_policy(_can_edit_note(current_user=current_user, note=note))
 
     if not bool(note.is_deleted):
+        previous_values = {
+            "body": note.body,
+            "note_type": str(note.note_type),
+            "tags": list(note.tags_json or []),
+            "is_deleted": False,
+        }
         note.is_deleted = True
         note.deleted_by_user_id = current_user.id
         note.deleted_at_utc = datetime.now(timezone.utc)
         db.add(note)
         db.commit()
         db.refresh(note)
+        event_payload = _event_payload(
+            actor_id=current_user.id,
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            reason="delete",
+            previous=previous_values,
+            new={"is_deleted": True},
+            note_id=note.note_id,
+        )
+        create_event(
+            db,
+            incident_id=incident.incident_id,
+            event_type=SystemEventType.INCIDENT_NOTE_DELETED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=event_payload,
+        )
+        emit_audit_event(
+            db,
+            org_id=incident.org_id,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            action="incident.note.delete",
+            event_type="incident_note_deleted",
+            outcome="success",
+            incident_id=incident.incident_id,
+            metadata=event_payload,
+        )
     return _to_note_item(note)
+
+
+def _event_payload(
+    *,
+    actor_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID | None,
+    reason: str | None,
+    previous: dict[str, object],
+    new: dict[str, object],
+    note_id: uuid.UUID,
+) -> dict[str, object]:
+    return {
+        "actor": {"type": "user", "id": str(actor_id)},
+        "incident_id": str(incident_id),
+        "org_id": str(org_id) if org_id else None,
+        "note_id": str(note_id),
+        "reason": reason,
+        "previous": previous,
+        "new": new,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _can_edit_note(*, current_user: User, note: CaseNote) -> bool:

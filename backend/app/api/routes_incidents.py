@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -69,6 +70,26 @@ def _required_transition_capability(
     if to_status == "escalated":
         return Capability.INCIDENT_ESCALATE
     return None
+
+
+def _event_context_payload(
+    *,
+    actor_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID | None,
+    reason: str | None,
+    previous: dict[str, str | None],
+    new: dict[str, str | None],
+) -> dict[str, object]:
+    return {
+        "actor": {"type": "user", "id": str(actor_id)},
+        "incident_id": str(incident_id),
+        "org_id": str(org_id) if org_id else None,
+        "reason": reason,
+        "previous": previous,
+        "new": new,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/", response_model=list[IncidentListItem])
@@ -370,6 +391,14 @@ def patch_incident_status(
         "transition_reason": body.reason,
         "privileged_transition": transition_capability is not None,
     }
+    detailed_payload = _event_context_payload(
+        actor_id=current_user.id,
+        incident_id=incident_id,
+        org_id=incident.org_id,
+        reason=body.reason,
+        previous={"case_status": from_case_status},
+        new={"case_status": body.case_status},
+    )
     db.flush()
     create_event(
         db,
@@ -379,6 +408,41 @@ def patch_incident_status(
         actor_id=str(current_user.id),
         payload=transition_payload,
     )
+    create_event(
+        db,
+        incident_id=incident_id,
+        event_type=SystemEventType.INCIDENT_STATUS_CHANGED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=detailed_payload,
+    )
+    if body.case_status == "escalated":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_ESCALATED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
+    if body.case_status == "closed":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_CLOSED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
+    if from_case_status == "closed" and body.case_status != "closed":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_REOPENED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
     emit_audit_event(
         db,
         org_id=incident.org_id,
@@ -413,6 +477,7 @@ def patch_incident_owner_endpoint(
         raise HTTPException(status_code=404, detail="Incident not found")
     require_policy(can_modify_incident(context, incident))
 
+    previous_owner_user_id = incident.owner_user_id
     incident = patch_incident_owner(
         db=db,
         incident=incident,
@@ -420,6 +485,46 @@ def patch_incident_owner_endpoint(
         actor_user_id=current_user.id,
         operation=body.operation,
         owner_user_id=body.owner_user_id,
+    )
+    event_payload = _event_context_payload(
+        actor_id=current_user.id,
+        incident_id=incident.incident_id,
+        org_id=incident.org_id,
+        reason=body.operation,
+        previous={
+            "owner_user_id": (
+                str(previous_owner_user_id) if previous_owner_user_id else None
+            )
+        },
+        new={"owner_user_id": str(incident.owner_user_id) if incident.owner_user_id else None},
+    )
+    if body.operation == "assign":
+        event_type = SystemEventType.INCIDENT_OWNER_ASSIGNED
+        audit_event_type = "incident_owner_assigned"
+    elif body.operation == "reassign":
+        event_type = SystemEventType.INCIDENT_OWNER_REASSIGNED
+        audit_event_type = "incident_owner_reassigned"
+    else:
+        event_type = SystemEventType.INCIDENT_OWNER_CLEARED
+        audit_event_type = "incident_owner_cleared"
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=event_type,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=event_payload,
+    )
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action=f"incident.owner.{body.operation}",
+        event_type=audit_event_type,
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata=event_payload,
     )
     db.commit()
 

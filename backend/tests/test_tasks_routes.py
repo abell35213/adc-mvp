@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import create_access_token, hash_password
-from app.db.models import AuditEvent, Base, CaseTask, Incident, Org, User, UserOrg
+from app.db.models import AuditEvent, Base, CaseTask, Event, Incident, Org, User, UserOrg
 from app.db.session import get_db
 from app.main import app
 
@@ -196,6 +196,15 @@ def test_task_routes_create_list_patch_complete_cancel_with_audit(
         "incident_task_completed",
         "incident_task_cancelled",
     }.issubset(event_types)
+
+    system_events = db_session.query(Event).filter(Event.incident_id == incident.incident_id).all()
+    system_event_types = {event.event_type for event in system_events}
+    assert {
+        "incident_task_created",
+        "incident_task_reassigned",
+        "incident_task_completed",
+        "incident_task_cancelled",
+    }.issubset(system_event_types)
 
 
 def test_task_patch_rejects_invalid_status_transition(
