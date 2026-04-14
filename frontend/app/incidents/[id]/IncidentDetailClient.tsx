@@ -4,17 +4,36 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
+  completeTask,
+  createIncidentNote,
+  createIncidentTask,
   getIncident,
+  getIncidentWorkspace,
   getDriverProtocolSettings,
+  listIncidentNotes,
+  listIncidentTasks,
   type IncidentDetail,
+  type IncidentNoteItem,
+  type IncidentTaskItem,
+  type CaseWorkspaceResponse,
   type DriverProtocolSummary,
   type DriverResponseSummary,
+  patchIncidentOwner,
+  patchIncidentStatus,
   toUserErrorMessage,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import EvidenceTable, { EVIDENCE_TYPES } from "@/components/EvidenceTable";
 import Timeline from "@/components/Timeline";
 import IncidentDetailExportPanel from "@/components/IncidentDetailExportPanel";
+import CaseOwnerControl from "@/components/case-ops/CaseOwnerControl";
+import CaseStatusControl from "@/components/case-ops/CaseStatusControl";
+import CaseReadinessCard, { ExportReadinessBanner } from "@/components/case-ops/CaseReadinessCard";
+import EvidenceStatusPanel from "@/components/case-ops/EvidenceStatusPanel";
+import MissingItemsPanel from "@/components/case-ops/MissingItemsPanel";
+import CaseNotesPanel from "@/components/case-ops/CaseNotesPanel";
+import CaseTasksPanel from "@/components/case-ops/CaseTasksPanel";
+import TimelineFeed from "@/components/case-ops/TimelineFeed";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -38,6 +57,9 @@ export default function IncidentDetailClient() {
   const [error, setError] = useState("");
   const [driverProtocolSettings, setDriverProtocolSettings] =
     useState<DriverProtocolSummary | null>(null);
+  const [workspace, setWorkspace] = useState<CaseWorkspaceResponse | null>(null);
+  const [notes, setNotes] = useState<IncidentNoteItem[]>([]);
+  const [tasks, setTasks] = useState<IncidentTaskItem[]>([]);
 
   const artifactStatuses = useMemo(() => {
     if (!incident) return [];
@@ -96,10 +118,30 @@ export default function IncidentDetailClient() {
         ? "Partial"
         : "Limited";
 
+  const refreshIncident = useCallback(() => {
+    return getIncident(id)
+      .then(setIncident)
+      .catch((err) => console.warn("Incident refresh failed", err));
+  }, [id]);
+
+  const refreshWorkspacePanels = useCallback(() => {
+    return Promise.all([
+      getIncidentWorkspace(id).then(setWorkspace),
+      listIncidentNotes(id).then((res) => setNotes(res.items)),
+      listIncidentTasks(id).then((res) => setTasks(res.items)),
+    ]).catch((err) => {
+      console.warn("Workspace refresh failed", err);
+    });
+  }, [id]);
+
   useEffect(() => {
     if (!user) return;
-    getIncident(id)
-      .then(setIncident)
+    Promise.all([
+      getIncident(id).then(setIncident),
+      getIncidentWorkspace(id).then(setWorkspace),
+      listIncidentNotes(id).then((res) => setNotes(res.items)),
+      listIncidentTasks(id).then((res) => setTasks(res.items)),
+    ])
       .catch((err) => setError(toUserErrorMessage(err, "Failed to load incident")))
       .finally(() => setLoading(false));
   }, [id, user]);
@@ -113,12 +155,6 @@ export default function IncidentDetailClient() {
       });
   }, [user]);
 
-  const refreshIncident = useCallback(() => {
-    return getIncident(id)
-      .then(setIncident)
-      .catch((err) => console.warn("Incident refresh failed", err));
-  }, [id]);
-
   useEffect(() => {
     if (!user || !isCapturing) return;
     const interval = window.setInterval(() => {
@@ -126,6 +162,131 @@ export default function IncidentDetailClient() {
     }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [isCapturing, refreshIncident, user]);
+
+  const captureSummary = isCapturing
+    ? `Capture in progress (auto-refreshing every ${refreshIntervalSeconds} seconds).`
+    : unavailable > 0
+      ? `Capture finished with ${unavailable} unavailable artifact${
+          unavailable === 1 ? "" : "s"
+        }.`
+      : "Capture complete.";
+
+  const driverResponse: DriverResponseSummary = incident?.driver_response ?? {};
+  const protocolSummary =
+    incident?.driver_protocol_summary ?? driverProtocolSettings;
+  const notificationSent = Boolean(driverResponse.notification_sent_at_utc);
+  const acknowledged = Boolean(driverResponse.acknowledged_at_utc);
+  const uploadsComplete = Boolean(driverResponse.uploads_complete);
+  const waitingOnDriver = Boolean(
+    driverResponse.awaiting_driver_action ??
+      (notificationSent && (!acknowledged || !uploadsComplete))
+  );
+  const workspaceCaseStatus = workspace?.case_status ?? incident?.status ?? "new";
+  const workspaceReadiness = workspace?.readiness_state ?? incident?.readiness_state ?? "not_ready";
+  const workspaceOwnerUserId = workspace?.owner?.user_id ?? null;
+  const workspaceMissingItems = workspace?.missing_items ?? incident?.completeness_missing_items ?? [];
+  const workspaceEvidence = workspace?.evidence_summary;
+  const workspaceActivity = workspace?.activity ?? [];
+
+  const onAssignMe = useCallback(async () => {
+    if (!user) return;
+    const previous = workspace;
+    setWorkspace((current) =>
+      current
+        ? { ...current, owner: { user_id: user.user_id, email: user.email } }
+        : current
+    );
+    try {
+      await patchIncidentOwner(id, {
+        operation: workspaceOwnerUserId ? "reassign" : "assign",
+        owner_user_id: user.user_id,
+      });
+      await Promise.all([refreshIncident(), refreshWorkspacePanels()]);
+    } catch (err) {
+      setWorkspace(previous);
+      setError(toUserErrorMessage(err, "Failed to assign owner"));
+    }
+  }, [id, refreshIncident, refreshWorkspacePanels, user, workspace, workspaceOwnerUserId]);
+
+  const onClearOwner = useCallback(async () => {
+    const previous = workspace;
+    setWorkspace((current) => (current ? { ...current, owner: null } : current));
+    try {
+      await patchIncidentOwner(id, { operation: "clear" });
+      await Promise.all([refreshIncident(), refreshWorkspacePanels()]);
+    } catch (err) {
+      setWorkspace(previous);
+      setError(toUserErrorMessage(err, "Failed to clear owner"));
+    }
+  }, [id, refreshIncident, refreshWorkspacePanels, workspace]);
+
+  const onCaseStatusChange = useCallback(async (nextStatus: string) => {
+    const previous = workspace;
+    setWorkspace((current) => (current ? { ...current, case_status: nextStatus } : current));
+    try {
+      await patchIncidentStatus(id, { case_status: nextStatus, reason: "workspace_update" });
+      await Promise.all([refreshIncident(), refreshWorkspacePanels()]);
+    } catch (err) {
+      setWorkspace(previous);
+      setError(toUserErrorMessage(err, "Failed to update status"));
+    }
+  }, [id, refreshIncident, refreshWorkspacePanels, workspace]);
+
+  const onAddNote = useCallback(async (body: string) => {
+    const tempNote: IncidentNoteItem = {
+      note_id: `temp-${Date.now()}`,
+      incident_id: id,
+      body,
+      note_type: "standard",
+      tags: [],
+      created_at_utc: new Date().toISOString(),
+      edited: false,
+      updated_at_utc: new Date().toISOString(),
+      is_deleted: false,
+    };
+    setNotes((current) => [tempNote, ...current]);
+    try {
+      await createIncidentNote(id, { body, note_type: "standard", tags: [] });
+      await refreshWorkspacePanels();
+    } catch (err) {
+      setNotes((current) => current.filter((note) => note.note_id !== tempNote.note_id));
+      setError(toUserErrorMessage(err, "Failed to add note"));
+    }
+  }, [id, refreshWorkspacePanels]);
+
+  const onAddTask = useCallback(async (title: string) => {
+    const tempTask: IncidentTaskItem = {
+      task_id: `temp-${Date.now()}`,
+      incident_id: id,
+      title,
+      task_type: "other",
+      status: "open",
+      priority: "medium",
+      overdue: false,
+    };
+    setTasks((current) => [tempTask, ...current]);
+    try {
+      await createIncidentTask(id, { title, task_type: "other", priority: "medium" });
+      await refreshWorkspacePanels();
+    } catch (err) {
+      setTasks((current) => current.filter((task) => task.task_id !== tempTask.task_id));
+      setError(toUserErrorMessage(err, "Failed to add task"));
+    }
+  }, [id, refreshWorkspacePanels]);
+
+  const onCompleteTask = useCallback(async (taskId: string) => {
+    const previous = tasks;
+    setTasks((current) =>
+      current.map((task) => (task.task_id === taskId ? { ...task, status: "completed" } : task))
+    );
+    try {
+      await completeTask(taskId);
+      await refreshWorkspacePanels();
+    } catch (err) {
+      setTasks(previous);
+      setError(toUserErrorMessage(err, "Failed to complete task"));
+    }
+  }, [refreshWorkspacePanels, tasks]);
 
   if (loading || authLoading) {
     return (
@@ -142,25 +303,6 @@ export default function IncidentDetailClient() {
       </div>
     );
   }
-
-  const captureSummary = isCapturing
-    ? `Capture in progress (auto-refreshing every ${refreshIntervalSeconds} seconds).`
-    : unavailable > 0
-      ? `Capture finished with ${unavailable} unavailable artifact${
-          unavailable === 1 ? "" : "s"
-        }.`
-      : "Capture complete.";
-
-  const driverResponse: DriverResponseSummary = incident.driver_response ?? {};
-  const protocolSummary =
-    incident.driver_protocol_summary ?? driverProtocolSettings;
-  const notificationSent = Boolean(driverResponse.notification_sent_at_utc);
-  const acknowledged = Boolean(driverResponse.acknowledged_at_utc);
-  const uploadsComplete = Boolean(driverResponse.uploads_complete);
-  const waitingOnDriver = Boolean(
-    driverResponse.awaiting_driver_action ??
-      (notificationSent && (!acknowledged || !uploadsComplete))
-  );
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -238,6 +380,34 @@ export default function IncidentDetailClient() {
             </div>
           </div>
         </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <CaseOwnerControl
+            ownerUserId={workspaceOwnerUserId}
+            onAssignMe={onAssignMe}
+            onClearOwner={onClearOwner}
+          />
+          <CaseStatusControl caseStatus={workspaceCaseStatus} onChange={onCaseStatusChange} />
+          <CaseReadinessCard
+            readinessState={workspaceReadiness}
+            completenessPercent={workspace?.completeness.percent ?? completenessPercent}
+            blockersCount={(workspace?.blockers ?? []).length}
+          />
+        </div>
+
+        <ExportReadinessBanner blockersCount={(workspace?.blockers ?? []).length} />
+        <EvidenceStatusPanel
+          captured={workspaceEvidence?.captured ?? captured}
+          pending={workspaceEvidence?.pending ?? pending}
+          unavailable={workspaceEvidence?.unavailable ?? unavailable}
+          total={workspaceEvidence?.total ?? total}
+        />
+        <MissingItemsPanel items={workspaceMissingItems} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <CaseNotesPanel notes={notes} onAddNote={onAddNote} />
+          <CaseTasksPanel tasks={tasks} onAddTask={onAddTask} onCompleteTask={onCompleteTask} />
+        </div>
+        <TimelineFeed items={workspaceActivity} />
 
         {/* ── Panel A: Evidence Inventory ────────────────────────── */}
         <div className="rounded-lg border bg-white p-6 shadow dark:bg-gray-800">

@@ -636,6 +636,207 @@ export function patchIncidentStatus(incidentId: string, data: {
   });
 }
 
+export interface CaseWorkspaceOwner {
+  user_id: string;
+  email?: string | null;
+}
+
+export interface CaseWorkspaceCompletenessSection {
+  name: string;
+  earned: number;
+  possible: number;
+  percent: number;
+  status: string;
+  missing_items: string[];
+}
+
+export interface CaseWorkspaceCompleteness {
+  percent: number;
+  status: string;
+  missing_items: string[];
+  sections: CaseWorkspaceCompletenessSection[];
+}
+
+export interface CaseWorkspaceEvidenceSummary {
+  total: number;
+  captured: number;
+  pending: number;
+  unavailable: number;
+}
+
+export interface CaseWorkspaceTaskItem {
+  task_id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_at_utc?: string | null;
+  assigned_to_user_id?: string | null;
+  created_at_utc?: string | null;
+}
+
+export interface CaseWorkspaceNoteItem {
+  note_id: string;
+  body: string;
+  note_type: "standard" | "tagged" | "decision";
+  tags: string[];
+  created_by_user_id?: string | null;
+  created_at_utc: string;
+  edited_at_utc?: string | null;
+}
+
+export interface CaseWorkspaceActivityItem {
+  source: "event" | "audit";
+  type: string;
+  occurred_at_utc: string;
+  actor_type: string;
+  actor_id: string;
+  detail: Record<string, unknown>;
+}
+
+export interface CaseWorkspaceResponse {
+  incident_id: string;
+  owner?: CaseWorkspaceOwner | null;
+  case_status: string;
+  readiness_state: string;
+  completeness: CaseWorkspaceCompleteness;
+  blockers: Array<Record<string, unknown>>;
+  evidence_summary: CaseWorkspaceEvidenceSummary;
+  missing_items: string[];
+  open_tasks: CaseWorkspaceTaskItem[];
+  recent_notes: CaseWorkspaceNoteItem[];
+  activity: CaseWorkspaceActivityItem[];
+}
+
+export interface IncidentTaskItem {
+  task_id: string;
+  incident_id: string;
+  title: string;
+  description?: string | null;
+  task_type: "review" | "evidence" | "follow_up" | "export" | "other";
+  status: "open" | "completed" | "cancelled";
+  priority: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string | null;
+  assigned_to_user_id?: string | null;
+  assigned_at_utc?: string | null;
+  assigned_by_user_id?: string | null;
+  created_by_user_id?: string | null;
+  created_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  canceled_at_utc?: string | null;
+  canceled_reason?: string | null;
+  overdue: boolean;
+}
+
+export interface IncidentTaskListResponse {
+  items: IncidentTaskItem[];
+}
+
+export interface IncidentNoteItem {
+  note_id: string;
+  incident_id: string;
+  body: string;
+  note_type: "standard" | "tagged" | "decision";
+  tags: string[];
+  created_by_user_id?: string | null;
+  created_at_utc: string;
+  edited: boolean;
+  edited_by_user_id?: string | null;
+  edited_at_utc?: string | null;
+  updated_at_utc: string;
+  is_deleted: boolean;
+  deleted_by_user_id?: string | null;
+  deleted_at_utc?: string | null;
+}
+
+export interface IncidentNotesResponse {
+  items: IncidentNoteItem[];
+}
+
+export function getIncidentWorkspace(incidentId: string) {
+  return request<CaseWorkspaceResponse>(`/incidents/${incidentId}/workspace`);
+}
+
+export function listIncidentNotes(incidentId: string, params?: { includeDeleted?: boolean }) {
+  const suffix = params?.includeDeleted ? "?include_deleted=true" : "";
+  return request<IncidentNotesResponse>(`/incidents/${incidentId}/notes${suffix}`);
+}
+
+export function createIncidentNote(incidentId: string, data: {
+  body: string;
+  note_type?: "standard" | "tagged" | "decision";
+  tags?: string[];
+}) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function patchIncidentNote(incidentId: string, data: {
+  note_id: string;
+  body?: string;
+  note_type?: "standard" | "tagged" | "decision";
+  tags?: string[];
+}) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteIncidentNote(incidentId: string, data: { note_id: string }) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "DELETE",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listIncidentTasks(incidentId: string) {
+  return request<IncidentTaskListResponse>(`/incidents/${incidentId}/tasks`);
+}
+
+export function createIncidentTask(incidentId: string, data: {
+  title: string;
+  description?: string;
+  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
+  priority?: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string;
+  assigned_to_user_id?: string;
+}) {
+  return request<IncidentTaskItem>(`/incidents/${incidentId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function patchTask(taskId: string, data: {
+  title?: string;
+  description?: string;
+  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
+  priority?: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string;
+  assigned_to_user_id?: string;
+  status?: "open" | "completed" | "cancelled";
+}) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function completeTask(taskId: string) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}/complete`, {
+    method: "POST",
+  });
+}
+
+export function cancelTask(taskId: string, data?: { reason?: string }) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
 export interface OpsIncidentItem {
   incident_id: string;
   status: string;
