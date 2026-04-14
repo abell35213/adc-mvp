@@ -1355,6 +1355,56 @@ class VehicleImportJobResponse(BaseModel):
     error_message: str | None = None
 
 
+class DriverImportJobCreateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    csv_content: str = Field(min_length=1)
+    header_mapping: dict[str, str] = Field(default_factory=dict)
+    inactive_mobile_phones: list[str] = Field(default_factory=list)
+
+
+class DriverImportJobCreateResponse(BaseModel):
+    job_id: uuid.UUID
+    status: ImportJobStatus
+
+
+class DriverImportJobSummary(BaseModel):
+    invalid_phone_count: int = Field(default=0, ge=0)
+    duplicate_warning_count: int = Field(default=0, ge=0)
+    missing_assignment_count: int = Field(default=0, ge=0)
+    missing_external_mapping_count: int = Field(default=0, ge=0)
+    needs_review_count: int = Field(default=0, ge=0)
+    inactive_count: int = Field(default=0, ge=0)
+
+
+class DriverImportJobOutcome(BaseModel):
+    imported: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    errored: list[str] = Field(default_factory=list)
+    invalid_phone: list[str] = Field(default_factory=list)
+    duplicate_warning: list[str] = Field(default_factory=list)
+    missing_assignment_or_mapping: list[str] = Field(default_factory=list)
+    needs_review: list[str] = Field(default_factory=list)
+
+
+class DriverImportJobResponse(BaseModel):
+    job_id: uuid.UUID
+    provider: str
+    status: ImportJobStatus
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
+    records_total: int = Field(default=0, ge=0)
+    records_processed: int = Field(default=0, ge=0)
+    records_imported: int = Field(default=0, ge=0)
+    records_updated: int = Field(default=0, ge=0)
+    records_skipped: int = Field(default=0, ge=0)
+    records_errored: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    outcomes: DriverImportJobOutcome = Field(default_factory=DriverImportJobOutcome)
+    summary: DriverImportJobSummary = Field(default_factory=DriverImportJobSummary)
+    error_message: str | None = None
+
+
 class EvidenceRequestSummary(BaseModel):
     evidence_request_id: uuid.UUID
     operation_id: uuid.UUID | None = None
