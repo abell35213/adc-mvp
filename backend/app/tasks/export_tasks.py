@@ -8,6 +8,7 @@ import re
 import uuid as _uuid
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.metrics import increment
@@ -364,6 +365,37 @@ def _upload_and_finalize(ctx: ExportRuntimeContext):
     )
 
 
+def _sync_incident_case_status_after_export(ctx: ExportRuntimeContext):
+    from app.db.repo.events import create_event
+
+    incident_row = ctx.incident_row
+    if incident_row is None:
+        return
+    if str(incident_row.case_status) != "ready_for_export":
+        return
+
+    incident_row.case_status = "exported"
+    incident_row.readiness_state = "exported"
+    db_now = datetime.now(timezone.utc)
+    incident_row.last_activity_at_utc = db_now
+    ctx.db.flush()
+    create_event(
+        ctx.db,
+        incident_id=ctx.incident_uuid,
+        event_type=ctx.system_event_type.INCIDENT_STATUS_CHANGED,
+        actor_type="system",
+        actor_id="celery",
+        payload={
+            "from_case_status": "ready_for_export",
+            "to_case_status": "exported",
+            "transition_reason": "export_completed",
+            "transitioned_at_utc": db_now.isoformat(),
+            "export_id": ctx.export_id,
+            "actor": {"type": "system", "id": "celery"},
+        },
+    )
+
+
 @celery_app.task(
     bind=True,
     acks_late=True,
@@ -576,6 +608,7 @@ def build_export(
             package_sha256=build_result.package_sha256,
             byte_size=build_result.byte_size,
         )
+        _sync_incident_case_status_after_export(ctx)
         _emit_stage(ctx, "after", "uploading_export")
         _emit(
             ctx.db,

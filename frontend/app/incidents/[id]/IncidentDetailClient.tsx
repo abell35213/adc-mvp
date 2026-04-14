@@ -395,7 +395,11 @@ export default function IncidentDetailClient() {
           />
         </div>
 
-        <ExportReadinessBanner blockersCount={(workspace?.blockers ?? []).length} />
+        <ExportReadinessBanner
+          blockersCount={(workspace?.blockers ?? []).length}
+          readinessState={workspaceReadiness}
+          blockers={(workspace?.blockers ?? []) as Array<{ code?: string; message?: string; blocks_readiness?: boolean }>}
+        />
         <EvidenceStatusPanel
           captured={workspaceEvidence?.captured ?? captured}
           pending={workspaceEvidence?.pending ?? pending}
