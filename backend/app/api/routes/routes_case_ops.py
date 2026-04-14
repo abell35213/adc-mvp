@@ -323,6 +323,8 @@ def get_incident_workspace(
             CaseOpsWorkspaceNoteItem(
                 note_id=note.note_id,
                 body=note.body,
+                note_type=str(note.note_type or "standard"),
+                tags=list(note.tags_json or []),
                 created_by_user_id=note.created_by_user_id,
                 created_at_utc=note.created_at_utc,
                 edited_at_utc=note.edited_at_utc,

@@ -264,6 +264,13 @@ class CaseNote(Base):
         index=True,
     )
     body = Column(Text, nullable=False)
+    note_type = Column(
+        Enum("standard", "tagged", "decision", name="case_note_type"),
+        nullable=False,
+        default="standard",
+        server_default="standard",
+    )
+    tags_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
     created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     edited_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     edited_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)

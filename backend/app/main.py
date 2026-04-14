@@ -13,6 +13,7 @@ from app.api.routes_driver import router as driver_router
 from app.api.routes_integrations import router as integrations_router
 from app.api.routes.routes_driver_artifacts import router as driver_artifacts_router
 from app.api.routes.routes_case_ops import router as case_ops_router
+from app.api.routes.routes_notes import router as notes_router
 from app.api.routes.routes_driver_report import router as driver_report_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_twilio import router as twilio_router
@@ -47,6 +48,7 @@ app.include_router(driver_router, prefix="/driver", tags=["driver"])
 app.include_router(driver_artifacts_router, prefix="/driver", tags=["driver-artifacts"])
 app.include_router(driver_report_router, prefix="/driver", tags=["driver-report"])
 app.include_router(case_ops_router, tags=["case-ops"])
+app.include_router(notes_router, tags=["notes"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
 app.include_router(integrations_router, tags=["integrations"])
