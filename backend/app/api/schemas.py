@@ -402,7 +402,9 @@ class CaseOpsQueueItem(BaseModel):
     adc_vehicle_id: Optional[VehicleId] = None
     adc_driver_id: Optional[DriverId] = None
     completeness_percent: int = Field(default=0, ge=0, le=100)
-    blockers: CaseOpsQueueBlockerCounts = Field(default_factory=CaseOpsQueueBlockerCounts)
+    blockers: CaseOpsQueueBlockerCounts = Field(
+        default_factory=CaseOpsQueueBlockerCounts
+    )
 
 
 class CaseOpsQueueResponse(BaseModel):
@@ -442,6 +444,77 @@ class CaseTaskWidgetItem(BaseModel):
 
 class CaseTaskWidgetResponse(BaseModel):
     items: list[CaseTaskWidgetItem] = Field(default_factory=list)
+
+
+class CaseOpsWorkspaceOwner(BaseModel):
+    user_id: uuid.UUID
+    email: Optional[EmailStrLike] = None
+
+
+class CaseOpsWorkspaceCompletenessSection(BaseModel):
+    name: str
+    earned: int = 0
+    possible: int = 0
+    percent: int = Field(default=0, ge=0, le=100)
+    status: str = "incomplete"
+    missing_items: list[str] = Field(default_factory=list)
+
+
+class CaseOpsWorkspaceCompleteness(BaseModel):
+    percent: int = Field(default=0, ge=0, le=100)
+    status: str = "incomplete"
+    missing_items: list[str] = Field(default_factory=list)
+    sections: list[CaseOpsWorkspaceCompletenessSection] = Field(default_factory=list)
+
+
+class CaseOpsWorkspaceEvidenceSummary(BaseModel):
+    total: int = 0
+    captured: int = 0
+    pending: int = 0
+    unavailable: int = 0
+
+
+class CaseOpsWorkspaceTaskItem(BaseModel):
+    task_id: uuid.UUID
+    title: str
+    status: str
+    priority: str
+    due_at_utc: Optional[datetime] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    created_at_utc: Optional[datetime] = None
+
+
+class CaseOpsWorkspaceNoteItem(BaseModel):
+    note_id: uuid.UUID
+    body: str
+    created_by_user_id: Optional[uuid.UUID] = None
+    created_at_utc: datetime
+    edited_at_utc: Optional[datetime] = None
+
+
+class CaseOpsWorkspaceActivityItem(BaseModel):
+    source: Literal["event", "audit"]
+    type: str
+    occurred_at_utc: datetime
+    actor_type: str
+    actor_id: str
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class CaseOpsWorkspaceResponse(BaseModel):
+    incident_id: uuid.UUID
+    owner: Optional[CaseOpsWorkspaceOwner] = None
+    case_status: IncidentCaseStatus
+    readiness_state: str = "not_ready"
+    completeness: CaseOpsWorkspaceCompleteness
+    blockers: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_summary: CaseOpsWorkspaceEvidenceSummary = Field(
+        default_factory=CaseOpsWorkspaceEvidenceSummary
+    )
+    missing_items: list[str] = Field(default_factory=list)
+    open_tasks: list[CaseOpsWorkspaceTaskItem] = Field(default_factory=list)
+    recent_notes: list[CaseOpsWorkspaceNoteItem] = Field(default_factory=list)
+    activity: list[CaseOpsWorkspaceActivityItem] = Field(default_factory=list)
 
 
 class MessagingReliabilityResponse(BaseModel):
