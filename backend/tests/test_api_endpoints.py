@@ -23,6 +23,9 @@ from app.db.models import (
     IntegrationConnection,
     IntegrationOperation,
     EvidenceRequest,
+    ExternalMapping,
+    VehicleQrToken,
+    OrgVehicleRegistry,
 )
 from app.db.session import get_db
 from app.core.security import hash_password, create_access_token
@@ -2067,6 +2070,80 @@ class TestListExports:
         assert data[0]["incident_id"] == str(visible_incident.incident_id)
         assert data[0]["status"] == "processing"
         assert "created_at_utc" in data[0]
+
+
+class TestVehicleImportJobs:
+    def test_create_vehicle_import_job_and_read_results(
+        self, client, db_session, test_org, auth_headers
+    ):
+        db_session.add(
+            VehicleQrToken(
+                qr_token="qr-token-1",
+                org_id=test_org.id,
+                adc_vehicle_id="UNIT-001",
+                status="active",
+            )
+        )
+        db_session.add(
+            ExternalMapping(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                internal_entity_type="vehicle",
+                internal_entity_id="unit-001",
+                external_reference="provider-veh-1",
+                status="active",
+            )
+        )
+        db_session.commit()
+
+        csv_content = (
+            "unitNumber,vin,providerVehicleId,status\n"
+            "UNIT-001,1HGBH41JXMN109186,provider-veh-1,active\n"
+            "UNIT-002,1HGBH41JXMN109186,provider-veh-2,inactive\n"
+            "UNIT-002,2HGBH41JXMN109187,provider-veh-3,active\n"
+            ",2HGBH41JXMN109188,provider-veh-4,active\n"
+        )
+
+        create_resp = client.post(
+            "/org/vehicles/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"unit_number": "unitNumber"},
+                "inactive_unit_numbers": ["UNIT-002"],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(f"/org/vehicles/import-jobs/{job_id}", headers=auth_headers)
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_total"] == 2
+        assert payload["records_processed"] == 2
+        assert payload["records_imported"] == 2
+        assert payload["records_updated"] == 0
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 2
+        assert payload["summary"]["missing_qr_count"] == 1
+        assert payload["summary"]["missing_provider_mapping_count"] == 1
+        assert payload["summary"]["duplicate_like_count"] == 2
+        assert payload["summary"]["inactive_count"] == 1
+        assert any("VIN" in warning for warning in payload["warnings"])
+        assert any("duplicate unitNumber" in row for row in payload["outcomes"]["errored"])
+        assert any("unitNumber is required" in row for row in payload["outcomes"]["errored"])
+
+        vehicles = db_session.query(OrgVehicleRegistry).filter(OrgVehicleRegistry.org_id == test_org.id).all()
+        assert len(vehicles) == 2
+        unit_two = next(item for item in vehicles if item.unit_number == "UNIT-002")
+        assert unit_two.is_active is False
+
+    def test_get_vehicle_import_job_not_found(self, client, auth_headers):
+        resp = client.get(f"/org/vehicles/import-jobs/{uuid.uuid4()}", headers=auth_headers)
+        assert resp.status_code == 404
 
 
 # ── Health check ────────────────────────────────────────────────────
