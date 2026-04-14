@@ -119,13 +119,13 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
 
     if (
         signals.vehicles_total > 0
-        and signals.qr_codes_activated < signals.vehicles_total
+        and signals.qr_codes_distributed < signals.vehicles_total
     ):
         blockers.append(
             ClassifiedBlocker(
                 code="vehicle_qr_incomplete",
                 title="Vehicle QR rollout incomplete",
-                detail="Generate and activate QR tokens for all active vehicles.",
+                detail="Generate and distribute QR tokens for all required active vehicles.",
                 severity="important",
                 blocking_step_key="vehicle_qr",
             )

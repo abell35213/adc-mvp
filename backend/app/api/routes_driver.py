@@ -43,6 +43,7 @@ from app.db.models import (
     OtpChallenge,
     VehicleQrToken,
     Incident,
+    OrgVehicleRegistry,
 )
 from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
@@ -300,6 +301,17 @@ def resolve_qr(
         },
     )
     db.add(event)
+    vehicle = (
+        db.query(OrgVehicleRegistry)
+        .filter(
+            OrgVehicleRegistry.org_id == token_row.org_id,
+            OrgVehicleRegistry.unit_number == token_row.adc_vehicle_id,
+        )
+        .first()
+    )
+    if vehicle is not None:
+        vehicle.qr_deployment_status = "confirmed"
+        vehicle.qr_confirmed_at_utc = datetime.now(timezone.utc)
     db.commit()
 
     logger.info(

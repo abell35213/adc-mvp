@@ -5,14 +5,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import distinct, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     DriverInstructionSet,
     DriverInstructionStep,
     DriverImportJob,
-    DriverVehicleAssignment,
     Event,
     Export,
     ExternalMapping,
@@ -20,6 +19,7 @@ from app.db.models import (
     IntegrationOperation,
     Org,
     OrgOnboardingStepCompletion,
+    OrgVehicleRegistry,
     User,
     UserOrg,
     VehicleQrToken,
@@ -126,17 +126,39 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
     )
 
     vehicles_total = (
-        db.query(func.count(distinct(DriverVehicleAssignment.adc_vehicle_id)))
-        .filter(DriverVehicleAssignment.org_id == org_id)
+        db.query(func.count(OrgVehicleRegistry.vehicle_id))
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.is_active.is_(True),
+        )
         .scalar()
         or 0
     )
     qr_rows = db.query(VehicleQrToken).filter(VehicleQrToken.org_id == org_id).all()
     qr_codes_generated = len(qr_rows)
-    qr_codes_activated = sum(1 for row in qr_rows if row.status == "active")
     qr_rotation_times = [
         row.created_at_utc for row in qr_rows if row.created_at_utc is not None
     ]
+    qr_codes_distributed = (
+        db.query(func.count(OrgVehicleRegistry.vehicle_id))
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.is_active.is_(True),
+            OrgVehicleRegistry.qr_deployment_status.in_(["distributed", "confirmed"]),
+        )
+        .scalar()
+        or 0
+    )
+    qr_codes_confirmed = (
+        db.query(func.count(OrgVehicleRegistry.vehicle_id))
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.is_active.is_(True),
+            OrgVehicleRegistry.qr_deployment_status == "confirmed",
+        )
+        .scalar()
+        or 0
+    )
 
     instruction_set = (
         db.query(DriverInstructionSet)
@@ -205,7 +227,8 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         total_integration_count=len(integration_rows),
         vehicles_total=vehicles_total,
         qr_codes_generated=qr_codes_generated,
-        qr_codes_activated=qr_codes_activated,
+        qr_codes_distributed=qr_codes_distributed,
+        qr_codes_confirmed=qr_codes_confirmed,
         last_qr_rotation_at_utc=max(qr_rotation_times) if qr_rotation_times else None,
         protocol_configured=protocol_configured,
         test_run_passed=test_run_passed,
@@ -290,14 +313,27 @@ def build_onboarding_readiness(
     qr_deployment = VehicleQrDeployment(
         status="completed"
         if signals.vehicles_total > 0
-        and signals.qr_codes_activated >= signals.vehicles_total
+        and signals.qr_codes_distributed >= signals.vehicles_total
         else "in_progress"
         if signals.qr_codes_generated > 0
         else "not_started",
         vehicles_total=signals.vehicles_total,
         qr_codes_generated=signals.qr_codes_generated,
-        qr_codes_activated=signals.qr_codes_activated,
+        qr_codes_distributed=signals.qr_codes_distributed,
+        qr_codes_confirmed=signals.qr_codes_confirmed,
         last_rotated_at_utc=signals.last_qr_rotation_at_utc,
+        coverage_blockers=[
+            *(
+                []
+                if signals.qr_codes_generated >= signals.vehicles_total
+                else ["required_vehicles_not_generated"]
+            ),
+            *(
+                []
+                if signals.qr_codes_distributed >= signals.vehicles_total
+                else ["required_vehicles_not_distributed"]
+            ),
+        ],
     )
 
     return OrgLaunchReadiness(
