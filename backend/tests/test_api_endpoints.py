@@ -13,6 +13,7 @@ from app.db.models import (
     Base,
     Incident,
     Artifact,
+    AuditEvent,
     Event,
     Export,
     User,
@@ -260,7 +261,9 @@ class TestGetIncident:
 
 
 class TestIntegrationDiagnosticsRoutes:
-    def test_org_integrations_and_details(self, client, db_session, test_org, auth_headers):
+    def test_org_integrations_and_details(
+        self, client, db_session, test_org, auth_headers
+    ):
         connection = IntegrationConnection(
             org_id=test_org.id,
             provider="samsara",
@@ -276,7 +279,9 @@ class TestIntegrationDiagnosticsRoutes:
         assert list_resp.status_code == 200
         assert len(list_resp.json()) == 1
 
-        detail_resp = client.get(f"/org/integrations/{connection.connection_id}", headers=auth_headers)
+        detail_resp = client.get(
+            f"/org/integrations/{connection.connection_id}", headers=auth_headers
+        )
         assert detail_resp.status_code == 200
         assert detail_resp.json()["provider"] == "samsara"
 
@@ -328,7 +333,9 @@ class TestIntegrationDiagnosticsRoutes:
         test_user.role = "org_admin"
         db_session.add(test_user)
         db_session.commit()
-        org_admin_token = create_access_token({"sub": str(test_user.id), "role": "org_admin"})
+        org_admin_token = create_access_token(
+            {"sub": str(test_user.id), "role": "org_admin"}
+        )
         org_admin_headers = {"Authorization": f"Bearer {org_admin_token}"}
         ops_resp = client.get("/integration-operations", headers=org_admin_headers)
         assert ops_resp.status_code == 200
@@ -380,7 +387,9 @@ class TestIntegrationDiagnosticsRoutes:
         test_user.role = "org_admin"
         db_session.add(test_user)
         db_session.commit()
-        org_admin_token = create_access_token({"sub": str(test_user.id), "role": "org_admin"})
+        org_admin_token = create_access_token(
+            {"sub": str(test_user.id), "role": "org_admin"}
+        )
         org_admin_headers = {"Authorization": f"Bearer {org_admin_token}"}
         allowed = client.post(
             f"/org/integrations/{connection.connection_id}/validate",
@@ -463,6 +472,127 @@ class TestIntegrationDiagnosticsRoutes:
 
         resp = client.get(f"/incidents/{inc.incident_id}", headers=auth_headers)
         assert resp.status_code == 404
+
+
+# ── PATCH /incidents/{incident_id}/status ───────────────────────────
+
+
+class TestPatchIncidentStatus:
+    def _create_incident(self, client, auth_headers) -> str:
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        return create_resp.json()["incident_id"]
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_incident_status_allows_standard_transition(
+        self, mock_begin_capture, client, db_session, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+        incident = (
+            db_session.query(Incident)
+            .filter(Incident.incident_id == uuid.UUID(incident_id))
+            .one()
+        )
+        incident.case_status = "new"
+        db_session.add(incident)
+        db_session.commit()
+
+        response = client.patch(
+            f"/incidents/{incident_id}/status",
+            json={"case_status": "in_review", "reason": "Ready for triage"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["case_status"] == "in_review"
+
+        latest_event = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == uuid.UUID(incident_id),
+                Event.event_type == "incident_updated",
+            )
+            .order_by(Event.created_at_utc.desc())
+            .first()
+        )
+        assert latest_event is not None
+        assert latest_event.payload["transition_reason"] == "Ready for triage"
+        assert latest_event.payload["from_case_status"] == "new"
+        assert latest_event.payload["to_case_status"] == "in_review"
+
+        latest_audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.incident_id == uuid.UUID(incident_id))
+            .order_by(AuditEvent.created_at_utc.desc())
+            .first()
+        )
+        assert latest_audit is not None
+        assert latest_audit.metadata_json["transition_reason"] == "Ready for triage"
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_incident_status_rejects_privileged_transition_without_permission(
+        self, mock_begin_capture, client, db_session, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+        incident = (
+            db_session.query(Incident)
+            .filter(Incident.incident_id == uuid.UUID(incident_id))
+            .one()
+        )
+        incident.case_status = "in_review"
+        db_session.add(incident)
+        db_session.commit()
+
+        response = client.patch(
+            f"/incidents/{incident_id}/status",
+            json={"case_status": "closed", "reason": "Investigation complete"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 403
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_incident_status_allows_reopen_for_org_admin(
+        self, mock_begin_capture, client, db_session, test_org, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+        incident = (
+            db_session.query(Incident)
+            .filter(Incident.incident_id == uuid.UUID(incident_id))
+            .one()
+        )
+        incident.case_status = "closed"
+        db_session.add(incident)
+        org_admin = User(
+            email="org-admin-status@example.com",
+            password_hash=hash_password("testpass"),
+            role="org_admin",
+        )
+        db_session.add(org_admin)
+        db_session.commit()
+        db_session.refresh(org_admin)
+        db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+        db_session.commit()
+
+        org_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(org_admin.id), 'role': 'org_admin'})}"
+        }
+
+        response = client.patch(
+            f"/incidents/{incident_id}/status",
+            json={"case_status": "in_review", "reason": "Reopened for legal review"},
+            headers=org_admin_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["case_status"] == "in_review"
+        assert response.json()["transition_reason"] == "Reopened for legal review"
 
 
 # ── GET /incidents (list) ───────────────────────────────────────────
@@ -607,7 +737,9 @@ class TestRequestExport:
         )
         assert resp.status_code == 403
 
-    def test_request_export_invalid_type(self, client, db_session, test_org, auth_headers):
+    def test_request_export_invalid_type(
+        self, client, db_session, test_org, auth_headers
+    ):
         incident = Incident(status="open", org_id=test_org.id)
         db_session.add(incident)
         db_session.commit()
@@ -691,7 +823,9 @@ class TestRequestExport:
         db_session.commit()
         db_session.refresh(failed)
 
-        resp = client.post(f"/exports/{failed.export_id}/retry", json={}, headers=auth_headers)
+        resp = client.post(
+            f"/exports/{failed.export_id}/retry", json={}, headers=auth_headers
+        )
         assert resp.status_code == 201
         payload = resp.json()
         assert payload["status"] == "queued"
@@ -706,7 +840,11 @@ class TestRequestExport:
         assert created.retry_parent_export_id == failed.export_id
         assert created.export_type == failed.export_type
         assert created.options_json == failed.options_json
-        refreshed_failed = db_session.query(Export).filter(Export.export_id == failed.export_id).first()
+        refreshed_failed = (
+            db_session.query(Export)
+            .filter(Export.export_id == failed.export_id)
+            .first()
+        )
         assert refreshed_failed.status == "failed"
         retry_event = (
             db_session.query(Event)
@@ -724,7 +862,9 @@ class TestRequestExport:
         )
 
     @patch("app.api.routes_exports.build_export")
-    def test_retry_failed_export_accepts_overrides(self, mock_gen, client, db_session, test_org, auth_headers):
+    def test_retry_failed_export_accepts_overrides(
+        self, mock_gen, client, db_session, test_org, auth_headers
+    ):
         mock_gen.delay = MagicMock()
         incident = Incident(status="open", org_id=test_org.id)
         db_session.add(incident)
@@ -743,11 +883,18 @@ class TestRequestExport:
 
         resp = client.post(
             f"/exports/{failed.export_id}/retry",
-            json={"export_type": "court_defense", "options_json": {"profile_id": "court_defense_v1"}},
+            json={
+                "export_type": "court_defense",
+                "options_json": {"profile_id": "court_defense_v1"},
+            },
             headers=auth_headers,
         )
         assert resp.status_code == 201
-        created = db_session.query(Export).filter(Export.export_id == uuid.UUID(resp.json()["export_id"])).first()
+        created = (
+            db_session.query(Export)
+            .filter(Export.export_id == uuid.UUID(resp.json()["export_id"]))
+            .first()
+        )
         assert created.export_type == "court_defense"
         assert created.options_json["profile_id"] == "court_defense_v1"
         assert created.options_json["include_media"] is True
@@ -771,7 +918,9 @@ class TestRequestExport:
         db_session.commit()
         db_session.refresh(ready)
 
-        resp = client.post(f"/exports/{ready.export_id}/retry", json={}, headers=auth_headers)
+        resp = client.post(
+            f"/exports/{ready.export_id}/retry", json={}, headers=auth_headers
+        )
         assert resp.status_code == 409
         db_session.refresh(ready)
         assert ready.status == "ready"
@@ -795,7 +944,9 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(inc)
 
-        exp = Export(incident_id=inc.incident_id, org_id=test_org.id, status="requested")
+        exp = Export(
+            incident_id=inc.incident_id, org_id=test_org.id, status="requested"
+        )
         db_session.add(exp)
         db_session.commit()
         db_session.refresh(exp)
@@ -805,7 +956,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_ready(
-        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -827,7 +983,6 @@ class TestDownloadExport:
             "https://signed.example.com/exports/test.zip"
         )
 
-
         resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
@@ -841,7 +996,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_logs_event(
-        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -859,7 +1019,9 @@ class TestDownloadExport:
         db_session.commit()
         db_session.refresh(exp)
 
-        mock_generate_presigned_download_url.return_value = "https://signed.example.com/k"
+        mock_generate_presigned_download_url.return_value = (
+            "https://signed.example.com/k"
+        )
 
         client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
 
@@ -911,7 +1073,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_uses_incident_org_for_legacy_null_org_export(
-        self, mock_generate_presigned_download_url, client, db_session, auth_headers, test_org
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        auth_headers,
+        test_org,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -938,7 +1105,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_missing_bucket_or_key_returns_422(
-        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -971,7 +1143,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_presign_failure_returns_502(
-        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -1070,7 +1247,12 @@ class TestDownloadExport:
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_rejects_non_presigned_url(
-        self, mock_generate_presigned_download_url, client, db_session, test_org, auth_headers
+        self,
+        mock_generate_presigned_download_url,
+        client,
+        db_session,
+        test_org,
+        auth_headers,
     ):
         inc = Incident(status="open", org_id=test_org.id)
         db_session.add(inc)
@@ -1185,9 +1367,7 @@ class TestGetExport:
         resp = client.get(f"/exports/{fake_id}")
         assert resp.status_code in (401, 403)
 
-    def test_get_export_forbidden_for_other_org(
-        self, client, db_session, auth_headers
-    ):
+    def test_get_export_forbidden_for_other_org(self, client, db_session, auth_headers):
         other_org = Org(name="Other Org")
         db_session.add(other_org)
         db_session.commit()
@@ -1365,7 +1545,9 @@ class TestExportStatusAndContents:
         db_session.commit()
         db_session.refresh(exp)
 
-        status_resp = client.get(f"/exports/{exp.export_id}/status", headers=auth_headers)
+        status_resp = client.get(
+            f"/exports/{exp.export_id}/status", headers=auth_headers
+        )
         contents_resp = client.get(
             f"/exports/{exp.export_id}/contents", headers=auth_headers
         )
@@ -1390,7 +1572,9 @@ class TestExportStatusAndContents:
         db_session.commit()
         db_session.refresh(exp)
 
-        status_resp = client.get(f"/exports/{exp.export_id}/status", headers=auth_headers)
+        status_resp = client.get(
+            f"/exports/{exp.export_id}/status", headers=auth_headers
+        )
         contents_resp = client.get(
             f"/exports/{exp.export_id}/contents", headers=auth_headers
         )

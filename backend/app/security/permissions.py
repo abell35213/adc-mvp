@@ -14,6 +14,9 @@ class Role(str, Enum):
 class Capability(str, Enum):
     INCIDENT_READ = "incident:read"
     INCIDENT_WRITE = "incident:write"
+    INCIDENT_CLOSE = "incident:close"
+    INCIDENT_REOPEN = "incident:reopen"
+    INCIDENT_ESCALATE = "incident:escalate"
     EXPORT_READ = "export:read"
     EXPORT_WRITE = "export:write"
     DRIVER_PROTOCOL_READ = "driver_protocol:read"
@@ -68,5 +71,7 @@ def get_user_capabilities(raw_role: str | None) -> frozenset[Capability]:
 
 
 def has_capability(raw_role: str | None, capability: Capability | str) -> bool:
-    resolved = capability if isinstance(capability, Capability) else Capability(capability)
+    resolved = (
+        capability if isinstance(capability, Capability) else Capability(capability)
+    )
     return resolved in get_user_capabilities(raw_role)

@@ -1088,6 +1088,9 @@
             "enum": [
               "incident:read",
               "incident:write",
+              "incident:close",
+              "incident:reopen",
+              "incident:escalate",
               "export:read",
               "export:write",
               "driver_protocol:read",
