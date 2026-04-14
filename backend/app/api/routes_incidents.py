@@ -72,6 +72,14 @@ def _required_transition_capability(
     return None
 
 
+def _is_privileged_status_target(to_status: str) -> bool:
+    return to_status == "closed"
+
+
+def _has_privileged_status_permission(role: str | None) -> bool:
+    return role in {"org_admin", "system_admin"}
+
+
 def _event_context_payload(
     *,
     actor_id: uuid.UUID,
@@ -364,6 +372,13 @@ def patch_incident_status(
     transition_capability = _required_transition_capability(
         str(incident.case_status), body.case_status
     )
+    if _is_privileged_status_target(body.case_status) and not _has_privileged_status_permission(
+        current_user.role
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions for privileged status transition.",
+        )
     if transition_capability is not None and not has_capability(
         current_user.role, transition_capability
     ):
