@@ -68,7 +68,7 @@ CapabilityName = Literal[
     "vehicle_qr:read",
     "vehicle_qr:write",
 ]
-assert set(CANONICAL_ROLES) == {"system_admin", "org_admin", "safety_manager"}
+assert {"system_admin", "org_admin", "safety_manager"}.issubset(set(CANONICAL_ROLES))
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",

@@ -9,6 +9,8 @@ class Role(str, Enum):
     SYSTEM_ADMIN = "system_admin"
     ORG_ADMIN = "org_admin"
     SAFETY_MANAGER = "safety_manager"
+    CLAIMS_USER = "claims_user"
+    READ_ONLY = "read_only"
 
 
 class Capability(str, Enum):
@@ -43,6 +45,12 @@ _ROLE_ALIASES: dict[str, Role] = {
     "safety manager": Role.SAFETY_MANAGER,
     "safety-manager": Role.SAFETY_MANAGER,
     "manager": Role.SAFETY_MANAGER,
+    "claims_user": Role.CLAIMS_USER,
+    "claims user": Role.CLAIMS_USER,
+    "claims-user": Role.CLAIMS_USER,
+    "read_only": Role.READ_ONLY,
+    "read only": Role.READ_ONLY,
+    "readonly": Role.READ_ONLY,
 }
 
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
@@ -54,6 +62,20 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.INCIDENT_WRITE,
             Capability.EXPORT_READ,
             Capability.EXPORT_WRITE,
+        }
+    ),
+    Role.CLAIMS_USER: frozenset(
+        {
+            Capability.INCIDENT_READ,
+            Capability.INCIDENT_WRITE,
+            Capability.EXPORT_READ,
+            Capability.EXPORT_WRITE,
+        }
+    ),
+    Role.READ_ONLY: frozenset(
+        {
+            Capability.INCIDENT_READ,
+            Capability.EXPORT_READ,
         }
     ),
 }

@@ -17,7 +17,7 @@
 
 ## CI requirement for hardening-related pull requests
 
-Last update: hardened queue/integration retry controls with normalized error-class retry policies, capability-specific retry ceilings/backoff, and admin-intervention escalation for non-retryable credential/mapping failures.
+Last update: expanded role-based authorization for case workspace/notes/tasks flows with explicit capability dependencies (including read-only and claims-user behavior) and permission allow/deny regression coverage.
 
 Any pull request that touches hardening-related code **must** update `docs/production-hardening/control-matrix.md` in the same change.
 
