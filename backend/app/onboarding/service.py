@@ -37,6 +37,7 @@ from app.onboarding.progress import (
     derive_step_statuses,
 )
 from app.onboarding.readiness import derive_readiness_status
+from app.security.permissions import Capability, has_capability
 
 
 def _organization_basics_complete(org: Org) -> bool:
@@ -80,6 +81,9 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         user for user in user_rows if bool(getattr(user, "is_active", True))
     ]
     org_admin_count = sum(1 for user in active_users if str(user.role) == "org_admin")
+    safety_capable_user_count = sum(
+        1 for user in active_users if has_capability(user.role, Capability.INCIDENT_WRITE)
+    )
 
     import_operations = (
         db.query(IntegrationOperation)
@@ -177,6 +181,7 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
     return OnboardingSignals(
         org_settings_configured=org_settings_configured,
         org_admin_count=org_admin_count,
+        safety_capable_user_count=safety_capable_user_count,
         active_user_count=len(active_users),
         successful_import_count=successful_import_count,
         failed_import_count=failed_import_count,

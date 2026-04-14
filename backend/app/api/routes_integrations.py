@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -18,9 +19,15 @@ from app.api.schemas import (
     IntegrationConnectionValidateResponse,
     IntegrationOperationDiagnosticsResponse,
     OrgLaunchReadinessResponse,
+    OrgInviteUserRequest,
+    OrgInviteUserResponse,
     OrgOnboardingStepUpdateRequest,
     OrgSettingsResponse,
     OrgSettingsUpdateRequest,
+    OrgPatchUserRoleRequest,
+    OrgUserInviteSummary,
+    OrgUserSummary,
+    OrgUsersResponse,
 )
 from app.core.config import settings
 from app.core.deps import get_current_user, require_user_role
@@ -29,8 +36,10 @@ from app.db.models import (
     EvidenceRequest,
     IntegrationConnection,
     IntegrationOperation,
+    OrgUserInvite,
     Org,
     User,
+    UserOrg,
 )
 from app.db.session import get_db
 from app.integrations.webhooks.handlers import (
@@ -47,13 +56,16 @@ from app.services.dashcam_capture_service import queue_dashcam_capture
 from app.services.telematics_capture_service import queue_telematics_capture
 from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
+    collect_onboarding_signals,
     get_org_onboarding_readiness,
     set_step_completion_override,
 )
+from app.security.permissions import CANONICAL_ROLES, Capability, has_capability, normalize_role
 
 router = APIRouter()
 
 _integration_admin = require_user_role("system_admin", "org_admin")
+_org_user_admin = require_user_role("system_admin", "org_admin")
 
 
 def _first_org_id(context) -> uuid.UUID:
@@ -79,6 +91,34 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
             "snapshot_created_at_utc": readiness.snapshot_created_at_utc,
         }
     )
+
+
+def _role_counts_for_org(db: Session, *, org_id: uuid.UUID) -> dict[str, int]:
+    rows = (
+        db.query(User.role)
+        .join(UserOrg, UserOrg.user_id == User.id)
+        .filter(UserOrg.org_id == org_id, User.is_active.is_(True))
+        .all()
+    )
+    counts = {role: 0 for role in CANONICAL_ROLES}
+    for (role,) in rows:
+        normalized = normalize_role(role).value
+        counts[normalized] = counts.get(normalized, 0) + 1
+    return counts
+
+
+def _role_violations(*, role_counts: dict[str, int]) -> list[str]:
+    violations: list[str] = []
+    if role_counts.get("org_admin", 0) < 1:
+        violations.append("no org admin assigned")
+    safety_capable_count = sum(
+        count
+        for role, count in role_counts.items()
+        if has_capability(role, Capability.INCIDENT_WRITE)
+    )
+    if safety_capable_count < 1:
+        violations.append("no safety manager assigned")
+    return violations
 
 
 @router.get("/org/settings", response_model=OrgSettingsResponse)
@@ -154,19 +194,211 @@ def mark_org_onboarding_step(
     current_user: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
     valid_steps = {item.key for item in STEP_DEFINITIONS}
     if payload.step_key not in valid_steps:
         raise HTTPException(status_code=422, detail="Unknown step_key")
+    if payload.step_key == "users_roles" and payload.completed:
+        signals = collect_onboarding_signals(db, org_id=org_id)
+        if signals.org_admin_count < 1 or signals.safety_capable_user_count < 1:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "users_roles_prerequisites_not_met",
+                    "message": "Cannot complete users_roles step until role requirements are satisfied.",
+                    "role_counts": _role_counts_for_org(db, org_id=org_id),
+                    "violations": _role_violations(role_counts=_role_counts_for_org(db, org_id=org_id)),
+                },
+            )
     set_step_completion_override(
         db,
-        org_id=_first_org_id(context),
+        org_id=org_id,
         step_key=payload.step_key,
         is_completed=payload.completed,
         actor_user_id=current_user.id,
         source=payload.source,
     )
-    readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
+    readiness = get_org_onboarding_readiness(db, org_id=org_id)
     return _to_readiness_response(readiness)
+
+
+@router.get("/org/users", response_model=OrgUsersResponse)
+def list_org_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    users = (
+        db.query(User)
+        .join(UserOrg, UserOrg.user_id == User.id)
+        .filter(UserOrg.org_id == org_id)
+        .order_by(User.created_at_utc.asc())
+        .all()
+    )
+    invites = (
+        db.query(OrgUserInvite)
+        .filter(OrgUserInvite.org_id == org_id)
+        .order_by(OrgUserInvite.created_at_utc.desc())
+        .all()
+    )
+    role_counts = _role_counts_for_org(db, org_id=org_id)
+    return OrgUsersResponse(
+        users=[
+            OrgUserSummary(
+                user_id=row.id,
+                email=row.email,
+                role=normalize_role(row.role).value,
+                is_active=bool(row.is_active),
+                created_at_utc=row.created_at_utc,
+            )
+            for row in users
+        ],
+        invites=[
+            OrgUserInviteSummary(
+                invite_id=row.invite_id,
+                email=row.email,
+                role=normalize_role(row.role).value,
+                status=row.status,
+                created_at_utc=row.created_at_utc,
+                last_sent_at_utc=row.last_sent_at_utc,
+                deactivated_at_utc=row.deactivated_at_utc,
+            )
+            for row in invites
+        ],
+        role_counts=role_counts,
+        violations=_role_violations(role_counts=role_counts),
+    )
+
+
+@router.post("/org/users/invite", response_model=OrgInviteUserResponse, status_code=201)
+def invite_org_user(
+    payload: OrgInviteUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_org_user_admin),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    invite = OrgUserInvite(
+        org_id=org_id,
+        email=payload.email.lower(),
+        role=normalize_role(payload.role).value,
+        status="pending",
+        invited_by_user_id=current_user.id,
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+    role_counts = _role_counts_for_org(db, org_id=org_id)
+    return OrgInviteUserResponse(
+        invite=OrgUserInviteSummary(
+            invite_id=invite.invite_id,
+            email=invite.email,
+            role=normalize_role(invite.role).value,
+            status=invite.status,
+            created_at_utc=invite.created_at_utc,
+            last_sent_at_utc=invite.last_sent_at_utc,
+            deactivated_at_utc=invite.deactivated_at_utc,
+        ),
+        role_counts=role_counts,
+        violations=_role_violations(role_counts=role_counts),
+    )
+
+
+@router.patch("/org/users/{user_id}/role", response_model=OrgUsersResponse)
+def patch_org_user_role(
+    user_id: uuid.UUID,
+    payload: OrgPatchUserRoleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_org_user_admin),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    row = (
+        db.query(User)
+        .join(UserOrg, UserOrg.user_id == User.id)
+        .filter(UserOrg.org_id == org_id, User.id == user_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    row.role = normalize_role(payload.role).value
+    db.add(row)
+    db.commit()
+    return list_org_users(db=db, current_user=current_user)
+
+
+@router.post("/org/users/invite/{invite_id}/resend", response_model=OrgInviteUserResponse)
+def resend_org_user_invite(
+    invite_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_org_user_admin),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    row = (
+        db.query(OrgUserInvite)
+        .filter(OrgUserInvite.invite_id == invite_id, OrgUserInvite.org_id == org_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail="Invite is not active")
+    row.last_sent_at_utc = datetime.now(timezone.utc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    role_counts = _role_counts_for_org(db, org_id=org_id)
+    return OrgInviteUserResponse(
+        invite=OrgUserInviteSummary(
+            invite_id=row.invite_id,
+            email=row.email,
+            role=normalize_role(row.role).value,
+            status=row.status,
+            created_at_utc=row.created_at_utc,
+            last_sent_at_utc=row.last_sent_at_utc,
+            deactivated_at_utc=row.deactivated_at_utc,
+        ),
+        role_counts=role_counts,
+        violations=_role_violations(role_counts=role_counts),
+    )
+
+
+@router.post("/org/users/invite/{invite_id}/deactivate", response_model=OrgInviteUserResponse)
+def deactivate_org_user_invite(
+    invite_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_org_user_admin),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    row = (
+        db.query(OrgUserInvite)
+        .filter(OrgUserInvite.invite_id == invite_id, OrgUserInvite.org_id == org_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    row.status = "deactivated"
+    row.deactivated_at_utc = datetime.now(timezone.utc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    role_counts = _role_counts_for_org(db, org_id=org_id)
+    return OrgInviteUserResponse(
+        invite=OrgUserInviteSummary(
+            invite_id=row.invite_id,
+            email=row.email,
+            role=normalize_role(row.role).value,
+            status=row.status,
+            created_at_utc=row.created_at_utc,
+            last_sent_at_utc=row.last_sent_at_utc,
+            deactivated_at_utc=row.deactivated_at_utc,
+        ),
+        role_counts=role_counts,
+        violations=_role_violations(role_counts=role_counts),
+    )
 
 
 @router.get("/org/integrations", response_model=list[IntegrationConnectionHealthResponse])
