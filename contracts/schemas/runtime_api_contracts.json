@@ -772,9 +772,7 @@
         },
         "blockers": {
           "items": {
-            "additionalProperties": {
-              "type": "string"
-            },
+            "additionalProperties": true,
             "type": "object"
           },
           "title": "Blockers",

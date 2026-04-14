@@ -312,7 +312,7 @@ class IncidentDetailResponse(BaseModel):
     completeness_status: str = "incomplete"
     readiness_state: str = "not_ready"
     completeness_missing_items: list[str] = Field(default_factory=list)
-    blockers: list[dict[str, str]] = Field(default_factory=list)
+    blockers: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MessagingReliabilityResponse(BaseModel):

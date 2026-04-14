@@ -8,6 +8,14 @@ from typing import Literal
 
 CompletenessStatus = Literal["incomplete", "partial", "mostly_complete", "complete"]
 BlockerSeverity = Literal["critical", "important", "optional"]
+MissingItemCategory = Literal[
+    "driver_input",
+    "media",
+    "telematics",
+    "dashcam",
+    "document",
+    "internal_review",
+]
 ReadinessState = Literal[
     "not_ready",
     "conditionally_ready",
@@ -46,10 +54,22 @@ class CaseCompleteness:
 
 
 @dataclass(slots=True)
+class MissingItem:
+    code: str
+    category: MissingItemCategory
+    severity: BlockerSeverity
+    message: str
+    resolvableBy: str
+    actionHint: str
+
+
+@dataclass(slots=True)
 class CaseBlocker:
     code: str
     message: str
     severity: BlockerSeverity
+    missing_item: MissingItem
+    blocks_readiness: bool = False
 
 
 @dataclass(slots=True)
@@ -58,6 +78,7 @@ class BlockerSummary:
     critical_count: int
     important_count: int
     optional_count: int
+    readiness_blocker_codes: list[str] = field(default_factory=list)
     items: list[CaseBlocker] = field(default_factory=list)
 
 
@@ -68,6 +89,7 @@ class CaseReadiness:
     completeness_percent: int
     completeness_status: CompletenessStatus
     blockers: BlockerSummary
+    blocking_codes: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

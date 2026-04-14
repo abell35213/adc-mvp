@@ -285,6 +285,10 @@ def get_incident_endpoint(
                 "code": blocker.code,
                 "message": blocker.message,
                 "severity": blocker.severity,
+                "category": blocker.missing_item.category,
+                "resolvableBy": blocker.missing_item.resolvableBy,
+                "actionHint": blocker.missing_item.actionHint,
+                "blocksReadiness": blocker.blocks_readiness,
             }
             for blocker in snapshot.blockers.items
         ],
