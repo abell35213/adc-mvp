@@ -2307,16 +2307,41 @@ class TestOrgMappingsReadiness:
                     org_id=test_org.id,
                     unit_number="UNIT-001",
                     is_active=True,
+                    qr_deployment_status="distributed",
                 ),
                 OrgVehicleRegistry(
                     org_id=test_org.id,
                     unit_number="UNIT-002",
                     is_active=True,
+                    qr_deployment_status="distributed",
                 ),
                 OrgVehicleRegistry(
                     org_id=test_org.id,
                     unit_number="UNIT-003",
                     is_active=True,
+                    qr_deployment_status="confirmed",
+                ),
+            ]
+        )
+        db_session.add_all(
+            [
+                VehicleQrToken(
+                    qr_token="qr-u1",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-001",
+                    status="active",
+                ),
+                VehicleQrToken(
+                    qr_token="qr-u2",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-002",
+                    status="active",
+                ),
+                VehicleQrToken(
+                    qr_token="qr-u3",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-003",
+                    status="active",
                 ),
             ]
         )
@@ -2410,6 +2435,8 @@ class TestOrgMappingsReadiness:
         assert payload["pilot_readiness"] == {
             "enough_mapped_drivers_for_pilot": True,
             "enough_mapped_vehicles_for_pilot": True,
+            "enough_qr_generated_for_required_vehicles": True,
+            "enough_qr_distributed_for_required_vehicles": True,
             "no_blocking_integration_credentials": True,
             "pilot_scope_ready": True,
         }
@@ -2450,11 +2477,69 @@ class TestOrgMappingsReadiness:
         assert "MAPPED_VEHICLES_REQUIRED" in codes
         assert "ASSIGNMENT_CONFIDENCE_LOW" in codes
         assert "BLOCKING_INTEGRATION_CREDENTIALS" in codes
+        assert "VEHICLE_QR_GENERATION_REQUIRED" in codes
+        assert "VEHICLE_QR_DISTRIBUTION_REQUIRED" in codes
         actions = {item["blocker_panel_action"] for item in payload["issues"]}
         assert "open_driver_mappings" in actions
         assert "open_vehicle_mappings" in actions
         assert "review_driver_assignments" in actions
         assert "fix_integration_credentials" in actions
+
+
+class TestVehicleQrDeploymentEndpoints:
+    def test_generate_bulk_rotate_printable_and_stats(
+        self, client, db_session, test_org, auth_headers
+    ):
+        db_session.add_all(
+            [
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-A",
+                    is_active=True,
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-B",
+                    is_active=True,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        one = client.post("/org/vehicles/UNIT-A/generate-qr", headers=auth_headers)
+        assert one.status_code == 200
+        first_token = one.json()["qr_token"]
+        assert one.json()["deployment_status"] == "generated"
+
+        bulk = client.post(
+            "/org/vehicles/bulk-generate-qr",
+            headers=auth_headers,
+            json={"vehicle_ids": ["UNIT-A", "UNIT-B", "UNKNOWN"]},
+        )
+        assert bulk.status_code == 200
+        payload = bulk.json()
+        assert payload["generated_count"] == 2
+        assert payload["skipped_count"] == 1
+        assert "UNKNOWN" in payload["skipped_vehicle_ids"]
+
+        rotated = client.post("/org/vehicles/UNIT-A/rotate-qr", headers=auth_headers)
+        assert rotated.status_code == 200
+        assert rotated.json()["qr_token"] != first_token
+
+        printable = client.get(
+            "/org/vehicles/UNIT-A/qr/printable",
+            headers=auth_headers,
+        )
+        assert printable.status_code == 200
+        assert printable.headers["content-type"].startswith("application/pdf")
+
+        stats = client.get("/org/onboarding/qr-stats", headers=auth_headers)
+        assert stats.status_code == 200
+        stats_payload = stats.json()
+        assert stats_payload["required_vehicle_count"] == 2
+        assert stats_payload["generated_count"] == 2
+        assert stats_payload["distributed_count"] == 1
+        assert "required_vehicles_not_distributed" in stats_payload["coverage_blockers"]
 
 
 # ── Health check ────────────────────────────────────────────────────

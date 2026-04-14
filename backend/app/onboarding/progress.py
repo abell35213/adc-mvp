@@ -25,7 +25,8 @@ class OnboardingSignals:
     total_integration_count: int = 0
     vehicles_total: int = 0
     qr_codes_generated: int = 0
-    qr_codes_activated: int = 0
+    qr_codes_distributed: int = 0
+    qr_codes_confirmed: int = 0
     last_qr_rotation_at_utc: datetime | None = None
     protocol_configured: bool = False
     test_run_passed: bool = False
@@ -87,7 +88,7 @@ def derive_step_statuses(
         else "not_started",
         "vehicle_qr": "completed"
         if signals.vehicles_total > 0
-        and signals.qr_codes_activated >= signals.vehicles_total
+        and signals.qr_codes_distributed >= signals.vehicles_total
         else "in_progress"
         if signals.qr_codes_generated > 0
         else "not_started",

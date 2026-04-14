@@ -66,7 +66,7 @@ def test_readiness_status_transitions_pilot_and_launch():
             total_integration_count=1,
             vehicles_total=2,
             qr_codes_generated=2,
-            qr_codes_activated=2,
+            qr_codes_distributed=2,
             protocol_configured=True,
             test_run_passed=True,
             export_validation_passed=True,

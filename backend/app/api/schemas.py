@@ -708,8 +708,35 @@ class VehicleQrDeploymentResponse(BaseModel):
     status: OnboardingReadinessStepStatus = "not_started"
     vehicles_total: int = Field(default=0, ge=0)
     qr_codes_generated: int = Field(default=0, ge=0)
-    qr_codes_activated: int = Field(default=0, ge=0)
+    qr_codes_distributed: int = Field(default=0, ge=0)
+    qr_codes_confirmed: int = Field(default=0, ge=0)
     last_rotated_at_utc: Optional[datetime] = None
+    coverage_blockers: list[ShortText] = Field(default_factory=list)
+
+
+class VehicleQrGenerateResponse(BaseModel):
+    vehicle_id: ShortText
+    qr_token: QrToken
+    deployment_status: Literal["generated", "distributed", "confirmed"] = "generated"
+
+
+class VehicleQrBulkGenerateRequest(BaseModel):
+    vehicle_ids: list[ShortText] = Field(default_factory=list, max_length=500)
+
+
+class VehicleQrBulkGenerateResponse(BaseModel):
+    generated_count: int = Field(default=0, ge=0)
+    skipped_count: int = Field(default=0, ge=0)
+    generated: list[VehicleQrGenerateResponse] = Field(default_factory=list)
+    skipped_vehicle_ids: list[ShortText] = Field(default_factory=list)
+
+
+class VehicleQrStatsResponse(BaseModel):
+    required_vehicle_count: int = Field(default=0, ge=0)
+    generated_count: int = Field(default=0, ge=0)
+    distributed_count: int = Field(default=0, ge=0)
+    confirmed_count: int = Field(default=0, ge=0)
+    coverage_blockers: list[ShortText] = Field(default_factory=list)
 
 
 class TestIncidentRunResponse(BaseModel):
@@ -763,6 +790,8 @@ class OrgMappingsStaleWarnings(BaseModel):
 class OrgMappingsPilotReadinessFlags(BaseModel):
     enough_mapped_drivers_for_pilot: bool = False
     enough_mapped_vehicles_for_pilot: bool = False
+    enough_qr_generated_for_required_vehicles: bool = False
+    enough_qr_distributed_for_required_vehicles: bool = False
     no_blocking_integration_credentials: bool = False
     pilot_scope_ready: bool = False
 

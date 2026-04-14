@@ -1467,6 +1467,22 @@ class OrgVehicleRegistry(Base):
     is_active = Column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    qr_deployment_status = Column(
+        Enum(
+            "not_generated",
+            "generated",
+            "distributed",
+            "confirmed",
+            name="vehicle_qr_deployment_status",
+        ),
+        nullable=False,
+        default="not_generated",
+        server_default="not_generated",
+        index=True,
+    )
+    qr_generated_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    qr_distributed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    qr_confirmed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

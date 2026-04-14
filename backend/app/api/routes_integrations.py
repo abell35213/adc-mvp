@@ -5,6 +5,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
+import hashlib
+import secrets
 
 from fastapi import (
     APIRouter,
@@ -14,6 +16,7 @@ from fastapi import (
     Request,
     Response,
 )
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -48,6 +51,10 @@ from app.api.schemas import (
     VehicleImportJobCreateRequest,
     VehicleImportJobCreateResponse,
     VehicleImportJobResponse,
+    VehicleQrBulkGenerateRequest,
+    VehicleQrBulkGenerateResponse,
+    VehicleQrGenerateResponse,
+    VehicleQrStatsResponse,
 )
 from app.core.config import settings
 from app.core.deps import get_current_user, require_user_role
@@ -66,6 +73,8 @@ from app.db.models import (
     ExternalMapping,
     OrgVehicleRegistry,
     VehicleImportJob,
+    VehicleQrToken,
+    Event,
 )
 from app.db.session import get_db
 from app.integrations.webhooks.handlers import (
@@ -101,6 +110,8 @@ from app.security.permissions import (
     has_capability,
     normalize_role,
 )
+from app.domain.system_event_types import SystemEventType
+from app.services.pdf_render import render_pdf
 
 router = APIRouter()
 
@@ -246,6 +257,11 @@ def _build_org_mapping_summary(
     no_blocking_integration_credentials = blocking_credential_count == 0
     enough_mapped_drivers_for_pilot = mapped_drivers >= _PILOT_MIN_MAPPED_DRIVERS
     enough_mapped_vehicles_for_pilot = mapped_vehicles >= _PILOT_MIN_MAPPED_VEHICLES
+    qr_stats = _vehicle_qr_stats(db, org_id=org_id)
+    enough_qr_generated = qr_stats.generated_count >= qr_stats.required_vehicle_count
+    enough_qr_distributed = (
+        qr_stats.distributed_count >= qr_stats.required_vehicle_count
+    )
 
     return OrgMappingsSummaryResponse(
         drivers=OrgMappingsSummaryCounts(
@@ -272,10 +288,14 @@ def _build_org_mapping_summary(
         pilot_readiness=OrgMappingsPilotReadinessFlags(
             enough_mapped_drivers_for_pilot=enough_mapped_drivers_for_pilot,
             enough_mapped_vehicles_for_pilot=enough_mapped_vehicles_for_pilot,
+            enough_qr_generated_for_required_vehicles=enough_qr_generated,
+            enough_qr_distributed_for_required_vehicles=enough_qr_distributed,
             no_blocking_integration_credentials=no_blocking_integration_credentials,
             pilot_scope_ready=(
                 enough_mapped_drivers_for_pilot
                 and enough_mapped_vehicles_for_pilot
+                and enough_qr_generated
+                and enough_qr_distributed
                 and no_blocking_integration_credentials
             ),
         ),
@@ -335,6 +355,26 @@ def _build_org_mapping_issues(
             )
         )
 
+    if not summary.pilot_readiness.enough_qr_generated_for_required_vehicles:
+        issues.append(
+            OrgMappingsIssue(
+                code="VEHICLE_QR_GENERATION_REQUIRED",
+                message="Required pilot vehicles are missing generated QR codes.",
+                severity="error",
+                blocker_panel_action="generate_vehicle_qr",
+            )
+        )
+
+    if not summary.pilot_readiness.enough_qr_distributed_for_required_vehicles:
+        issues.append(
+            OrgMappingsIssue(
+                code="VEHICLE_QR_DISTRIBUTION_REQUIRED",
+                message="Required pilot vehicles have QR codes that are not yet distributed.",
+                severity="error",
+                blocker_panel_action="distribute_vehicle_qr",
+            )
+        )
+
     if summary.stale_warnings.stale_count > 0:
         issues.append(
             OrgMappingsIssue(
@@ -366,6 +406,85 @@ def _run_vehicle_import_background(
         inactive_unit_numbers={
             item.strip().lower() for item in inactive_unit_numbers if item.strip()
         },
+    )
+
+
+def _get_required_vehicle(
+    db: Session, *, org_id: uuid.UUID, vehicle_id: str
+) -> OrgVehicleRegistry:
+    vehicle = (
+        db.query(OrgVehicleRegistry)
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.unit_number == vehicle_id,
+            OrgVehicleRegistry.is_active.is_(True),
+        )
+        .first()
+    )
+    if vehicle is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return vehicle
+
+
+def _emit_vehicle_qr_event(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    action: str,
+    vehicle_id: str,
+    payload: dict,
+) -> None:
+    db.add(
+        Event(
+            org_id=org_id,
+            incident_id=None,
+            event_type=action,
+            actor_type="admin",
+            actor_id=str(actor_id),
+            payload={"adc_vehicle_id": vehicle_id, **payload},
+        )
+    )
+
+
+def _vehicle_qr_stats(db: Session, *, org_id: uuid.UUID) -> VehicleQrStatsResponse:
+    required_rows = (
+        db.query(OrgVehicleRegistry)
+        .filter(
+            OrgVehicleRegistry.org_id == org_id,
+            OrgVehicleRegistry.is_active.is_(True),
+        )
+        .all()
+    )
+    required_ids = {row.unit_number for row in required_rows}
+    generated_ids = {
+        row.adc_vehicle_id
+        for row in db.query(VehicleQrToken)
+        .filter(
+            VehicleQrToken.org_id == org_id,
+            VehicleQrToken.status == "active",
+        )
+        .all()
+    }
+    distributed_count = sum(
+        1
+        for row in required_rows
+        if row.qr_deployment_status in {"distributed", "confirmed"}
+    )
+    confirmed_count = sum(
+        1 for row in required_rows if row.qr_deployment_status == "confirmed"
+    )
+    blockers: list[str] = []
+    if len(required_ids - generated_ids) > 0:
+        blockers.append("required_vehicles_not_generated")
+    if distributed_count < len(required_rows):
+        blockers.append("required_vehicles_not_distributed")
+    return VehicleQrStatsResponse(
+        required_vehicle_count=len(required_rows),
+        generated_count=len(required_ids.intersection(generated_ids)),
+        distributed_count=distributed_count,
+        confirmed_count=confirmed_count,
+        coverage_blockers=blockers,
     )
 
 
@@ -605,6 +724,226 @@ def get_org_vehicle_import_job(
     if row is None:
         raise HTTPException(status_code=404, detail="Import job not found")
     return _to_vehicle_import_job_response(row)
+
+
+@router.post(
+    "/org/vehicles/{vehicle_id}/generate-qr",
+    response_model=VehicleQrGenerateResponse,
+)
+def generate_vehicle_qr(
+    vehicle_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+
+    active_token = (
+        db.query(VehicleQrToken)
+        .filter(
+            VehicleQrToken.org_id == org_id,
+            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.status == "active",
+        )
+        .first()
+    )
+    if active_token is None:
+        active_token = VehicleQrToken(
+            qr_token=secrets.token_urlsafe(32),
+            org_id=org_id,
+            adc_vehicle_id=vehicle.unit_number,
+            status="active",
+        )
+        db.add(active_token)
+
+    vehicle.qr_deployment_status = "generated"
+    vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
+    token_hash = hashlib.sha256(active_token.qr_token.encode()).hexdigest()
+    _emit_vehicle_qr_event(
+        db,
+        org_id=org_id,
+        actor_id=current_user.id,
+        action="vehicle_qr_generated",
+        vehicle_id=vehicle.unit_number,
+        payload={"token_sha256": token_hash},
+    )
+    db.commit()
+    return VehicleQrGenerateResponse(
+        vehicle_id=vehicle.unit_number,
+        qr_token=active_token.qr_token,
+        deployment_status=vehicle.qr_deployment_status,
+    )
+
+
+@router.post(
+    "/org/vehicles/bulk-generate-qr",
+    response_model=VehicleQrBulkGenerateResponse,
+)
+def bulk_generate_vehicle_qr(
+    payload: VehicleQrBulkGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    generated: list[VehicleQrGenerateResponse] = []
+    skipped: list[str] = []
+    for vehicle_id in payload.vehicle_ids:
+        vehicle = (
+            db.query(OrgVehicleRegistry)
+            .filter(
+                OrgVehicleRegistry.org_id == org_id,
+                OrgVehicleRegistry.unit_number == vehicle_id,
+                OrgVehicleRegistry.is_active.is_(True),
+            )
+            .first()
+        )
+        if vehicle is None:
+            skipped.append(vehicle_id)
+            continue
+        token = (
+            db.query(VehicleQrToken)
+            .filter(
+                VehicleQrToken.org_id == org_id,
+                VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+                VehicleQrToken.status == "active",
+            )
+            .first()
+        )
+        if token is None:
+            token = VehicleQrToken(
+                qr_token=secrets.token_urlsafe(32),
+                org_id=org_id,
+                adc_vehicle_id=vehicle.unit_number,
+                status="active",
+            )
+            db.add(token)
+        vehicle.qr_deployment_status = "generated"
+        vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
+        _emit_vehicle_qr_event(
+            db,
+            org_id=org_id,
+            actor_id=current_user.id,
+            action="vehicle_qr_generated",
+            vehicle_id=vehicle.unit_number,
+            payload={"bulk": True},
+        )
+        generated.append(
+            VehicleQrGenerateResponse(
+                vehicle_id=vehicle.unit_number,
+                qr_token=token.qr_token,
+                deployment_status="generated",
+            )
+        )
+    db.commit()
+    return VehicleQrBulkGenerateResponse(
+        generated_count=len(generated),
+        skipped_count=len(skipped),
+        generated=generated,
+        skipped_vehicle_ids=skipped,
+    )
+
+
+@router.post("/org/vehicles/{vehicle_id}/rotate-qr", response_model=VehicleQrGenerateResponse)
+def rotate_vehicle_qr(
+    vehicle_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+    active_tokens = (
+        db.query(VehicleQrToken)
+        .filter(
+            VehicleQrToken.org_id == org_id,
+            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.status == "active",
+        )
+        .all()
+    )
+    for row in active_tokens:
+        row.status = "rotated"
+    token = VehicleQrToken(
+        qr_token=secrets.token_urlsafe(32),
+        org_id=org_id,
+        adc_vehicle_id=vehicle.unit_number,
+        status="active",
+        rotated_from_token=active_tokens[0].qr_token if active_tokens else None,
+    )
+    db.add(token)
+    vehicle.qr_deployment_status = "generated"
+    vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
+    _emit_vehicle_qr_event(
+        db,
+        org_id=org_id,
+        actor_id=current_user.id,
+        action=SystemEventType.VEHICLE_QR_ROTATED.value,
+        vehicle_id=vehicle.unit_number,
+        payload={"token_sha256": hashlib.sha256(token.qr_token.encode()).hexdigest()},
+    )
+    db.commit()
+    return VehicleQrGenerateResponse(
+        vehicle_id=vehicle.unit_number,
+        qr_token=token.qr_token,
+        deployment_status="generated",
+    )
+
+
+@router.get("/org/vehicles/{vehicle_id}/qr/printable")
+def download_vehicle_qr_printable(
+    vehicle_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+    token = (
+        db.query(VehicleQrToken)
+        .filter(
+            VehicleQrToken.org_id == org_id,
+            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.status == "active",
+        )
+        .first()
+    )
+    if token is None:
+        raise HTTPException(status_code=404, detail="QR token not generated for vehicle")
+    vehicle.qr_deployment_status = "distributed"
+    vehicle.qr_distributed_at_utc = datetime.now(timezone.utc)
+    pdf_bytes = render_pdf(
+        "vehicle_qr_printable",
+        {"vehicle_id": vehicle.unit_number, "qr_token": token.qr_token},
+    )
+    _emit_vehicle_qr_event(
+        db,
+        org_id=org_id,
+        actor_id=current_user.id,
+        action="vehicle_qr_distributed",
+        vehicle_id=vehicle.unit_number,
+        payload={"artifact_type": "printable_pdf"},
+    )
+    db.commit()
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="vehicle-{vehicle.unit_number}-qr.pdf"'
+            )
+        },
+    )
+
+
+@router.get("/org/onboarding/qr-stats", response_model=VehicleQrStatsResponse)
+def get_org_onboarding_qr_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    return _vehicle_qr_stats(db, org_id=_first_org_id(context))
 
 
 @router.post(

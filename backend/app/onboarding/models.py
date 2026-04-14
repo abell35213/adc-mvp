@@ -71,8 +71,10 @@ class VehicleQrDeployment:
     status: QrDeploymentStatus
     vehicles_total: int
     qr_codes_generated: int
-    qr_codes_activated: int
+    qr_codes_distributed: int
+    qr_codes_confirmed: int
     last_rotated_at_utc: datetime | None = None
+    coverage_blockers: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
