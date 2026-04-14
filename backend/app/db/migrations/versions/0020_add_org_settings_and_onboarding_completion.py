@@ -8,13 +8,14 @@ Create Date: 2026-04-14 00:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from typing import Union
 
 
 # revision identifiers, used by Alembic.
-revision = "0020_add_org_settings_and_onboarding_completion"
-down_revision = "0019_add_onboarding_readiness_snapshot_tables"
-branch_labels = None
-depends_on = None
+revision: str = "0020"
+down_revision: Union[str, None] = "0019"
+branch_labels: Union[str, None] = None
+depends_on: Union[str, None] = None
 
 
 def upgrade() -> None:
