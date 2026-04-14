@@ -42,6 +42,7 @@ from app.api.schemas import (
     OrgMappingsSummaryCounts,
     OrgMappingsSummaryResponse,
     OrgOnboardingStepUpdateRequest,
+    ProtocolSetupStepResponse,
     OrgSettingsResponse,
     OrgSettingsUpdateRequest,
     OrgPatchUserRoleRequest,
@@ -101,6 +102,7 @@ from app.services.driver_import_service import (
 from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
     collect_onboarding_signals,
+    get_protocol_setup_step,
     get_org_onboarding_readiness,
     set_step_completion_override,
 )
@@ -619,6 +621,19 @@ def get_org_onboarding_status(
     context = build_user_auth_context(db, current_user)
     readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
     return _to_readiness_response(readiness)
+
+
+@router.get(
+    "/org/onboarding/protocol-setup-step",
+    response_model=ProtocolSetupStepResponse,
+)
+def get_org_onboarding_protocol_setup_step(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    step = get_protocol_setup_step(db, org_id=_first_org_id(context))
+    return ProtocolSetupStepResponse.model_validate(asdict(step))
 
 
 @router.get("/org/mappings/summary", response_model=OrgMappingsSummaryResponse)

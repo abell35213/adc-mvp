@@ -29,6 +29,7 @@ from app.onboarding.models import (
     ImportJob,
     IntegrationValidationResult,
     OrgLaunchReadiness,
+    ProtocolSetupStep,
     TestIncidentRun,
     VehicleQrDeployment,
 )
@@ -39,6 +40,7 @@ from app.onboarding.progress import (
 )
 from app.onboarding.readiness import derive_readiness_status
 from app.security.permissions import Capability, has_capability
+from app.domain.packet_profiles import DEFAULT_PROFILE_BY_EXPORT_TYPE
 
 
 def _organization_basics_complete(org: Org) -> bool:
@@ -160,9 +162,11 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         or 0
     )
 
+    active_scope = org.instruction_source or "default"
     instruction_set = (
         db.query(DriverInstructionSet)
         .filter(DriverInstructionSet.org_id == org_id)
+        .filter(DriverInstructionSet.scope == active_scope)
         .order_by(DriverInstructionSet.created_at_utc.desc())
         .first()
     )
@@ -177,7 +181,18 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
             )
             .count()
         )
-    protocol_configured = bool(org.require_driver_ack and enabled_step_count > 0)
+    protocol_instruction_set_active = bool(
+        instruction_set is not None and enabled_step_count > 0
+    )
+    safety_contact_configured = bool(org.safety_manager_phone)
+    export_profiles_available = len(DEFAULT_PROFILE_BY_EXPORT_TYPE) > 0
+    required_media_prompts_defaulted = protocol_instruction_set_active
+    export_profile_defaulted = export_profiles_available
+    protocol_configured = bool(
+        protocol_instruction_set_active
+        and safety_contact_configured
+        and export_profiles_available
+    )
 
     test_run_event = (
         db.query(Event)
@@ -230,6 +245,11 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         qr_codes_distributed=qr_codes_distributed,
         qr_codes_confirmed=qr_codes_confirmed,
         last_qr_rotation_at_utc=max(qr_rotation_times) if qr_rotation_times else None,
+        protocol_instruction_set_active=protocol_instruction_set_active,
+        safety_contact_configured=safety_contact_configured,
+        export_profiles_available=export_profiles_available,
+        required_media_prompts_defaulted=required_media_prompts_defaulted,
+        export_profile_defaulted=export_profile_defaulted,
         protocol_configured=protocol_configured,
         test_run_passed=test_run_passed,
         export_validation_passed=export_validation_passed,
@@ -358,6 +378,32 @@ def get_org_onboarding_readiness(
     overrides = list_step_completion_overrides(db, org_id=org_id)
     return build_onboarding_readiness(
         org_id=org_id, signals=signals, step_completion_overrides=overrides
+    )
+
+
+def get_protocol_setup_step(
+    db: Session, *, org_id: uuid.UUID
+) -> ProtocolSetupStep:
+    signals = collect_onboarding_signals(db, org_id=org_id)
+    org = db.query(Org).filter(Org.id == org_id).first()
+    if org is None:
+        return ProtocolSetupStep(
+            instruction_set_selected=False,
+            instruction_source="default",
+            safety_contact_configured=False,
+            safety_manager_phone=None,
+            required_media_prompts_defaulted=False,
+            export_profile_defaulted=False,
+            export_profiles_available=[],
+        )
+    return ProtocolSetupStep(
+        instruction_set_selected=signals.protocol_instruction_set_active,
+        instruction_source=org.instruction_source or "default",
+        safety_contact_configured=signals.safety_contact_configured,
+        safety_manager_phone=org.safety_manager_phone,
+        required_media_prompts_defaulted=signals.required_media_prompts_defaulted,
+        export_profile_defaulted=signals.export_profile_defaulted,
+        export_profiles_available=sorted(DEFAULT_PROFILE_BY_EXPORT_TYPE.values()),
     )
 
 

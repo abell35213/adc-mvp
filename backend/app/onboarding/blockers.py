@@ -131,12 +131,32 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
             )
         )
 
-    if not signals.protocol_configured:
+    if not signals.protocol_instruction_set_active:
         blockers.append(
             ClassifiedBlocker(
-                code="driver_protocol_missing",
-                title="Driver protocol not configured",
-                detail="Enable driver acknowledgement workflow and publish instruction steps.",
+                code="driver_protocol_instruction_set_missing",
+                title="Driver instruction set missing",
+                detail="Select an active instruction set with at least one enabled instruction step.",
+                severity="critical",
+                blocking_step_key="driver_protocol",
+            )
+        )
+    if not signals.safety_contact_configured:
+        blockers.append(
+            ClassifiedBlocker(
+                code="driver_protocol_safety_contact_missing",
+                title="Safety contact not configured",
+                detail="Configure a safety contact phone number for the protocol escalation workflow.",
+                severity="critical",
+                blocking_step_key="driver_protocol",
+            )
+        )
+    if not signals.export_profiles_available:
+        blockers.append(
+            ClassifiedBlocker(
+                code="driver_protocol_export_profile_missing",
+                title="No export profile available",
+                detail="At least one export profile must be available before protocol setup can complete.",
                 severity="critical",
                 blocking_step_key="driver_protocol",
             )

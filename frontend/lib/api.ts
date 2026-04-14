@@ -493,6 +493,20 @@ export function resetDriverProtocolInstructions(scope?: string) {
   );
 }
 
+export interface ProtocolSetupStepData {
+  instruction_set_selected: boolean;
+  instruction_source: "default" | "company" | "insurer";
+  safety_contact_configured: boolean;
+  safety_manager_phone: string | null;
+  required_media_prompts_defaulted: boolean;
+  export_profile_defaulted: boolean;
+  export_profiles_available: string[];
+}
+
+export function getProtocolSetupStepData() {
+  return request<ProtocolSetupStepData>("/org/onboarding/protocol-setup-step");
+}
+
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 
 export interface AdminVehicle {

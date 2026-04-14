@@ -24,6 +24,8 @@ from app.db.models import (
     IntegrationOperation,
     EvidenceRequest,
     Driver,
+    DriverInstructionSet,
+    DriverInstructionStep,
     DriverVehicleAssignment,
     ExternalMapping,
     VehicleQrToken,
@@ -459,6 +461,45 @@ class TestIntegrationDiagnosticsRoutes:
             item for item in refreshed.json()["steps"] if item["key"] == "org_settings"
         )
         assert refreshed_step["status"] == "completed"
+
+    def test_onboarding_protocol_setup_step_contract(
+        self, client, db_session, test_org, auth_headers
+    ):
+        initial = client.get(
+            "/org/onboarding/protocol-setup-step", headers=auth_headers
+        )
+        assert initial.status_code == 200
+        payload = initial.json()
+        assert payload["instruction_set_selected"] is False
+        assert payload["safety_contact_configured"] is False
+        assert payload["required_media_prompts_defaulted"] is False
+        assert payload["export_profile_defaulted"] is True
+        assert len(payload["export_profiles_available"]) >= 1
+
+        test_org.safety_manager_phone = "+15551234567"
+        test_org.instruction_source = "default"
+        db_session.add(test_org)
+        db_session.flush()
+        instruction_set = DriverInstructionSet(org_id=test_org.id, scope="default")
+        db_session.add(instruction_set)
+        db_session.flush()
+        db_session.add(
+            DriverInstructionStep(
+                instruction_set_id=instruction_set.instruction_set_id,
+                step_order=1,
+                title="Document the scene",
+                body="Capture photos and videos when safe.",
+                enabled=True,
+            )
+        )
+        db_session.commit()
+
+        refreshed = client.get("/org/onboarding/status", headers=auth_headers)
+        assert refreshed.status_code == 200
+        driver_protocol_step = next(
+            item for item in refreshed.json()["steps"] if item["key"] == "driver_protocol"
+        )
+        assert driver_protocol_step["status"] == "completed"
 
     def test_org_integrations_and_details(
         self, client, db_session, test_org, auth_headers
