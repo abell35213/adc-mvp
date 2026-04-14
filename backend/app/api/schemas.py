@@ -58,6 +58,9 @@ UserRole = Literal["system_admin", "org_admin", "safety_manager"]
 CapabilityName = Literal[
     "incident:read",
     "incident:write",
+    "incident:close",
+    "incident:reopen",
+    "incident:escalate",
     "export:read",
     "export:write",
     "driver_protocol:read",
@@ -69,6 +72,9 @@ assert set(CANONICAL_ROLES) == {"system_admin", "org_admin", "safety_manager"}
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",
+    "incident:close",
+    "incident:reopen",
+    "incident:escalate",
     "export:read",
     "export:write",
     "driver_protocol:read",
@@ -79,6 +85,16 @@ assert set(ALL_RECOMMENDED_CAPABILITIES) == {
 InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
 IncidentStatus = Literal["open", "evidence_capturing", "closed"]
+IncidentCaseStatus = Literal[
+    "new",
+    "in_review",
+    "awaiting_evidence",
+    "awaiting_follow_up",
+    "ready_for_export",
+    "exported",
+    "escalated",
+    "closed",
+]
 ArtifactStatus = Literal["pending", "captured", "unavailable"]
 ExportType = Literal[
     "court_defense", "insurer_packet", "internal_review", "compliance_audit"
@@ -147,12 +163,18 @@ ApiErrorCode = Literal[
 class ApiErrorDetail(BaseModel):
     message: Annotated[str, StringConstraints(min_length=1, max_length=300)]
     code: ApiErrorCode
-    retry_hint: Annotated[str, StringConstraints(min_length=1, max_length=300)] | None = None
-    correlation_id: Annotated[str, StringConstraints(min_length=8, max_length=128)] | None = None
+    retry_hint: (
+        Annotated[str, StringConstraints(min_length=1, max_length=300)] | None
+    ) = None
+    correlation_id: (
+        Annotated[str, StringConstraints(min_length=8, max_length=128)] | None
+    ) = None
 
 
 class ApiErrorResponse(BaseModel):
     detail: ApiErrorDetail
+
+
 DriverTimelineEventName = Literal[
     "driver_protocol_launch_confirmed",
     "driver_safety_gate_viewed",
@@ -313,6 +335,17 @@ class IncidentDetailResponse(BaseModel):
     readiness_state: str = "not_ready"
     completeness_missing_items: list[str] = Field(default_factory=list)
     blockers: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class IncidentStatusPatchRequest(BaseModel):
+    case_status: IncidentCaseStatus
+    reason: LongText
+
+
+class IncidentStatusPatchResponse(BaseModel):
+    incident_id: uuid.UUID
+    case_status: IncidentCaseStatus
+    transition_reason: LongText
 
 
 class MessagingReliabilityResponse(BaseModel):
@@ -794,7 +827,9 @@ IntegrationOperationStatus = Literal[
     "failed",
     "canceled",
 ]
-EvidenceRequestStatus = Literal["open", "in_progress", "fulfilled", "failed", "canceled"]
+EvidenceRequestStatus = Literal[
+    "open", "in_progress", "fulfilled", "failed", "canceled"
+]
 
 
 class IntegrationConnectionHealthResponse(BaseModel):

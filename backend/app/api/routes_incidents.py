@@ -15,11 +15,14 @@ from app.api.schemas import (
     ExportSummary,
     IncidentDetailResponse,
     IncidentListItem,
+    IncidentStatusPatchRequest,
+    IncidentStatusPatchResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_user
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
-from app.case_ops.service import build_case_snapshot
+from app.case_ops.service import build_case_snapshot, validate_case_status_transition
 from app.db.models import User
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
@@ -30,7 +33,10 @@ from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.export_tasks import build_export
-from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
+from app.services.idempotency_service import (
+    optional_idempotency_key,
+    find_event_by_idempotency,
+)
 from app.services.incident_evidence_orchestrator import IncidentEvidenceOrchestrator
 from app.services.dashcam_reason_codes import dashcam_reason_message
 from app.services.rate_limit_service import enforce_rate_limit
@@ -38,14 +44,28 @@ from app.core.config import settings
 from app.security.authn import build_user_auth_context
 from app.security.authz import (
     can_create_incident,
+    can_modify_incident,
     can_request_export,
     can_view_incident,
     require_policy,
 )
+from app.security.permissions import Capability, has_capability
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _required_transition_capability(
+    from_status: str, to_status: str
+) -> Capability | None:
+    if to_status == "closed":
+        return Capability.INCIDENT_CLOSE
+    if from_status == "closed" and to_status == "in_review":
+        return Capability.INCIDENT_REOPEN
+    if to_status == "escalated":
+        return Capability.INCIDENT_ESCALATE
+    return None
 
 
 @router.get("/", response_model=list[IncidentListItem])
@@ -149,7 +169,9 @@ def create_incident_endpoint(
         window_start = body.window_start
         window_end = body.window_end
         request_correlation_id = (
-            request.headers.get("x-correlation-id") or get_request_id() or str(uuid.uuid4())
+            request.headers.get("x-correlation-id")
+            or get_request_id()
+            or str(uuid.uuid4())
         )
         logger.info(
             "Queueing orchestrated evidence capture",
@@ -254,9 +276,15 @@ def get_incident_endpoint(
                 completed_at_utc=e.completed_at_utc.isoformat()
                 if e.completed_at_utc
                 else None,
-                expires_at_utc=e.expires_at_utc.isoformat() if e.expires_at_utc else None,
-                created_at_utc=e.created_at_utc.isoformat() if e.created_at_utc else None,
-                updated_at_utc=e.updated_at_utc.isoformat() if e.updated_at_utc else None,
+                expires_at_utc=e.expires_at_utc.isoformat()
+                if e.expires_at_utc
+                else None,
+                created_at_utc=e.created_at_utc.isoformat()
+                if e.created_at_utc
+                else None,
+                updated_at_utc=e.updated_at_utc.isoformat()
+                if e.updated_at_utc
+                else None,
             )
             for e in exports
         ],
@@ -292,6 +320,79 @@ def get_incident_endpoint(
             }
             for blocker in snapshot.blockers.items
         ],
+    )
+
+
+@router.patch("/{incident_id}/status", response_model=IncidentStatusPatchResponse)
+def patch_incident_status(
+    incident_id: uuid.UUID,
+    body: IncidentStatusPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_modify_incident(context, incident))
+
+    transition_capability = _required_transition_capability(
+        str(incident.case_status), body.case_status
+    )
+    if transition_capability is not None and not has_capability(
+        current_user.role, transition_capability
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Transition requires capability '{transition_capability.value}'.",
+        )
+
+    transition_validation = validate_case_status_transition(
+        from_status=str(incident.case_status),
+        to_status=body.case_status,
+        allow_privileged=transition_capability is not None,
+    )
+    if not transition_validation.allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=transition_validation.reason or "Invalid case status transition",
+        )
+
+    from_case_status = str(incident.case_status)
+    incident.case_status = body.case_status
+    transition_payload = {
+        "from_case_status": from_case_status,
+        "to_case_status": body.case_status,
+        "transition_reason": body.reason,
+        "privileged_transition": transition_capability is not None,
+    }
+    db.flush()
+    create_event(
+        db,
+        incident_id=incident_id,
+        event_type=SystemEventType.INCIDENT_UPDATED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=transition_payload,
+    )
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="incident.case_status.patch",
+        event_type="incident_case_status_updated",
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata=transition_payload,
+    )
+    db.commit()
+
+    return IncidentStatusPatchResponse(
+        incident_id=incident.incident_id,
+        case_status=incident.case_status,
+        transition_reason=body.reason,
     )
 
 
@@ -393,4 +494,8 @@ def request_export_endpoint(
         },
     )
 
-    return CreateExportResponse(export_id=export.export_id, status=export.status, progress_stage=export.progress_stage)
+    return CreateExportResponse(
+        export_id=export.export_id,
+        status=export.status,
+        progress_stage=export.progress_stage,
+    )

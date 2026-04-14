@@ -7,18 +7,31 @@ from datetime import datetime, timezone
 from app.case_ops.models import TransitionValidationResult
 
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "new": {"in_review", "awaiting_evidence", "closed", "escalated"},
-    "in_review": {"awaiting_evidence", "awaiting_follow_up", "ready_for_export", "escalated", "closed"},
-    "awaiting_evidence": {"in_review", "awaiting_follow_up", "closed", "escalated"},
-    "awaiting_follow_up": {"in_review", "ready_for_export", "closed", "escalated"},
-    "ready_for_export": {"exported", "awaiting_follow_up", "closed", "escalated"},
-    "exported": {"closed", "escalated"},
-    "escalated": {"in_review", "awaiting_follow_up", "ready_for_export", "closed"},
+    "new": {"in_review", "awaiting_evidence"},
+    "in_review": {"awaiting_evidence", "awaiting_follow_up", "ready_for_export"},
+    "awaiting_evidence": {"in_review", "awaiting_follow_up"},
+    "awaiting_follow_up": {"in_review", "ready_for_export"},
+    "ready_for_export": {"exported", "awaiting_follow_up"},
+    "exported": set(),
+    "escalated": {"in_review", "awaiting_follow_up", "ready_for_export"},
     "closed": set(),
 }
 
+_PRIVILEGED_TRANSITIONS: dict[str, set[str]] = {
+    "new": {"closed", "escalated"},
+    "in_review": {"closed", "escalated"},
+    "awaiting_evidence": {"closed", "escalated"},
+    "awaiting_follow_up": {"closed", "escalated"},
+    "ready_for_export": {"closed", "escalated"},
+    "exported": {"closed", "escalated"},
+    "escalated": {"closed"},
+    "closed": {"in_review"},
+}
 
-def validate_transition(from_status: str, to_status: str) -> TransitionValidationResult:
+
+def validate_transition(
+    from_status: str, to_status: str, *, allow_privileged: bool = False
+) -> TransitionValidationResult:
     source = str(from_status)
     target = str(to_status)
 
@@ -41,7 +54,28 @@ def validate_transition(from_status: str, to_status: str) -> TransitionValidatio
             validated_at_utc=datetime.now(timezone.utc),
         )
 
-    if target not in allowed_targets:
+    if target in allowed_targets:
+        return TransitionValidationResult(
+            allowed=True,
+            from_status=source,
+            to_status=target,
+            validated_at_utc=datetime.now(timezone.utc),
+        )
+
+    privileged_targets = _PRIVILEGED_TRANSITIONS.get(source, set())
+    if target in privileged_targets and not allow_privileged:
+        return TransitionValidationResult(
+            allowed=False,
+            from_status=source,
+            to_status=target,
+            reason=(
+                f"Transition from '{source}' to '{target}' is privileged and requires "
+                "explicit permission."
+            ),
+            validated_at_utc=datetime.now(timezone.utc),
+        )
+
+    if target not in privileged_targets:
         return TransitionValidationResult(
             allowed=False,
             from_status=source,

@@ -21,7 +21,11 @@ def _export(status: str):
     return SimpleNamespace(status=status)
 
 
-def _incident(incident_id: str, case_status: str = "in_review", created_at_utc: datetime | None = None):
+def _incident(
+    incident_id: str,
+    case_status: str = "in_review",
+    created_at_utc: datetime | None = None,
+):
     return SimpleNamespace(
         incident_id=incident_id,
         case_status=case_status,
@@ -45,7 +49,9 @@ def test_build_case_snapshot_derives_readiness_and_blockers():
 def test_build_dashboard_snapshot_aggregates_metrics():
     now = datetime.now(timezone.utc)
     inc_a = _incident("inc-a", created_at_utc=now - timedelta(days=2))
-    inc_b = _incident("inc-b", case_status="closed", created_at_utc=now - timedelta(days=9))
+    inc_b = _incident(
+        "inc-b", case_status="closed", created_at_utc=now - timedelta(days=9)
+    )
 
     metrics = build_dashboard_snapshot(
         incidents=[inc_a, inc_b],
@@ -55,7 +61,11 @@ def test_build_dashboard_snapshot_aggregates_metrics():
         },
         events_by_incident={
             "inc-a": [_event("incident_started"), _event("hash_validated")],
-            "inc-b": [_event("incident_started"), _event("hash_validated"), _event("export_ready")],
+            "inc-b": [
+                _event("incident_started"),
+                _event("hash_validated"),
+                _event("export_ready"),
+            ],
         },
         exports_by_incident={
             "inc-a": [_export("ready")],
@@ -70,15 +80,44 @@ def test_build_dashboard_snapshot_aggregates_metrics():
 
 def test_validate_case_status_transition_blocks_invalid_hops():
     blocked = validate_case_status_transition(from_status="new", to_status="exported")
-    allowed = validate_case_status_transition(from_status="ready_for_export", to_status="exported")
+    allowed = validate_case_status_transition(
+        from_status="ready_for_export", to_status="exported"
+    )
 
     assert blocked.allowed is False
     assert allowed.allowed is True
 
 
+def test_validate_case_status_transition_requires_privilege_for_close_and_reopen():
+    close_blocked = validate_case_status_transition(
+        from_status="in_review", to_status="closed"
+    )
+    close_allowed = validate_case_status_transition(
+        from_status="in_review",
+        to_status="closed",
+        allow_privileged=True,
+    )
+    reopen_blocked = validate_case_status_transition(
+        from_status="closed", to_status="in_review"
+    )
+    reopen_allowed = validate_case_status_transition(
+        from_status="closed",
+        to_status="in_review",
+        allow_privileged=True,
+    )
+
+    assert close_blocked.allowed is False
+    assert close_allowed.allowed is True
+    assert reopen_blocked.allowed is False
+    assert reopen_allowed.allowed is True
+
+
 def test_detect_blockers_classifies_dashcam_and_readiness_linkage():
     summary = detect_blockers(
-        artifacts=[_artifact("pending", "dash_cam_video_front"), _artifact("captured", "telematics_gps")],
+        artifacts=[
+            _artifact("pending", "dash_cam_video_front"),
+            _artifact("captured", "telematics_gps"),
+        ],
         events=[_event("incident_started"), _event("capture_completed")],
         exports=[],
     )
@@ -102,6 +141,8 @@ def test_detect_blockers_classifies_driver_input_and_telematics_unavailable():
         exports=[_export("ready")],
     )
 
-    blocker = next(item for item in summary.items if item.code == "evidence_unavailable")
+    blocker = next(
+        item for item in summary.items if item.code == "evidence_unavailable"
+    )
     assert blocker.missing_item.category == "driver_input"
     assert blocker.missing_item.severity == "important"
