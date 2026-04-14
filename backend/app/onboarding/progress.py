@@ -14,6 +14,7 @@ class OnboardingSignals:
 
     org_settings_configured: bool = False
     org_admin_count: int = 0
+    safety_capable_user_count: int = 0
     active_user_count: int = 0
     successful_import_count: int = 0
     failed_import_count: int = 0
@@ -59,7 +60,7 @@ def derive_step_statuses(
         if signals.org_settings_configured
         else "not_started",
         "users_roles": "completed"
-        if signals.org_admin_count > 0 and signals.active_user_count > 0
+        if signals.org_admin_count > 0 and signals.safety_capable_user_count > 0
         else "in_progress"
         if signals.active_user_count > 0
         else "not_started",

@@ -15,6 +15,7 @@ def test_classify_blockers_severity_buckets():
         signals=OnboardingSignals(
             org_settings_configured=False,
             org_admin_count=0,
+            safety_capable_user_count=0,
             successful_import_count=0,
             mapping_count=0,
             active_integration_count=0,
@@ -35,6 +36,7 @@ def test_readiness_status_transitions_pilot_and_launch():
         signals=OnboardingSignals(
             org_settings_configured=True,
             org_admin_count=1,
+            safety_capable_user_count=1,
             active_user_count=2,
             successful_import_count=1,
             mapping_count=0,
@@ -56,6 +58,7 @@ def test_readiness_status_transitions_pilot_and_launch():
         signals=OnboardingSignals(
             org_settings_configured=True,
             org_admin_count=1,
+            safety_capable_user_count=1,
             active_user_count=2,
             successful_import_count=1,
             mapping_count=3,
@@ -83,6 +86,7 @@ def test_build_onboarding_readiness_uses_blocked_status_when_critical_exists():
         signals=OnboardingSignals(
             org_settings_configured=False,
             org_admin_count=0,
+            safety_capable_user_count=0,
             active_user_count=1,
             successful_import_count=0,
             mapping_count=0,

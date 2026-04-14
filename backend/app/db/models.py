@@ -89,6 +89,26 @@ class UserOrg(Base):
     )
 
 
+class OrgUserInvite(Base):
+    """Pending invite for a user to join an organization."""
+
+    __tablename__ = "org_user_invites"
+
+    invite_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True)
+    email = Column(Text, nullable=False, index=True)
+    role = Column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
+    status = Column(Text, nullable=False, default="pending", index=True)
+    invited_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_sent_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    deactivated_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
 # ── Core domain models ─────────────────────────────────────────────
 
 

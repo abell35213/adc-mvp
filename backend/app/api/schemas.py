@@ -741,6 +741,49 @@ class OrgOnboardingStepUpdateRequest(BaseModel):
     source: ShortText = "manual"
 
 
+class OrgUserSummary(BaseModel):
+    user_id: uuid.UUID
+    email: EmailStrLike
+    role: UserRole
+    is_active: bool = True
+    created_at_utc: Optional[datetime] = None
+
+
+class OrgUserInviteSummary(BaseModel):
+    invite_id: uuid.UUID
+    email: EmailStrLike
+    role: UserRole
+    status: Literal["pending", "deactivated", "accepted"] = "pending"
+    created_at_utc: Optional[datetime] = None
+    last_sent_at_utc: Optional[datetime] = None
+    deactivated_at_utc: Optional[datetime] = None
+
+
+class OrgUsersViolationsResponse(BaseModel):
+    violations: list[ShortText] = Field(default_factory=list)
+    role_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class OrgUsersResponse(OrgUsersViolationsResponse):
+    users: list[OrgUserSummary] = Field(default_factory=list)
+    invites: list[OrgUserInviteSummary] = Field(default_factory=list)
+
+
+class OrgInviteUserRequest(BaseModel):
+    email: EmailStrLike
+    role: UserRole = "safety_manager"
+
+
+class OrgInviteUserResponse(BaseModel):
+    invite: OrgUserInviteSummary
+    role_counts: dict[str, int] = Field(default_factory=dict)
+    violations: list[ShortText] = Field(default_factory=list)
+
+
+class OrgPatchUserRoleRequest(BaseModel):
+    role: UserRole
+
+
 # ── Exports ─────────────────────────────────────────────────────────
 
 

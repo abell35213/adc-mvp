@@ -50,9 +50,25 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
     if signals.org_admin_count == 0:
         blockers.append(
             ClassifiedBlocker(
-                code="org_admin_missing",
-                title="Organization admin missing",
-                detail="At least one org_admin account is required to administer launch settings.",
+                code="no_org_admin_assigned",
+                title="No org admin assigned",
+                detail=(
+                    "Assign at least one org_admin user to unlock onboarding roles readiness "
+                    f"(current org_admin_count={signals.org_admin_count})."
+                ),
+                severity="critical",
+                blocking_step_key="users_roles",
+            )
+        )
+    if signals.safety_capable_user_count == 0:
+        blockers.append(
+            ClassifiedBlocker(
+                code="no_safety_manager_assigned",
+                title="No safety manager assigned",
+                detail=(
+                    "Assign at least one safety-capable user to support safety workflows "
+                    f"(current safety_capable_user_count={signals.safety_capable_user_count})."
+                ),
                 severity="critical",
                 blocking_step_key="users_roles",
             )

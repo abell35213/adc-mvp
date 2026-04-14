@@ -401,6 +401,20 @@ class TestIntegrationDiagnosticsRoutes:
         assert org_settings_step["metadata"]["completion_source"] == "dashboard"
         assert org_settings_step["metadata"]["completed_by_user_id"]
 
+    def test_users_roles_step_gate_requires_org_admin_and_safety_capable(
+        self, client, auth_headers
+    ):
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={"step_key": "users_roles", "completed": True, "source": "dashboard"},
+        )
+        assert mark.status_code == 409
+        detail = mark.json()["detail"]
+        assert detail["code"] == "users_roles_prerequisites_not_met"
+        assert "no org admin assigned" in detail["violations"]
+        assert "no safety manager assigned" not in detail["violations"]
+
     def test_org_settings_completion_rule_updates_onboarding_status(
         self, client, auth_headers
     ):
@@ -455,6 +469,75 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert detail_resp.status_code == 200
         assert detail_resp.json()["provider"] == "samsara"
+
+    def test_org_users_list_invite_patch_role_resend_deactivate(
+        self, client, db_session, test_org, test_user
+    ):
+        org_admin = User(
+            email="org-admin@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add(org_admin)
+        db_session.commit()
+        db_session.refresh(org_admin)
+        db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+        db_session.commit()
+
+        admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(org_admin.id), 'role': 'org_admin'})}"
+        }
+
+        list_resp = client.get("/org/users", headers=admin_headers)
+        assert list_resp.status_code == 200
+        payload = list_resp.json()
+        assert len(payload["users"]) == 2
+        assert payload["role_counts"]["org_admin"] == 1
+        assert payload["role_counts"]["safety_manager"] == 1
+        assert payload["violations"] == []
+
+        invite_resp = client.post(
+            "/org/users/invite",
+            headers=admin_headers,
+            json={"email": "invitee@example.com", "role": "safety_manager"},
+        )
+        assert invite_resp.status_code == 201
+        invite_payload = invite_resp.json()
+        assert invite_payload["invite"]["status"] == "pending"
+        invite_id = invite_payload["invite"]["invite_id"]
+
+        resend_resp = client.post(
+            f"/org/users/invite/{invite_id}/resend",
+            headers=admin_headers,
+        )
+        assert resend_resp.status_code == 200
+        assert resend_resp.json()["invite"]["status"] == "pending"
+
+        deactivate_resp = client.post(
+            f"/org/users/invite/{invite_id}/deactivate",
+            headers=admin_headers,
+        )
+        assert deactivate_resp.status_code == 200
+        assert deactivate_resp.json()["invite"]["status"] == "deactivated"
+
+        patch_role = client.patch(
+            f"/org/users/{test_user.id}/role",
+            headers=admin_headers,
+            json={"role": "org_admin"},
+        )
+        assert patch_role.status_code == 200
+        updated_user = next(
+            item for item in patch_role.json()["users"] if item["user_id"] == str(test_user.id)
+        )
+        assert updated_user["role"] == "org_admin"
+
+    def test_org_user_admin_permissions_enforced(self, client, auth_headers):
+        invite_resp = client.post(
+            "/org/users/invite",
+            headers=auth_headers,
+            json={"email": "invitee@example.com", "role": "safety_manager"},
+        )
+        assert invite_resp.status_code == 403
 
     def test_integration_operations_and_evidence_summary(
         self, client, db_session, test_org, test_user, auth_headers
