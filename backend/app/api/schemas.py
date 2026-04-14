@@ -632,6 +632,33 @@ class MessagingReliabilityResponse(BaseModel):
     success_rate_pct: int = Field(default=0, ge=0, le=100)
 
 
+class OrgSettingsContact(BaseModel):
+    name: Optional[ShortText] = None
+    title: Optional[ShortText] = None
+    email: Optional[EmailStrLike] = None
+    phone: Optional[ShortText] = None
+
+
+class OrgSettingsResponse(BaseModel):
+    legal_name: Optional[ShortText] = None
+    display_name: Optional[ShortText] = None
+    timezone: Optional[ShortText] = None
+    region: Optional[ShortText] = None
+    contacts: list[OrgSettingsContact] = Field(default_factory=list)
+    implementation_contact: Optional[OrgSettingsContact] = None
+    logo_url: Optional[str] = None
+
+
+class OrgSettingsUpdateRequest(BaseModel):
+    legal_name: Optional[ShortText] = None
+    display_name: Optional[ShortText] = None
+    timezone: Optional[ShortText] = None
+    region: Optional[ShortText] = None
+    contacts: Optional[list[OrgSettingsContact]] = None
+    implementation_contact: Optional[OrgSettingsContact] = None
+    logo_url: Optional[str] = None
+
+
 # ── Onboarding contracts ─────────────────────────────────────────────
 
 
@@ -706,6 +733,12 @@ class OrgLaunchReadinessResponse(BaseModel):
     vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
     test_incident_run: Optional[TestIncidentRunResponse] = None
     snapshot_created_at_utc: Optional[datetime] = None
+
+
+class OrgOnboardingStepUpdateRequest(BaseModel):
+    step_key: ShortText
+    completed: bool = True
+    source: ShortText = "manual"
 
 
 # ── Exports ─────────────────────────────────────────────────────────

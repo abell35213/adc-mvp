@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -16,6 +17,10 @@ from app.api.schemas import (
     IntegrationConnectionUpdateRequest,
     IntegrationConnectionValidateResponse,
     IntegrationOperationDiagnosticsResponse,
+    OrgLaunchReadinessResponse,
+    OrgOnboardingStepUpdateRequest,
+    OrgSettingsResponse,
+    OrgSettingsUpdateRequest,
 )
 from app.core.config import settings
 from app.core.deps import get_current_user, require_user_role
@@ -24,6 +29,7 @@ from app.db.models import (
     EvidenceRequest,
     IntegrationConnection,
     IntegrationOperation,
+    Org,
     User,
 )
 from app.db.session import get_db
@@ -39,10 +45,128 @@ from app.security.authn import build_user_auth_context
 from app.observability.redaction import redact_payload_for_storage
 from app.services.dashcam_capture_service import queue_dashcam_capture
 from app.services.telematics_capture_service import queue_telematics_capture
+from app.onboarding.progress import STEP_DEFINITIONS
+from app.onboarding.service import (
+    get_org_onboarding_readiness,
+    set_step_completion_override,
+)
 
 router = APIRouter()
 
 _integration_admin = require_user_role("system_admin", "org_admin")
+
+
+def _first_org_id(context) -> uuid.UUID:
+    return context.org_ids[0]
+
+
+def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
+    return OrgLaunchReadinessResponse.model_validate(
+        {
+            "org_id": readiness.org_id,
+            "status": readiness.status,
+            "percent_complete": readiness.percent_complete,
+            "steps": [asdict(item) for item in readiness.steps],
+            "blockers": [asdict(item) for item in readiness.blockers],
+            "import_jobs": [asdict(item) for item in readiness.import_jobs],
+            "integration_validations": [asdict(item) for item in readiness.integration_validations],
+            "vehicle_qr_deployment": asdict(readiness.vehicle_qr_deployment)
+            if readiness.vehicle_qr_deployment is not None
+            else None,
+            "test_incident_run": asdict(readiness.test_incident_run)
+            if readiness.test_incident_run is not None
+            else None,
+            "snapshot_created_at_utc": readiness.snapshot_created_at_utc,
+        }
+    )
+
+
+@router.get("/org/settings", response_model=OrgSettingsResponse)
+def get_org_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org = db.query(Org).filter(Org.id == _first_org_id(context)).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return OrgSettingsResponse(
+        legal_name=org.legal_name,
+        display_name=org.display_name or org.name,
+        timezone=org.timezone,
+        region=org.region,
+        contacts=org.contacts_json or [],
+        implementation_contact=org.implementation_contact_json or None,
+        logo_url=org.logo_url,
+    )
+
+
+@router.patch("/org/settings", response_model=OrgSettingsResponse)
+def patch_org_settings(
+    payload: OrgSettingsUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org = db.query(Org).filter(Org.id == _first_org_id(context)).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field in ("legal_name", "display_name", "timezone", "region", "logo_url"):
+        if field in updates:
+            setattr(org, field, updates[field])
+    if "display_name" in updates and updates["display_name"]:
+        org.name = updates["display_name"]
+    if "contacts" in updates:
+        org.contacts_json = [item for item in updates["contacts"] or []]
+    if "implementation_contact" in updates:
+        org.implementation_contact_json = updates["implementation_contact"] or {}
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+
+    return OrgSettingsResponse(
+        legal_name=org.legal_name,
+        display_name=org.display_name or org.name,
+        timezone=org.timezone,
+        region=org.region,
+        contacts=org.contacts_json or [],
+        implementation_contact=org.implementation_contact_json or None,
+        logo_url=org.logo_url,
+    )
+
+
+@router.get("/org/onboarding/status", response_model=OrgLaunchReadinessResponse)
+def get_org_onboarding_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
+    return _to_readiness_response(readiness)
+
+
+@router.post("/org/onboarding/mark-step", response_model=OrgLaunchReadinessResponse)
+def mark_org_onboarding_step(
+    payload: OrgOnboardingStepUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    valid_steps = {item.key for item in STEP_DEFINITIONS}
+    if payload.step_key not in valid_steps:
+        raise HTTPException(status_code=422, detail="Unknown step_key")
+    set_step_completion_override(
+        db,
+        org_id=_first_org_id(context),
+        step_key=payload.step_key,
+        is_completed=payload.completed,
+        actor_user_id=current_user.id,
+        source=payload.source,
+    )
+    readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
+    return _to_readiness_response(readiness)
 
 
 @router.get("/org/integrations", response_model=list[IntegrationConnectionHealthResponse])

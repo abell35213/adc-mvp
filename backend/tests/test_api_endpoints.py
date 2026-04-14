@@ -357,6 +357,81 @@ class TestIncidentExportReadiness:
 
 
 class TestIntegrationDiagnosticsRoutes:
+    def test_org_settings_read_and_patch(self, client, db_session, test_org, auth_headers):
+        read = client.get("/org/settings", headers=auth_headers)
+        assert read.status_code == 200
+        assert read.json()["display_name"] == "Test Org"
+
+        update = client.patch(
+            "/org/settings",
+            headers=auth_headers,
+            json={
+                "legal_name": "Test Org LLC",
+                "display_name": "Test Org Display",
+                "timezone": "America/Chicago",
+                "region": "US",
+                "contacts": [{"name": "Safety Lead", "email": "safety@test.org"}],
+                "implementation_contact": {"name": "Impl Lead", "email": "impl@test.org"},
+                "logo_url": "https://cdn.example.com/logo.png",
+            },
+        )
+        assert update.status_code == 200
+        payload = update.json()
+        assert payload["legal_name"] == "Test Org LLC"
+        assert payload["display_name"] == "Test Org Display"
+        assert payload["timezone"] == "America/Chicago"
+        assert payload["contacts"][0]["email"] == "safety@test.org"
+        assert payload["implementation_contact"]["email"] == "impl@test.org"
+        assert payload["logo_url"] == "https://cdn.example.com/logo.png"
+
+    def test_onboarding_status_and_mark_step(self, client, auth_headers):
+        status_before = client.get("/org/onboarding/status", headers=auth_headers)
+        assert status_before.status_code == 200
+
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={"step_key": "org_settings", "completed": True, "source": "dashboard"},
+        )
+        assert mark.status_code == 200
+        org_settings_step = next(
+            item for item in mark.json()["steps"] if item["key"] == "org_settings"
+        )
+        assert org_settings_step["status"] == "completed"
+        assert org_settings_step["metadata"]["completion_source"] == "dashboard"
+        assert org_settings_step["metadata"]["completed_by_user_id"]
+
+    def test_org_settings_completion_rule_updates_onboarding_status(
+        self, client, auth_headers
+    ):
+        initial = client.get("/org/onboarding/status", headers=auth_headers)
+        assert initial.status_code == 200
+        initial_step = next(
+            item for item in initial.json()["steps"] if item["key"] == "org_settings"
+        )
+        assert initial_step["status"] in {"blocked", "not_started"}
+
+        updated = client.patch(
+            "/org/settings",
+            headers=auth_headers,
+            json={
+                "legal_name": "Acme Transport LLC",
+                "display_name": "Acme Transport",
+                "timezone": "America/Los_Angeles",
+                "region": "US-West",
+                "contacts": [{"name": "Jane Safety", "email": "jane@acme.test"}],
+                "implementation_contact": {"name": "Bob Ops", "email": "bob@acme.test"},
+            },
+        )
+        assert updated.status_code == 200
+
+        refreshed = client.get("/org/onboarding/status", headers=auth_headers)
+        assert refreshed.status_code == 200
+        refreshed_step = next(
+            item for item in refreshed.json()["steps"] if item["key"] == "org_settings"
+        )
+        assert refreshed_step["status"] == "completed"
+
     def test_org_integrations_and_details(
         self, client, db_session, test_org, auth_headers
     ):
