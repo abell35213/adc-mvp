@@ -536,6 +536,21 @@ class TestPatchIncidentStatus:
         )
         assert latest_audit is not None
         assert latest_audit.metadata_json["transition_reason"] == "Ready for triage"
+        assert latest_audit.event_type == "incident_case_status_updated"
+
+        status_event = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == uuid.UUID(incident_id),
+                Event.event_type == "incident_status_changed",
+            )
+            .order_by(Event.created_at_utc.desc())
+            .first()
+        )
+        assert status_event is not None
+        assert status_event.payload["previous"]["case_status"] == "new"
+        assert status_event.payload["new"]["case_status"] == "in_review"
+        assert status_event.payload["actor"]["type"] == "user"
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_patch_incident_status_rejects_privileged_transition_without_permission(
@@ -688,6 +703,30 @@ class TestPatchIncidentOwner:
         assert incident.owner_assigned_by_user_id is None
         assert incident.team_queue == "Unassigned"
         assert incident.last_activity_at_utc is not None
+
+        event_types = {
+            e.event_type
+            for e in db_session.query(Event)
+            .filter(Event.incident_id == uuid.UUID(incident_id))
+            .all()
+        }
+        assert {
+            "incident_owner_assigned",
+            "incident_owner_reassigned",
+            "incident_owner_cleared",
+        }.issubset(event_types)
+
+        audit_types = {
+            e.event_type
+            for e in db_session.query(AuditEvent)
+            .filter(AuditEvent.incident_id == uuid.UUID(incident_id))
+            .all()
+        }
+        assert {
+            "incident_owner_assigned",
+            "incident_owner_reassigned",
+            "incident_owner_cleared",
+        }.issubset(audit_types)
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_patch_owner_enforces_org_isolation(

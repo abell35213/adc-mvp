@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import create_access_token, hash_password
-from app.db.models import Base, CaseNote, Incident, Org, User, UserOrg
+from app.db.models import AuditEvent, Base, CaseNote, Event, Incident, Org, User, UserOrg
 from app.db.session import get_db
 from app.main import app
 
@@ -127,6 +127,7 @@ def _auth_headers(user: User) -> dict[str, str]:
 
 def test_notes_crud_sets_edit_metadata_and_soft_delete_trail(
     client: TestClient,
+    db_session,
     incident: Incident,
     author_user: User,
 ):
@@ -179,6 +180,30 @@ def test_notes_crud_sets_edit_metadata_and_soft_delete_trail(
     items = list_with_deleted_response.json()["items"]
     assert len(items) == 1
     assert items[0]["is_deleted"] is True
+
+    system_event_types = {
+        e.event_type
+        for e in db_session.query(Event)
+        .filter(Event.incident_id == incident.incident_id)
+        .all()
+    }
+    assert {
+        "incident_note_added",
+        "incident_note_edited",
+        "incident_note_deleted",
+    }.issubset(system_event_types)
+
+    audit_event_types = {
+        e.event_type
+        for e in db_session.query(AuditEvent)
+        .filter(AuditEvent.incident_id == incident.incident_id)
+        .all()
+    }
+    assert {
+        "incident_note_added",
+        "incident_note_edited",
+        "incident_note_deleted",
+    }.issubset(audit_event_types)
 
 
 def test_non_author_cannot_edit_or_delete_note(

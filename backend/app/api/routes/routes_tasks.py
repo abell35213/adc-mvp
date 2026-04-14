@@ -18,8 +18,10 @@ from app.api.schemas import (
 from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_user
 from app.db.models import CaseTask, Incident, User
+from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
 from app.db.session import get_db
+from app.domain.system_event_types import SystemEventType
 from app.security.authn import build_user_auth_context
 from app.security.authz import can_modify_incident, can_view_incident, require_policy
 
@@ -93,6 +95,23 @@ def create_incident_task(
         incident_id=incident.incident_id,
         metadata={"task_id": str(task.task_id), "task_type": task.task_type, "priority": task.priority},
     )
+    event_payload = _event_payload(
+        actor_id=current_user.id,
+        incident_id=incident.incident_id,
+        org_id=incident.org_id,
+        task_id=task.task_id,
+        reason=None,
+        previous={"status": None, "assigned_to_user_id": None},
+        new={"status": _api_status(task.status), "assigned_to_user_id": str(task.assigned_to_user_id) if task.assigned_to_user_id else None},
+    )
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=SystemEventType.INCIDENT_TASK_CREATED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=event_payload,
+    )
 
     return _to_task_item(task, now_utc=now_utc)
 
@@ -135,6 +154,15 @@ def patch_task(
     db.refresh(task)
 
     if previous_assignee != task.assigned_to_user_id:
+        event_payload = _event_payload(
+            actor_id=current_user.id,
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            task_id=task.task_id,
+            reason="reassign",
+            previous={"assigned_to_user_id": str(previous_assignee) if previous_assignee else None},
+            new={"assigned_to_user_id": str(task.assigned_to_user_id) if task.assigned_to_user_id else None},
+        )
         emit_audit_event(
             db,
             org_id=incident.org_id,
@@ -145,10 +173,19 @@ def patch_task(
             outcome="success",
             incident_id=incident.incident_id,
             metadata={
+                **event_payload,
                 "task_id": str(task.task_id),
                 "previous_assignee": str(previous_assignee) if previous_assignee else None,
                 "new_assignee": str(task.assigned_to_user_id) if task.assigned_to_user_id else None,
             },
+        )
+        create_event(
+            db,
+            incident_id=incident.incident_id,
+            event_type=SystemEventType.INCIDENT_TASK_REASSIGNED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=event_payload,
         )
 
     if previous_status != _api_status(task.status):
@@ -192,6 +229,22 @@ def complete_task(
         incident_id=incident.incident_id,
         metadata={"task_id": str(task.task_id)},
     )
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=SystemEventType.INCIDENT_TASK_COMPLETED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=_event_payload(
+            actor_id=current_user.id,
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            task_id=task.task_id,
+            reason=None,
+            previous={"status": "open"},
+            new={"status": "completed"},
+        ),
+    )
 
     return _to_task_item(task, now_utc=now_utc)
 
@@ -227,6 +280,22 @@ def cancel_task(
         outcome="success",
         incident_id=incident.incident_id,
         metadata={"task_id": str(task.task_id), "reason": request.reason},
+    )
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=SystemEventType.INCIDENT_TASK_CANCELLED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=_event_payload(
+            actor_id=current_user.id,
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            task_id=task.task_id,
+            reason=request.reason,
+            previous={"status": "open"},
+            new={"status": "cancelled"},
+        ),
     )
 
     return _to_task_item(task, now_utc=now_utc)
@@ -348,3 +417,25 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def _event_payload(
+    *,
+    actor_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID | None,
+    task_id: uuid.UUID,
+    reason: str | None,
+    previous: dict[str, str | None],
+    new: dict[str, str | None],
+) -> dict[str, object]:
+    return {
+        "actor": {"type": "user", "id": str(actor_id)},
+        "incident_id": str(incident_id),
+        "org_id": str(org_id) if org_id else None,
+        "task_id": str(task_id),
+        "reason": reason,
+        "previous": previous,
+        "new": new,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
