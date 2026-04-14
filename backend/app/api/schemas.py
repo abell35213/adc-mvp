@@ -741,6 +741,57 @@ class OrgOnboardingStepUpdateRequest(BaseModel):
     source: ShortText = "manual"
 
 
+class OrgMappingsSummaryCounts(BaseModel):
+    total: int = Field(default=0, ge=0)
+    mapped: int = Field(default=0, ge=0)
+    unmapped: int = Field(default=0, ge=0)
+
+
+class OrgMappingsAssignmentConfidence(BaseModel):
+    level: Literal["low", "medium", "high"] = "low"
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    assigned_mapped_drivers: int = Field(default=0, ge=0)
+    mapped_drivers: int = Field(default=0, ge=0)
+
+
+class OrgMappingsStaleWarnings(BaseModel):
+    placeholder_supported: bool = True
+    stale_count: int = Field(default=0, ge=0)
+    stale_warning_codes: list[ShortText] = Field(default_factory=list)
+
+
+class OrgMappingsPilotReadinessFlags(BaseModel):
+    enough_mapped_drivers_for_pilot: bool = False
+    enough_mapped_vehicles_for_pilot: bool = False
+    no_blocking_integration_credentials: bool = False
+    pilot_scope_ready: bool = False
+
+
+class OrgMappingsSummaryResponse(BaseModel):
+    drivers: OrgMappingsSummaryCounts = Field(default_factory=OrgMappingsSummaryCounts)
+    vehicles: OrgMappingsSummaryCounts = Field(default_factory=OrgMappingsSummaryCounts)
+    assignment_confidence: OrgMappingsAssignmentConfidence = Field(
+        default_factory=OrgMappingsAssignmentConfidence
+    )
+    stale_warnings: OrgMappingsStaleWarnings = Field(
+        default_factory=OrgMappingsStaleWarnings
+    )
+    pilot_readiness: OrgMappingsPilotReadinessFlags = Field(
+        default_factory=OrgMappingsPilotReadinessFlags
+    )
+
+
+class OrgMappingsIssue(BaseModel):
+    code: ShortText
+    message: str
+    severity: Literal["warning", "error"] = "warning"
+    blocker_panel_action: ShortText
+
+
+class OrgMappingsIssuesResponse(BaseModel):
+    issues: list[OrgMappingsIssue] = Field(default_factory=list)
+
+
 class OrgUserSummary(BaseModel):
     user_id: uuid.UUID
     email: EmailStrLike

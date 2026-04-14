@@ -2273,6 +2273,190 @@ class TestDriverImportJobs:
         assert resp.status_code == 404
 
 
+class TestOrgMappingsReadiness:
+    def test_org_mapping_summary_counts_readiness_and_confidence(
+        self, client, db_session, test_org, auth_headers
+    ):
+        driver_one = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110001",
+            display_name="Driver One",
+            is_active=True,
+        )
+        driver_two = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110002",
+            display_name="Driver Two",
+            is_active=True,
+        )
+        driver_three = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110003",
+            display_name="Driver Three",
+            is_active=True,
+        )
+        db_session.add_all([driver_one, driver_two, driver_three])
+        db_session.commit()
+        db_session.refresh(driver_one)
+        db_session.refresh(driver_two)
+        db_session.refresh(driver_three)
+
+        db_session.add_all(
+            [
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-001",
+                    is_active=True,
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-002",
+                    is_active=True,
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-003",
+                    is_active=True,
+                ),
+            ]
+        )
+        db_session.add_all(
+            [
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_one.driver_id),
+                    external_reference="drv-1",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_two.driver_id),
+                    external_reference="drv-2",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_three.driver_id),
+                    external_reference="drv-3",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-001",
+                    external_reference="veh-1",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-002",
+                    external_reference="veh-2",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-003",
+                    external_reference="veh-3",
+                    status="active",
+                ),
+            ]
+        )
+        db_session.add(
+            DriverVehicleAssignment(
+                org_id=test_org.id,
+                driver_id=driver_one.driver_id,
+                adc_vehicle_id="UNIT-001",
+                source="manual",
+            )
+        )
+        db_session.add(
+            IntegrationConnection(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                status="active",
+                credentials_ref="vault://samsara",
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/org/mappings/summary", headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["drivers"] == {"total": 3, "mapped": 3, "unmapped": 0}
+        assert payload["vehicles"] == {"total": 3, "mapped": 3, "unmapped": 0}
+        assert payload["assignment_confidence"]["level"] == "low"
+        assert payload["assignment_confidence"]["score"] == pytest.approx(
+            1 / 3, rel=1e-3
+        )
+        assert payload["stale_warnings"]["placeholder_supported"] is True
+        assert payload["pilot_readiness"] == {
+            "enough_mapped_drivers_for_pilot": True,
+            "enough_mapped_vehicles_for_pilot": True,
+            "no_blocking_integration_credentials": True,
+            "pilot_scope_ready": True,
+        }
+
+    def test_org_mapping_issues_return_panel_aligned_codes_and_actions(
+        self, client, db_session, test_org, auth_headers
+    ):
+        driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551119999",
+            display_name="Needs Mapping",
+            is_active=True,
+        )
+        db_session.add(driver)
+        db_session.add(
+            OrgVehicleRegistry(
+                org_id=test_org.id,
+                unit_number="UNIT-404",
+                is_active=True,
+            )
+        )
+        db_session.add(
+            IntegrationConnection(
+                org_id=test_org.id,
+                provider="motive",
+                domain="fleet",
+                status="error",
+                credentials_ref=None,
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/org/mappings/issues", headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.json()
+        codes = {item["code"] for item in payload["issues"]}
+        assert "MAPPED_DRIVERS_REQUIRED" in codes
+        assert "MAPPED_VEHICLES_REQUIRED" in codes
+        assert "ASSIGNMENT_CONFIDENCE_LOW" in codes
+        assert "BLOCKING_INTEGRATION_CREDENTIALS" in codes
+        actions = {item["blocker_panel_action"] for item in payload["issues"]}
+        assert "open_driver_mappings" in actions
+        assert "open_vehicle_mappings" in actions
+        assert "review_driver_assignments" in actions
+        assert "fix_integration_credentials" in actions
+
+
 # ── Health check ────────────────────────────────────────────────────
 
 
