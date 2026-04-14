@@ -768,6 +768,16 @@ class OrgOnboardingStepUpdateRequest(BaseModel):
     source: ShortText = "manual"
 
 
+class ProtocolSetupStepResponse(BaseModel):
+    instruction_set_selected: bool = False
+    instruction_source: InstructionScope = "default"
+    safety_contact_configured: bool = False
+    safety_manager_phone: Optional[PhoneE164] = None
+    required_media_prompts_defaulted: bool = False
+    export_profile_defaulted: bool = False
+    export_profiles_available: list[ShortText] = Field(default_factory=list)
+
+
 class OrgMappingsSummaryCounts(BaseModel):
     total: int = Field(default=0, ge=0)
     mapped: int = Field(default=0, ge=0)

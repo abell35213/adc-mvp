@@ -115,3 +115,30 @@ def test_driver_import_step_completion_signal():
     )
     by_key = {step.key: step for step in steps}
     assert by_key["driversImported"].status == "completed"
+
+
+def test_protocol_setup_completion_rule_and_blockers():
+    blockers = classify_blockers(
+        signals=OnboardingSignals(
+            protocol_instruction_set_active=False,
+            safety_contact_configured=False,
+            export_profiles_available=False,
+            protocol_configured=False,
+        )
+    )
+    blocker_codes = {blocker.code for blocker in blockers}
+    assert "driver_protocol_instruction_set_missing" in blocker_codes
+    assert "driver_protocol_safety_contact_missing" in blocker_codes
+    assert "driver_protocol_export_profile_missing" in blocker_codes
+
+    steps = derive_step_statuses(
+        signals=OnboardingSignals(
+            protocol_instruction_set_active=True,
+            safety_contact_configured=True,
+            export_profiles_available=True,
+            protocol_configured=True,
+        ),
+        blocked_step_keys=set(),
+    )
+    by_key = {step.key: step for step in steps}
+    assert by_key["driver_protocol"].status == "completed"

@@ -87,6 +87,17 @@ class TestIncidentRun:
 
 
 @dataclass(slots=True)
+class ProtocolSetupStep:
+    instruction_set_selected: bool
+    instruction_source: str
+    safety_contact_configured: bool
+    safety_manager_phone: str | None
+    required_media_prompts_defaulted: bool
+    export_profile_defaulted: bool
+    export_profiles_available: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class OrgLaunchReadiness:
     org_id: str
     status: ReadinessStatus

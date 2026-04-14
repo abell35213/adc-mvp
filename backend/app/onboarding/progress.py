@@ -28,6 +28,11 @@ class OnboardingSignals:
     qr_codes_distributed: int = 0
     qr_codes_confirmed: int = 0
     last_qr_rotation_at_utc: datetime | None = None
+    protocol_instruction_set_active: bool = False
+    safety_contact_configured: bool = False
+    export_profiles_available: bool = False
+    required_media_prompts_defaulted: bool = False
+    export_profile_defaulted: bool = False
     protocol_configured: bool = False
     test_run_passed: bool = False
     export_validation_passed: bool = False
