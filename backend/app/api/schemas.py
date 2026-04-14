@@ -487,6 +487,8 @@ class CaseOpsWorkspaceTaskItem(BaseModel):
 class CaseOpsWorkspaceNoteItem(BaseModel):
     note_id: uuid.UUID
     body: str
+    note_type: Literal["standard", "tagged", "decision"] = "standard"
+    tags: list[str] = Field(default_factory=list)
     created_by_user_id: Optional[uuid.UUID] = None
     created_at_utc: datetime
     edited_at_utc: Optional[datetime] = None
@@ -515,6 +517,44 @@ class CaseOpsWorkspaceResponse(BaseModel):
     open_tasks: list[CaseOpsWorkspaceTaskItem] = Field(default_factory=list)
     recent_notes: list[CaseOpsWorkspaceNoteItem] = Field(default_factory=list)
     activity: list[CaseOpsWorkspaceActivityItem] = Field(default_factory=list)
+
+
+class IncidentNoteCreateRequest(BaseModel):
+    body: LongText
+    note_type: Literal["standard", "tagged", "decision"] = "standard"
+    tags: list[ShortText] = Field(default_factory=list)
+
+
+class IncidentNotePatchRequest(BaseModel):
+    note_id: uuid.UUID
+    body: LongText | None = None
+    note_type: Literal["standard", "tagged", "decision"] | None = None
+    tags: list[ShortText] | None = None
+
+
+class IncidentNoteDeleteRequest(BaseModel):
+    note_id: uuid.UUID
+
+
+class IncidentNoteItem(BaseModel):
+    note_id: uuid.UUID
+    incident_id: uuid.UUID
+    body: str
+    note_type: Literal["standard", "tagged", "decision"] = "standard"
+    tags: list[str] = Field(default_factory=list)
+    created_by_user_id: Optional[uuid.UUID] = None
+    created_at_utc: datetime
+    edited: bool = False
+    edited_by_user_id: Optional[uuid.UUID] = None
+    edited_at_utc: Optional[datetime] = None
+    updated_at_utc: datetime
+    is_deleted: bool = False
+    deleted_by_user_id: Optional[uuid.UUID] = None
+    deleted_at_utc: Optional[datetime] = None
+
+
+class IncidentNotesResponse(BaseModel):
+    items: list[IncidentNoteItem] = Field(default_factory=list)
 
 
 class MessagingReliabilityResponse(BaseModel):
