@@ -35,7 +35,7 @@ from app.case_ops.metrics import (
     query_incident_queue,
     query_summary_metrics,
 )
-from app.core.deps import get_current_user
+from app.core.deps import require_workspace_view_permission
 from app.db.models import Artifact, AuditEvent, CaseNote, CaseTask, Event, Export, User
 from app.db.repo.incidents import get_incident
 from app.db.repo.case_tasks import list_my_open_tasks, list_overdue_tasks
@@ -59,7 +59,7 @@ def get_incident_queue(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     payload = query_incident_queue(
@@ -82,7 +82,7 @@ def get_incident_queue(
 @router.get("/incidents/summary-metrics", response_model=CaseOpsSummaryMetricsResponse)
 def get_summary_metrics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     payload = query_summary_metrics(db, org_ids=list(context.org_ids))
@@ -92,7 +92,7 @@ def get_summary_metrics(
 @router.get("/incidents/alerts", response_model=CaseOpsAlertsResponse)
 def get_case_alerts(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     payload = query_case_alerts(db, org_ids=list(context.org_ids))
@@ -103,7 +103,7 @@ def get_case_alerts(
 def get_my_open_tasks(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     tasks = list_my_open_tasks(
@@ -134,7 +134,7 @@ def get_my_open_tasks(
 def get_overdue_tasks(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     tasks = list_overdue_tasks(
@@ -166,7 +166,7 @@ def get_overdue_tasks(
 def get_incident_workspace(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, incident_id=incident_id, org_ids=list(context.org_ids))

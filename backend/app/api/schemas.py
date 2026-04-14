@@ -54,7 +54,7 @@ QrToken = Annotated[
     ),
 ]
 
-UserRole = Literal["system_admin", "org_admin", "safety_manager"]
+UserRole = Literal["system_admin", "org_admin", "safety_manager", "claims_user", "read_only"]
 CapabilityName = Literal[
     "incident:read",
     "incident:write",
@@ -68,7 +68,7 @@ CapabilityName = Literal[
     "vehicle_qr:read",
     "vehicle_qr:write",
 ]
-assert set(CANONICAL_ROLES) == {"system_admin", "org_admin", "safety_manager"}
+assert set(CANONICAL_ROLES) == {"system_admin", "org_admin", "safety_manager", "claims_user", "read_only"}
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",

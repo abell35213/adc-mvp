@@ -16,7 +16,7 @@ from app.api.schemas import (
     IncidentTaskPatchRequest,
 )
 from app.audit.emitter import emit_audit_event
-from app.core.deps import get_current_user
+from app.core.deps import require_task_operations_permission, require_workspace_view_permission
 from app.db.models import CaseTask, Incident, User
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
@@ -32,7 +32,7 @@ router = APIRouter()
 def list_incident_tasks(
     incident_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     incident, _ = _require_incident_access(
         db=db,
@@ -55,7 +55,7 @@ def create_incident_task(
     incident_id: uuid.UUID,
     request: IncidentTaskCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_task_operations_permission),
 ):
     incident, _ = _require_incident_access(
         db=db,
@@ -121,7 +121,7 @@ def patch_task(
     task_id: uuid.UUID,
     request: IncidentTaskPatchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_task_operations_permission),
 ):
     task, incident = _require_task_write_access(db=db, current_user=current_user, task_id=task_id)
     now_utc = datetime.now(timezone.utc)
@@ -208,7 +208,7 @@ def patch_task(
 def complete_task(
     task_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_task_operations_permission),
 ):
     task, incident = _require_task_write_access(db=db, current_user=current_user, task_id=task_id)
     now_utc = datetime.now(timezone.utc)
@@ -254,7 +254,7 @@ def cancel_task(
     task_id: uuid.UUID,
     request: IncidentTaskCancelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_task_operations_permission),
 ):
     task, incident = _require_task_write_access(db=db, current_user=current_user, task_id=task_id)
     now_utc = datetime.now(timezone.utc)

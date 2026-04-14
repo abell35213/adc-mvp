@@ -223,3 +223,38 @@ def test_get_workspace_enforces_org_tenancy(
         f"/incidents/{incident.incident_id}/workspace", headers=auth_headers
     )
     assert response.status_code == 404
+
+
+def test_get_workspace_allows_read_only_role(
+    client: TestClient,
+    db_session,
+    test_org,
+):
+    user = User(
+        email="readonly@example.com",
+        password_hash=hash_password("testpass"),
+        role="read_only",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    db_session.add(UserOrg(user_id=user.id, org_id=test_org.id))
+    db_session.commit()
+
+    incident = Incident(
+        org_id=test_org.id,
+        status="open",
+        case_status="new",
+        severity="minor",
+        adc_vehicle_id="veh-r",
+        adc_driver_id="drv-r",
+    )
+    db_session.add(incident)
+    db_session.commit()
+
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    response = client.get(
+        f"/incidents/{incident.incident_id}/workspace",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200

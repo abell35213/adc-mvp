@@ -17,7 +17,10 @@ from app.api.schemas import (
     IncidentNotesResponse,
 )
 from app.audit.emitter import emit_audit_event
-from app.core.deps import get_current_user
+from app.core.deps import (
+    require_note_operations_permission,
+    require_workspace_view_permission,
+)
 from app.db.models import CaseNote, User
 from app.db.repo.events import create_event
 from app.db.repo.incidents import get_incident
@@ -34,7 +37,7 @@ def list_incident_notes(
     incident_id: uuid.UUID,
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_workspace_view_permission),
 ):
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, incident_id=incident_id, org_ids=list(context.org_ids))
@@ -54,7 +57,7 @@ def create_incident_note(
     incident_id: uuid.UUID,
     request: IncidentNoteCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_note_operations_permission),
 ):
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, incident_id=incident_id, org_ids=list(context.org_ids))
@@ -109,7 +112,7 @@ def patch_incident_note(
     incident_id: uuid.UUID,
     request: IncidentNotePatchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_note_operations_permission),
 ):
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, incident_id=incident_id, org_ids=list(context.org_ids))
@@ -192,7 +195,7 @@ def delete_incident_note(
     incident_id: uuid.UUID,
     request: IncidentNoteDeleteRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_note_operations_permission),
 ):
     context = build_user_auth_context(db, current_user)
     incident = get_incident(db, incident_id=incident_id, org_ids=list(context.org_ids))

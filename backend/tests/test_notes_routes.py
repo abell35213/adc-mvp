@@ -255,3 +255,61 @@ def test_notes_routes_enforce_org_isolation(
         headers=_auth_headers(other_org_user),
     )
     assert create_response.status_code == 404
+
+
+def test_claims_user_can_create_note_and_read_only_cannot_modify(
+    client: TestClient,
+    db_session,
+    incident: Incident,
+):
+    claims_user = User(
+        email="claims@example.com",
+        password_hash=hash_password("testpass"),
+        role="claims_user",
+    )
+    read_only_user = User(
+        email="readonly-notes@example.com",
+        password_hash=hash_password("testpass"),
+        role="read_only",
+    )
+    db_session.add_all([claims_user, read_only_user])
+    db_session.commit()
+    db_session.refresh(claims_user)
+    db_session.refresh(read_only_user)
+    db_session.add_all(
+        [
+            UserOrg(user_id=claims_user.id, org_id=incident.org_id),
+            UserOrg(user_id=read_only_user.id, org_id=incident.org_id),
+        ]
+    )
+    db_session.commit()
+
+    create_response = client.post(
+        f"/incidents/{incident.incident_id}/notes",
+        json={"body": "Claims-authored note"},
+        headers=_auth_headers(claims_user),
+    )
+    assert create_response.status_code == 200
+    note_id = create_response.json()["note_id"]
+
+    read_only_create = client.post(
+        f"/incidents/{incident.incident_id}/notes",
+        json={"body": "should fail"},
+        headers=_auth_headers(read_only_user),
+    )
+    assert read_only_create.status_code == 403
+
+    read_only_patch = client.patch(
+        f"/incidents/{incident.incident_id}/notes",
+        json={"note_id": note_id, "body": "should fail"},
+        headers=_auth_headers(read_only_user),
+    )
+    assert read_only_patch.status_code == 403
+
+    read_only_delete = client.request(
+        method="DELETE",
+        url=f"/incidents/{incident.incident_id}/notes",
+        json={"note_id": note_id},
+        headers=_auth_headers(read_only_user),
+    )
+    assert read_only_delete.status_code == 403

@@ -230,3 +230,58 @@ def test_task_patch_rejects_invalid_status_transition(
         headers=_auth_headers(user),
     )
     assert response.status_code == 409
+
+
+def test_claims_user_task_write_allowed_and_read_only_denied(
+    client: TestClient,
+    db_session,
+    incident: Incident,
+):
+    claims_user = User(
+        email="claims-tasks@example.com",
+        password_hash=hash_password("testpass"),
+        role="claims_user",
+    )
+    read_only_user = User(
+        email="readonly-tasks@example.com",
+        password_hash=hash_password("testpass"),
+        role="read_only",
+    )
+    db_session.add_all([claims_user, read_only_user])
+    db_session.commit()
+    db_session.refresh(claims_user)
+    db_session.refresh(read_only_user)
+    db_session.add_all(
+        [
+            UserOrg(user_id=claims_user.id, org_id=incident.org_id),
+            UserOrg(user_id=read_only_user.id, org_id=incident.org_id),
+        ]
+    )
+    db_session.commit()
+
+    create_response = client.post(
+        f"/incidents/{incident.incident_id}/tasks",
+        json={"title": "Claims task"},
+        headers=_auth_headers(claims_user),
+    )
+    assert create_response.status_code == 200
+    task_id = create_response.json()["task_id"]
+
+    list_response = client.get(
+        f"/incidents/{incident.incident_id}/tasks",
+        headers=_auth_headers(read_only_user),
+    )
+    assert list_response.status_code == 200
+
+    patch_response = client.patch(
+        f"/tasks/{task_id}",
+        json={"priority": "high"},
+        headers=_auth_headers(read_only_user),
+    )
+    assert patch_response.status_code == 403
+
+    complete_response = client.post(
+        f"/tasks/{task_id}/complete",
+        headers=_auth_headers(read_only_user),
+    )
+    assert complete_response.status_code == 403
