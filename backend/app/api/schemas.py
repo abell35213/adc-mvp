@@ -519,6 +519,59 @@ class CaseOpsWorkspaceResponse(BaseModel):
     activity: list[CaseOpsWorkspaceActivityItem] = Field(default_factory=list)
 
 
+
+
+TaskStatus = Literal["open", "completed", "cancelled"]
+TaskType = Literal["review", "evidence", "follow_up", "export", "other"]
+TaskPriority = Literal["low", "medium", "high", "urgent"]
+
+
+class IncidentTaskCreateRequest(BaseModel):
+    title: ShortText
+    description: Optional[LongText] = None
+    task_type: TaskType = "other"
+    priority: TaskPriority = "medium"
+    due_at_utc: Optional[datetime] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+
+
+class IncidentTaskPatchRequest(BaseModel):
+    title: Optional[ShortText] = None
+    description: Optional[LongText] = None
+    task_type: Optional[TaskType] = None
+    priority: Optional[TaskPriority] = None
+    due_at_utc: Optional[datetime] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    status: Optional[TaskStatus] = None
+
+
+class IncidentTaskCancelRequest(BaseModel):
+    reason: Optional[ShortText] = None
+
+
+class IncidentTaskItem(BaseModel):
+    task_id: uuid.UUID
+    incident_id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    task_type: TaskType
+    status: TaskStatus
+    priority: TaskPriority
+    due_at_utc: Optional[datetime] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    assigned_at_utc: Optional[datetime] = None
+    assigned_by_user_id: Optional[uuid.UUID] = None
+    created_by_user_id: Optional[uuid.UUID] = None
+    created_at_utc: Optional[datetime] = None
+    completed_at_utc: Optional[datetime] = None
+    canceled_at_utc: Optional[datetime] = None
+    canceled_reason: Optional[str] = None
+    overdue: bool = False
+
+
+class IncidentTaskListResponse(BaseModel):
+    items: list[IncidentTaskItem] = Field(default_factory=list)
+
 class IncidentNoteCreateRequest(BaseModel):
     body: LongText
     note_type: Literal["standard", "tagged", "decision"] = "standard"
