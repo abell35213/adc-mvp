@@ -7,6 +7,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import secrets
+import tempfile
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -829,7 +831,11 @@ def run_org_onboarding_export_check(
         incident=latest_incident,
         export=None,
     )
-    vault = VaultFilesystem(settings.VAULT_ROOT)
+    vault_root = settings.VAULT_ROOT
+    if settings.APP_ENV == "test":
+        vault_root = str(Path(tempfile.gettempdir()) / "adc_mvp_vault")
+    Path(vault_root).mkdir(parents=True, exist_ok=True)
+    vault = VaultFilesystem(vault_root)
     zip_key = f"onboarding/sample_exports/{org_id}/{uuid.uuid4()}.zip"
     vault.put_bytes(zip_key, build_result.zip_bytes)
     downloaded_bytes = vault.get_bytes(zip_key)

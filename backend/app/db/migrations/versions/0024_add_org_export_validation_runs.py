@@ -5,16 +5,18 @@ Revises: 0023_add_org_test_incident_runs
 Create Date: 2026-04-15 00:00:00.000000
 """
 
+from typing import Union
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = "0024_add_org_export_validation_runs"
-down_revision = "0023_add_org_test_incident_runs"
-branch_labels = None
-depends_on = None
+revision: str = "0024"
+down_revision: Union[str, None] = "0023"
+branch_labels: Union[str, None] = None
+depends_on: Union[str, None] = None
 
 
 def upgrade() -> None:
