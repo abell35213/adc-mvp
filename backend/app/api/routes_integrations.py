@@ -834,7 +834,11 @@ def run_org_onboarding_export_check(
     vault_root = settings.VAULT_ROOT
     if settings.APP_ENV == "test":
         vault_root = str(Path(tempfile.gettempdir()) / "adc_mvp_vault")
-    Path(vault_root).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(vault_root).mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        vault_root = str(Path(tempfile.gettempdir()) / "adc_mvp_vault")
+        Path(vault_root).mkdir(parents=True, exist_ok=True)
     vault = VaultFilesystem(vault_root)
     zip_key = f"onboarding/sample_exports/{org_id}/{uuid.uuid4()}.zip"
     vault.put_bytes(zip_key, build_result.zip_bytes)
