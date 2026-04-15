@@ -36,6 +36,7 @@ class OnboardingSignals:
     protocol_configured: bool = False
     test_run_passed: bool = False
     export_validation_passed: bool = False
+    successful_export_validation_count: int = 0
     has_started_activity: bool = False
 
 

@@ -7,6 +7,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import secrets
+import tempfile
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -83,6 +85,8 @@ from app.db.models import (
     VehicleImportJob,
     VehicleQrToken,
     Event,
+    Export,
+    Incident,
 )
 from app.db.session import get_db
 from app.integrations.webhooks.handlers import (
@@ -110,10 +114,11 @@ from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
     complete_test_incident_run_step,
     collect_onboarding_signals,
+    create_export_validation_run,
     create_test_incident_run,
-    get_test_incident_run_by_id,
-    get_protocol_setup_step,
     get_org_onboarding_readiness,
+    get_protocol_setup_step,
+    get_test_incident_run_by_id,
     list_test_incident_runs,
     set_step_completion_override,
 )
@@ -125,6 +130,8 @@ from app.security.permissions import (
 )
 from app.domain.system_event_types import SystemEventType
 from app.services.pdf_render import render_pdf
+from app.services.export_builder import build_export_package
+from app.services.vault_fs import VaultFilesystem
 
 router = APIRouter()
 
@@ -158,6 +165,9 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
             else None,
             "test_incident_run": asdict(readiness.test_incident_run)
             if readiness.test_incident_run is not None
+            else None,
+            "latest_export_validation": asdict(readiness.latest_export_validation)
+            if readiness.latest_export_validation is not None
             else None,
             "snapshot_created_at_utc": readiness.snapshot_created_at_utc,
         }
@@ -793,23 +803,110 @@ def run_org_onboarding_export_check(
 ):
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
-    readiness = get_org_onboarding_readiness(db, org_id=org_id)
-    export_step = next(
-        (item for item in readiness.steps if item.key == "export_validation"), None
+    org = db.query(Org).filter(Org.id == org_id).first()
+    latest_incident = (
+        db.query(Incident)
+        .filter(Incident.org_id == org_id)
+        .order_by(Incident.created_at_utc.desc())
+        .first()
     )
-    if export_step is None or export_step.status != "completed":
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "export_validation_not_ready",
-                "message": "Export validation step is not complete.",
-            },
-        )
+    if latest_incident is None:
+        latest_incident = Incident(org_id=org_id, status="open", is_test_incident=True)
+        db.add(latest_incident)
+        db.commit()
+        db.refresh(latest_incident)
+
+    branding = {
+        "display_name": (org.display_name or org.name) if org else "",
+        "logo_url": org.logo_url if org and org.logo_url else "",
+    }
+    options = {"profile_id": "court_defense_v1", "branding": branding}
+    build_result = build_export_package(
+        incident_id=str(latest_incident.incident_id),
+        export_id=str(uuid.uuid4()),
+        artifacts=[],
+        events=[],
+        s3=type("_NoopS3", (), {"download": lambda self, _key: b""})(),
+        options=options,
+        incident=latest_incident,
+        export=None,
+    )
+    vault_root = settings.VAULT_ROOT
+    if settings.APP_ENV == "test":
+        vault_root = str(Path(tempfile.gettempdir()) / "adc_mvp_vault")
+    try:
+        Path(vault_root).mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        vault_root = str(Path(tempfile.gettempdir()) / "adc_mvp_vault")
+        Path(vault_root).mkdir(parents=True, exist_ok=True)
+    vault = VaultFilesystem(vault_root)
+    zip_key = f"onboarding/sample_exports/{org_id}/{uuid.uuid4()}.zip"
+    vault.put_bytes(zip_key, build_result.zip_bytes)
+    downloaded_bytes = vault.get_bytes(zip_key)
+
+    export_row = Export(
+        org_id=org_id,
+        incident_id=latest_incident.incident_id,
+        export_type="court_defense",
+        profile_id="court_defense_v1",
+        status="ready",
+        progress_stage="ready_for_download",
+        options_json={
+            "branding": branding,
+            "file_manifest": build_result.file_manifest,
+            "warnings": build_result.warnings,
+            "missing_items": build_result.missing_items,
+        },
+        s3_bucket="vault_fs",
+        s3_key=zip_key,
+        byte_size=build_result.byte_size,
+        package_sha256=build_result.package_sha256,
+    )
+    db.add(export_row)
+    db.commit()
+    db.refresh(export_row)
+
+    required_files = {
+        "01_Incident_Summary.json",
+        "02_Evidence_Inventory.csv",
+        "03_Chain_of_Custody.csv",
+        "04_Timeline.csv",
+        "05_Driver_Statement.txt",
+        "00_Cover_Summary.pdf",
+    }
+    included_file_names = {path.rsplit("/", 1)[-1] for path in build_result.included_files}
+    checks = {
+        "required_sections_present": required_files.issubset(included_file_names),
+        "branding_correct": branding
+        == ((export_row.options_json or {}).get("branding") if isinstance(export_row.options_json, dict) else {}),
+        "warnings_behavior_ok": isinstance(build_result.warnings, list)
+        and isinstance(build_result.missing_items, list),
+        "file_download_success": bool(downloaded_bytes) and downloaded_bytes == build_result.zip_bytes,
+    }
+    details = {
+        "required_sections_found": str(sorted(included_file_names.intersection(required_files))),
+        "warnings_count": str(len(build_result.warnings)),
+        "missing_items_count": str(len(build_result.missing_items)),
+        "download_key": zip_key,
+    }
+    status = "completed" if all(checks.values()) else "blocked"
+    create_export_validation_run(
+        db,
+        org_id=org_id,
+        actor_user_id=current_user.id,
+        status=status,
+        checks=checks,
+        details=details,
+        warnings=build_result.warnings,
+        missing_items=build_result.missing_items,
+        incident_id=latest_incident.incident_id,
+        export_id=export_row.export_id,
+    )
     set_step_completion_override(
         db,
         org_id=org_id,
         step_key="export_validation",
-        is_completed=True,
+        is_completed=status == "completed",
         actor_user_id=current_user.id,
         source="export_check_action",
     )
@@ -860,6 +957,14 @@ def mark_org_onboarding_step(
     valid_steps = {item.key for item in STEP_DEFINITIONS}
     if payload.step_key not in valid_steps:
         raise HTTPException(status_code=422, detail="Unknown step_key")
+    if payload.step_key == "export_validation" and payload.completed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "export_validation_requires_test_export",
+                "message": "Use /org/onboarding/export-check to complete export validation with a test export.",
+            },
+        )
     if payload.step_key == "users_roles" and payload.completed:
         signals = collect_onboarding_signals(db, org_id=org_id)
         if signals.org_admin_count < 1 or signals.safety_capable_user_count < 1:

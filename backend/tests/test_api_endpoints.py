@@ -468,31 +468,33 @@ class TestIntegrationDiagnosticsRoutes:
     def test_export_check_action_endpoint(
         self, client, db_session, test_org, auth_headers
     ):
-        failing = client.post("/org/onboarding/export-check", headers=auth_headers)
-        assert failing.status_code == 409
-        assert failing.json()["detail"]["code"] == "export_validation_not_ready"
-
-        incident = Incident(org_id=test_org.id, status="open")
-        db_session.add(incident)
-        db_session.flush()
-        export = Export(
-            org_id=test_org.id,
-            incident_id=incident.incident_id,
-            export_type="court_defense",
-            status="ready",
-            s3_bucket="bucket",
-            s3_key="key.zip",
-            byte_size=10,
-        )
-        db_session.add(export)
-        db_session.commit()
-
         success = client.post("/org/onboarding/export-check", headers=auth_headers)
         assert success.status_code == 200
         step = next(
             item for item in success.json()["steps"] if item["key"] == "export_validation"
         )
         assert step["status"] == "completed"
+        latest = success.json()["latest_export_validation"]
+        assert latest["status"] == "completed"
+        assert latest["checks"]["required_sections_present"] is True
+        assert latest["checks"]["branding_correct"] is True
+        assert latest["checks"]["warnings_behavior_ok"] is True
+        assert latest["checks"]["file_download_success"] is True
+
+    def test_export_validation_cannot_be_marked_complete_manually(
+        self, client, auth_headers
+    ):
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={
+                "step_key": "export_validation",
+                "completed": True,
+                "source": "dashboard",
+            },
+        )
+        assert mark.status_code == 409
+        assert mark.json()["detail"]["code"] == "export_validation_requires_test_export"
 
     def test_users_roles_step_gate_requires_org_admin_and_safety_capable(
         self, client, auth_headers

@@ -90,6 +90,19 @@ class TestIncidentRun:
 
 
 @dataclass(slots=True)
+class ExportValidationRun:
+    status: IncidentRunStatus
+    validation_run_id: uuid.UUID | None = None
+    export_id: uuid.UUID | None = None
+    incident_id: str | None = None
+    validated_at_utc: datetime | None = None
+    checks: dict[str, bool] = field(default_factory=dict)
+    warnings: list[dict[str, str]] = field(default_factory=list)
+    missing_items: list[dict[str, str]] = field(default_factory=list)
+    details: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class ProtocolSetupStep:
     instruction_set_selected: bool
     instruction_source: str
@@ -113,4 +126,5 @@ class OrgLaunchReadiness:
     )
     vehicle_qr_deployment: VehicleQrDeployment | None = None
     test_incident_run: TestIncidentRun | None = None
+    latest_export_validation: ExportValidationRun | None = None
     snapshot_created_at_utc: datetime | None = None

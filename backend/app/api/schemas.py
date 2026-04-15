@@ -749,6 +749,18 @@ class TestIncidentRunResponse(BaseModel):
     findings: list[str] = Field(default_factory=list)
 
 
+class ExportValidationRunResponse(BaseModel):
+    validation_run_id: Optional[uuid.UUID] = None
+    export_id: Optional[uuid.UUID] = None
+    incident_id: Optional[uuid.UUID] = None
+    status: OnboardingReadinessStepStatus = "not_started"
+    validated_at_utc: Optional[datetime] = None
+    checks: dict[str, bool] = Field(default_factory=dict)
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    missing_items: list[dict[str, str]] = Field(default_factory=list)
+    details: dict[str, str] = Field(default_factory=dict)
+
+
 class TestIncidentRunCreateRequest(BaseModel):
     incident_id: Optional[uuid.UUID] = None
     findings: list[str] = Field(default_factory=list, max_length=100)
@@ -778,6 +790,7 @@ class OrgLaunchReadinessResponse(BaseModel):
     )
     vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
     test_incident_run: Optional[TestIncidentRunResponse] = None
+    latest_export_validation: Optional[ExportValidationRunResponse] = None
     snapshot_created_at_utc: Optional[datetime] = None
 
 
