@@ -20,6 +20,7 @@ from app.db.models import (
     IntegrationOperation,
     Org,
     OrgOnboardingStepCompletion,
+    OrgExportValidationRun,
     OrgTestIncidentRun,
     OrgVehicleRegistry,
     User,
@@ -31,6 +32,7 @@ from app.onboarding.models import (
     ImportJob,
     IntegrationValidationResult,
     OrgLaunchReadiness,
+    ExportValidationRun,
     ProtocolSetupStep,
     TestIncidentRun,
     VehicleQrDeployment,
@@ -215,15 +217,21 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         latest_test_run is not None and latest_test_run.status == "completed"
     )
 
+    successful_export_validation_count = (
+        db.query(OrgExportValidationRun.validation_run_id)
+        .filter(
+            OrgExportValidationRun.org_id == org_id,
+            OrgExportValidationRun.status == "passed",
+        )
+        .count()
+    )
     latest_export = (
         db.query(Export)
         .filter(Export.org_id == org_id)
         .order_by(Export.updated_at_utc.desc(), Export.created_at_utc.desc())
         .first()
     )
-    export_validation_passed = (
-        latest_export is not None and latest_export.status == "ready"
-    )
+    export_validation_passed = successful_export_validation_count > 0
 
     has_started_activity = any(
         [
@@ -263,6 +271,7 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         protocol_configured=protocol_configured,
         test_run_passed=test_run_passed,
         export_validation_passed=export_validation_passed,
+        successful_export_validation_count=successful_export_validation_count,
         has_started_activity=has_started_activity,
     )
 
@@ -296,6 +305,12 @@ def build_onboarding_readiness(
                 "completion_source": completion.completion_source or "unknown"
             }
         step.updated_at_utc = completion.updated_at_utc
+        if step.key == "export_validation" and not signals.export_validation_passed:
+            step.status = "not_started"
+            step.completed_at_utc = None
+            step.metadata = {
+                "completion_source": "export_validation_run_required"
+            }
     percent_complete = completion_percent(steps)
     status = derive_readiness_status(steps=steps, percent_complete=percent_complete)
 
@@ -392,6 +407,11 @@ def get_org_onboarding_readiness(
     latest_test_run = get_latest_test_incident_run(db, org_id=org_id)
     if latest_test_run is not None:
         readiness.test_incident_run = _to_test_incident_run_model(latest_test_run)
+    latest_export_validation = get_latest_export_validation_run(db, org_id=org_id)
+    if latest_export_validation is not None:
+        readiness.latest_export_validation = _to_export_validation_model(
+            latest_export_validation
+        )
     return readiness
 
 
@@ -482,6 +502,62 @@ def get_latest_test_incident_run(
         .filter(OrgTestIncidentRun.org_id == org_id)
         .order_by(OrgTestIncidentRun.started_at_utc.desc())
         .first()
+    )
+
+
+def create_export_validation_run(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    status: str,
+    checks: dict[str, bool],
+    details: dict[str, str],
+    warnings: list[dict[str, str]],
+    missing_items: list[dict[str, str]],
+    incident_id: uuid.UUID | None = None,
+    export_id: uuid.UUID | None = None,
+) -> OrgExportValidationRun:
+    row = OrgExportValidationRun(
+        org_id=org_id,
+        incident_id=incident_id,
+        export_id=export_id,
+        status="passed" if status == "completed" else "failed",
+        results_json={"checks": checks, "details": details},
+        warnings_json=warnings,
+        missing_items_json=missing_items,
+        validated_at_utc=datetime.now(timezone.utc),
+        created_by_user_id=actor_user_id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_latest_export_validation_run(
+    db: Session, *, org_id: uuid.UUID
+) -> OrgExportValidationRun | None:
+    return (
+        db.query(OrgExportValidationRun)
+        .filter(OrgExportValidationRun.org_id == org_id)
+        .order_by(OrgExportValidationRun.validated_at_utc.desc())
+        .first()
+    )
+
+
+def _to_export_validation_model(row: OrgExportValidationRun) -> ExportValidationRun:
+    results = row.results_json if isinstance(row.results_json, dict) else {}
+    return ExportValidationRun(
+        validation_run_id=row.validation_run_id,
+        export_id=row.export_id,
+        incident_id=str(row.incident_id) if row.incident_id is not None else None,
+        status="completed" if row.status == "passed" else "blocked",
+        validated_at_utc=row.validated_at_utc,
+        checks=results.get("checks", {}) if isinstance(results.get("checks", {}), dict) else {},
+        details=results.get("details", {}) if isinstance(results.get("details", {}), dict) else {},
+        warnings=list(row.warnings_json or []),
+        missing_items=list(row.missing_items_json or []),
     )
 
 

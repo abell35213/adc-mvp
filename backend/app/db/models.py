@@ -1473,6 +1473,60 @@ class OrgTestIncidentRun(Base):
     )
 
 
+class OrgExportValidationRun(Base):
+    """Persisted onboarding export validation runs for launch-readiness checks."""
+
+    __tablename__ = "org_export_validation_runs"
+
+    validation_run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    export_id = Column(
+        UUID(as_uuid=True), ForeignKey("exports.export_id"), nullable=True, index=True
+    )
+    status = Column(
+        Enum(
+            "passed",
+            "failed",
+            name="org_export_validation_run_status",
+        ),
+        nullable=False,
+        default="failed",
+        server_default="failed",
+        index=True,
+    )
+    results_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    warnings_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    missing_items_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    validated_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_org_export_validation_runs_org_validated",
+            "org_id",
+            "validated_at_utc",
+        ),
+    )
+
+
 # ── Driver protocol models ────────────────────────────────────────────
 
 

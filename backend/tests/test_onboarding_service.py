@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 
 from app.onboarding.blockers import classify_blockers
 from app.onboarding.progress import (
@@ -142,3 +143,37 @@ def test_protocol_setup_completion_rule_and_blockers():
     )
     by_key = {step.key: step for step in steps}
     assert by_key["driver_protocol"].status == "completed"
+
+
+def test_export_validation_override_does_not_bypass_successful_test_export_requirement():
+    snapshot = build_onboarding_readiness(
+        org_id=uuid.uuid4(),
+        signals=OnboardingSignals(
+            org_settings_configured=True,
+            org_admin_count=1,
+            safety_capable_user_count=1,
+            successful_import_count=1,
+            mapping_count=1,
+            active_integration_count=1,
+            total_integration_count=1,
+            vehicles_total=1,
+            qr_codes_generated=1,
+            qr_codes_distributed=1,
+            protocol_configured=True,
+            test_run_passed=True,
+            export_validation_passed=False,
+        ),
+        step_completion_overrides={
+            "export_validation": SimpleNamespace(
+                is_completed=True,
+                completed_at_utc=None,
+                completed_by_user_id=None,
+                completion_source="manual",
+                updated_at_utc=None,
+            )
+        },
+    )
+
+    by_key = {step.key: step for step in snapshot.steps}
+    assert by_key["export_validation"].status == "not_started"
+    assert snapshot.status != "launch_ready"
