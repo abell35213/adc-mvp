@@ -752,6 +752,41 @@ class IntegrationOperation(Base):
     )
 
 
+class IntegrationValidationResult(Base):
+    """Persisted integration validation outcomes for org onboarding UX."""
+
+    __tablename__ = "integration_validation_results"
+
+    validation_result_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    connection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("integration_connections.connection_id"),
+        nullable=True,
+        index=True,
+    )
+    credential_status = Column(Text, nullable=False)
+    capability_status = Column(Text, nullable=False)
+    mapping_status = Column(Text, nullable=False)
+    messages_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    validated_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class IntegrationOperationStatusHistory(Base):
     """Append-only status transitions for integration operations."""
 

@@ -1332,6 +1332,7 @@ class IntegrationHealthItem(BaseModel):
 
 
 IntegrationConnectionStatus = Literal["pending", "active", "inactive", "error"]
+IntegrationValidationStatus = Literal["pass", "fail", "partial_support"]
 IntegrationOperationStatus = Literal[
     "requested",
     "submitted_to_provider",
@@ -1367,11 +1368,33 @@ class IntegrationConnectionUpdateRequest(BaseModel):
     config_json: dict[str, Any] | None = None
 
 
+class IntegrationConnectionUpsertRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    domain: str = Field(min_length=1, max_length=128)
+    status: IntegrationConnectionStatus = "pending"
+    credentials_ref: str | None = None
+    config_json: dict[str, Any] = Field(default_factory=dict)
+
+
 class IntegrationConnectionValidateResponse(BaseModel):
     integration_id: uuid.UUID
     valid: bool
     status: IntegrationConnectionStatus
     message: str
+    credentialStatus: IntegrationValidationStatus
+    capabilityStatus: IntegrationValidationStatus
+    mappingStatus: IntegrationValidationStatus
+    messages: list[str] = Field(default_factory=list)
+    timestamp: datetime
+
+
+class IntegrationValidationResultResponse(BaseModel):
+    integration_id: uuid.UUID | None = None
+    credentialStatus: IntegrationValidationStatus
+    capabilityStatus: IntegrationValidationStatus
+    mappingStatus: IntegrationValidationStatus
+    messages: list[str] = Field(default_factory=list)
+    timestamp: datetime
 
 
 class IntegrationOperationDiagnosticsResponse(BaseModel):
