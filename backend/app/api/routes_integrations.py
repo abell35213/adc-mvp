@@ -28,8 +28,10 @@ from app.api.schemas import (
     EvidenceRetryActionResponse,
     EvidenceSummaryResponse,
     IntegrationConnectionHealthResponse,
+    IntegrationConnectionUpsertRequest,
     IntegrationConnectionUpdateRequest,
     IntegrationConnectionValidateResponse,
+    IntegrationValidationResultResponse,
     IntegrationOperationDiagnosticsResponse,
     OrgLaunchReadinessResponse,
     OrgInviteUserRequest,
@@ -64,6 +66,7 @@ from app.db.models import (
     EvidenceRequest,
     IntegrationConnection,
     IntegrationOperation,
+    IntegrationValidationResult,
     OrgUserInvite,
     Org,
     User,
@@ -123,6 +126,7 @@ _PILOT_MIN_MAPPED_DRIVERS = 3
 _PILOT_MIN_MAPPED_VEHICLES = 3
 _ASSIGNMENT_CONFIDENCE_MEDIUM_THRESHOLD = 0.7
 _ASSIGNMENT_CONFIDENCE_HIGH_THRESHOLD = 0.9
+_PILOT_REQUIRED_DOMAINS = {"telematics", "messaging"}
 
 
 def _first_org_id(context) -> uuid.UUID:
@@ -388,6 +392,76 @@ def _build_org_mapping_issues(
         )
 
     return OrgMappingsIssuesResponse(issues=issues)
+
+
+def _evaluate_integration_validation(
+    *,
+    db: Session,
+    org_id: uuid.UUID,
+    row: IntegrationConnection,
+) -> tuple[str, str, str, list[str], bool, str]:
+    messages: list[str] = []
+
+    credential_status = "pass"
+    if not row.credentials_ref:
+        credential_status = "fail"
+        messages.append(
+            f"Add credentials for {row.provider}/{row.domain} to enable validation."
+        )
+    elif row.status == "inactive":
+        credential_status = "fail"
+        messages.append(
+            f"Enable {row.provider}/{row.domain}; inactive integrations cannot pass validation."
+        )
+
+    org_connections = (
+        db.query(IntegrationConnection).filter(IntegrationConnection.org_id == org_id).all()
+    )
+    active_domains = {
+        str(connection.domain).lower()
+        for connection in org_connections
+        if connection.status == "active" and connection.domain
+    }
+    missing_required_domains = sorted(_PILOT_REQUIRED_DOMAINS - active_domains)
+    if not missing_required_domains:
+        capability_status = "pass"
+    elif row.domain and str(row.domain).lower() in _PILOT_REQUIRED_DOMAINS:
+        capability_status = "partial_support"
+        messages.append(
+            "Pilot readiness requires both telematics and messaging providers; "
+            f"still missing: {', '.join(missing_required_domains)}."
+        )
+    else:
+        capability_status = "fail"
+        messages.append(
+            "Selected provider does not satisfy pilot-required capabilities. "
+            "Configure active telematics and messaging integrations."
+        )
+
+    mapping_summary = _build_org_mapping_summary(db, org_id=org_id)
+    if (
+        mapping_summary.pilot_readiness.enough_mapped_drivers_for_pilot
+        and mapping_summary.pilot_readiness.enough_mapped_vehicles_for_pilot
+    ):
+        mapping_status = "pass"
+    elif mapping_summary.drivers.mapped > 0 or mapping_summary.vehicles.mapped > 0:
+        mapping_status = "partial_support"
+        messages.append(
+            "Mapping is partially complete. Map at least "
+            f"{_PILOT_MIN_MAPPED_DRIVERS} drivers and {_PILOT_MIN_MAPPED_VEHICLES} vehicles."
+        )
+    else:
+        mapping_status = "fail"
+        messages.append(
+            "No provider mappings found. Map drivers and vehicles before pilot launch."
+        )
+
+    valid = all(
+        status == "pass"
+        for status in (credential_status, capability_status, mapping_status)
+    )
+    message = "Connection validated" if valid else "Validation failed with actionable blockers"
+    return credential_status, capability_status, mapping_status, messages, valid, message
 
 
 def _run_vehicle_import_background(
@@ -1224,6 +1298,82 @@ def list_org_integrations(
     ]
 
 
+@router.post(
+    "/org/integrations",
+    response_model=IntegrationConnectionHealthResponse,
+)
+def upsert_org_integration(
+    payload: IntegrationConnectionUpsertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_integration_admin),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    row = (
+        db.query(IntegrationConnection)
+        .filter(
+            IntegrationConnection.org_id == org_id,
+            IntegrationConnection.provider == payload.provider,
+            IntegrationConnection.domain == payload.domain,
+        )
+        .first()
+    )
+    if row is None:
+        row = IntegrationConnection(
+            org_id=org_id,
+            provider=payload.provider,
+            domain=payload.domain,
+        )
+
+    row.status = payload.status
+    row.credentials_ref = payload.credentials_ref
+    row.config_json = payload.config_json
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    return IntegrationConnectionHealthResponse(
+        integration_id=row.connection_id,
+        provider=row.provider,
+        domain=row.domain,
+        status=row.status,
+        healthy=row.status in {"active", "pending"},
+        reason=None
+        if row.status in {"active", "pending"}
+        else "Connection not healthy",
+        last_synced_at_utc=row.last_synced_at_utc,
+        updated_at_utc=row.updated_at_utc,
+    )
+
+
+@router.get(
+    "/org/integrations/validation-results",
+    response_model=list[IntegrationValidationResultResponse],
+)
+def list_org_integration_validation_results(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    rows = (
+        db.query(IntegrationValidationResult)
+        .filter(IntegrationValidationResult.org_id.in_(context.org_ids))
+        .order_by(IntegrationValidationResult.validated_at_utc.desc())
+        .all()
+    )
+    return [
+        IntegrationValidationResultResponse(
+            integration_id=row.connection_id,
+            credentialStatus=row.credential_status,
+            capabilityStatus=row.capability_status,
+            mappingStatus=row.mapping_status,
+            messages=list(row.messages_json or []),
+            timestamp=row.validated_at_utc,
+        )
+        for row in rows
+    ]
+
+
 @router.get(
     "/org/integrations/{integration_id}",
     response_model=IntegrationConnectionHealthResponse,
@@ -1279,14 +1429,36 @@ def validate_org_integration(
     if row is None:
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    valid = bool(row.credentials_ref) and row.status != "inactive"
+    (
+        credential_status,
+        capability_status,
+        mapping_status,
+        messages,
+        valid,
+        message,
+    ) = _evaluate_integration_validation(db=db, org_id=row.org_id, row=row)
+    validation = IntegrationValidationResult(
+        org_id=row.org_id,
+        connection_id=row.connection_id,
+        credential_status=credential_status,
+        capability_status=capability_status,
+        mapping_status=mapping_status,
+        messages_json=messages,
+        validated_at_utc=datetime.now(timezone.utc),
+    )
+    db.add(validation)
+    db.commit()
+
     return IntegrationConnectionValidateResponse(
         integration_id=row.connection_id,
         valid=valid,
         status=row.status,
-        message="Connection validated"
-        if valid
-        else "Connection missing credentials or disabled",
+        message=message,
+        credentialStatus=credential_status,
+        capabilityStatus=capability_status,
+        mappingStatus=mapping_status,
+        messages=messages,
+        timestamp=validation.validated_at_utc,
     )
 
 

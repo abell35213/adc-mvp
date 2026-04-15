@@ -21,6 +21,7 @@ from app.db.models import (
     Org,
     UserOrg,
     IntegrationConnection,
+    IntegrationValidationResult,
     IntegrationOperation,
     EvidenceRequest,
     Driver,
@@ -525,6 +526,55 @@ class TestIntegrationDiagnosticsRoutes:
         assert detail_resp.status_code == 200
         assert detail_resp.json()["provider"] == "samsara"
 
+    def test_org_integration_provider_selection_and_credentials_upsert(
+        self, client, db_session, test_user, test_org
+    ):
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': 'org_admin'})}"
+        }
+
+        create_resp = client.post(
+            "/org/integrations",
+            headers=headers,
+            json={
+                "provider": "twilio",
+                "domain": "messaging",
+                "status": "active",
+                "credentials_ref": "vault://twilio-primary",
+                "config_json": {"accountSid": "AC123"},
+            },
+        )
+        assert create_resp.status_code == 200
+
+        update_resp = client.post(
+            "/org/integrations",
+            headers=headers,
+            json={
+                "provider": "twilio",
+                "domain": "messaging",
+                "status": "active",
+                "credentials_ref": "vault://twilio-updated",
+                "config_json": {"accountSid": "AC999"},
+            },
+        )
+        assert update_resp.status_code == 200
+
+        rows = (
+            db_session.query(IntegrationConnection)
+            .filter(
+                IntegrationConnection.org_id == test_org.id,
+                IntegrationConnection.provider == "twilio",
+                IntegrationConnection.domain == "messaging",
+            )
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].credentials_ref == "vault://twilio-updated"
+        assert rows[0].config_json["accountSid"] == "AC999"
+
     def test_org_users_list_invite_patch_role_resend_deactivate(
         self, client, db_session, test_org, test_user
     ):
@@ -707,6 +757,57 @@ class TestIntegrationDiagnosticsRoutes:
             headers=org_admin_headers,
         )
         assert allowed.status_code == 200
+        payload = allowed.json()
+        assert "credentialStatus" in payload
+        assert "capabilityStatus" in payload
+        assert "mappingStatus" in payload
+        assert "messages" in payload
+        assert "timestamp" in payload
+
+    def test_integration_validation_results_endpoint_and_partial_support(
+        self, client, db_session, test_org, test_user
+    ):
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': 'org_admin'})}"
+        }
+
+        telematics = IntegrationConnection(
+            org_id=test_org.id,
+            provider="samsara",
+            domain="telematics",
+            status="active",
+            credentials_ref="vault://samsara",
+        )
+        db_session.add(telematics)
+        db_session.commit()
+        db_session.refresh(telematics)
+
+        validate_resp = client.post(
+            f"/org/integrations/{telematics.connection_id}/validate", headers=headers
+        )
+        assert validate_resp.status_code == 200
+        payload = validate_resp.json()
+        assert payload["credentialStatus"] == "pass"
+        assert payload["capabilityStatus"] == "partial_support"
+        assert payload["mappingStatus"] == "fail"
+        assert payload["valid"] is False
+        assert len(payload["messages"]) > 0
+
+        list_resp = client.get(
+            "/org/integrations/validation-results",
+            headers=headers,
+        )
+        assert list_resp.status_code == 200
+        listed = list_resp.json()
+        assert len(listed) == 1
+        assert listed[0]["integration_id"] == str(telematics.connection_id)
+        assert listed[0]["capabilityStatus"] == "partial_support"
+
+        stored = db_session.query(IntegrationValidationResult).all()
+        assert len(stored) == 1
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(
