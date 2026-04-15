@@ -268,6 +268,9 @@ class Incident(Base):
     first_reviewed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     last_activity_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     ready_for_export_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_test_incident = Column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
     updated_at_utc = Column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -1418,6 +1421,55 @@ class OrgOnboardingStepCompletion(Base):
             "step_key",
             unique=True,
         ),
+    )
+
+
+class OrgTestIncidentRun(Base):
+    """Persisted test-incident run metadata for onboarding/admin validation."""
+
+    __tablename__ = "org_test_incident_runs"
+
+    run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    incident_id = Column(
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+    )
+    status = Column(
+        Enum(
+            "not_started",
+            "in_progress",
+            "completed",
+            "blocked",
+            name="org_test_incident_run_status",
+        ),
+        nullable=False,
+        default="in_progress",
+        server_default="in_progress",
+    )
+    step_results_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    findings_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    started_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_org_test_incident_runs_org_started", "org_id", "started_at_utc"),
     )
 
 

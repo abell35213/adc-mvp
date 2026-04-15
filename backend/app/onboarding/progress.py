@@ -55,7 +55,7 @@ STEP_DEFINITIONS: tuple[StepDefinition, ...] = (
     StepDefinition("integrations", "Integrations", 50),
     StepDefinition("vehicle_qr", "Vehicle QR deployment", 60),
     StepDefinition("driver_protocol", "Driver protocol", 70),
-    StepDefinition("test_run", "Test incident run", 80),
+    StepDefinition("testIncidentCompleted", "Test incident run", 80),
     StepDefinition("export_validation", "Export validation", 90),
 )
 
@@ -100,7 +100,9 @@ def derive_step_statuses(
         "driver_protocol": "completed"
         if signals.protocol_configured
         else "not_started",
-        "test_run": "completed" if signals.test_run_passed else "not_started",
+        "testIncidentCompleted": "completed"
+        if signals.test_run_passed
+        else "not_started",
         "export_validation": "completed"
         if signals.export_validation_passed
         else "not_started",

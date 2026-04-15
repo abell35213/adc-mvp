@@ -48,6 +48,10 @@ from app.api.schemas import (
     OrgSettingsResponse,
     OrgSettingsUpdateRequest,
     OrgPatchUserRoleRequest,
+    TestIncidentRunCreateRequest,
+    TestIncidentRunResponse,
+    TestIncidentRunsResponse,
+    TestIncidentRunStepCompleteRequest,
     OrgUserInviteSummary,
     OrgUserSummary,
     OrgUsersResponse,
@@ -104,9 +108,13 @@ from app.services.driver_import_service import (
 )
 from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
+    complete_test_incident_run_step,
     collect_onboarding_signals,
+    create_test_incident_run,
+    get_test_incident_run_by_id,
     get_protocol_setup_step,
     get_org_onboarding_readiness,
+    list_test_incident_runs,
     set_step_completion_override,
 )
 from app.security.permissions import (
@@ -153,6 +161,18 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
             else None,
             "snapshot_created_at_utc": readiness.snapshot_created_at_utc,
         }
+    )
+
+
+def _to_test_run_response_row(row) -> TestIncidentRunResponse:
+    return TestIncidentRunResponse(
+        run_id=row.run_id,
+        status=row.status,
+        incident_id=row.incident_id,
+        started_at_utc=row.started_at_utc,
+        completed_at_utc=row.completed_at_utc,
+        step_results=list(row.step_results_json or []),
+        findings=list(row.findings_json or []),
     )
 
 
@@ -695,6 +715,106 @@ def get_org_onboarding_status(
     context = build_user_auth_context(db, current_user)
     readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
     return _to_readiness_response(readiness)
+
+
+@router.post("/org/test-runs", response_model=TestIncidentRunResponse, status_code=201)
+def create_org_test_run(
+    payload: TestIncidentRunCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    run = create_test_incident_run(
+        db,
+        org_id=_first_org_id(context),
+        actor_user_id=current_user.id,
+        incident_id=payload.incident_id,
+        findings=payload.findings,
+    )
+    return TestIncidentRunResponse.model_validate(asdict(run))
+
+
+@router.get("/org/test-runs", response_model=TestIncidentRunsResponse)
+def list_org_test_runs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    rows = list_test_incident_runs(db, org_id=_first_org_id(context))
+    return TestIncidentRunsResponse(runs=[_to_test_run_response_row(row) for row in rows])
+
+
+@router.get("/org/test-runs/{run_id}", response_model=TestIncidentRunResponse)
+def get_org_test_run(
+    run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    row = get_test_incident_run_by_id(db, org_id=_first_org_id(context), run_id=run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Test run not found")
+    return _to_test_run_response_row(row)
+
+
+@router.post(
+    "/org/test-runs/{run_id}/complete-step",
+    response_model=TestIncidentRunResponse,
+)
+def complete_org_test_run_step(
+    run_id: uuid.UUID,
+    payload: TestIncidentRunStepCompleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    try:
+        run = complete_test_incident_run_step(
+            db,
+            org_id=_first_org_id(context),
+            run_id=run_id,
+            step_key=payload.step_key,
+            step_status=payload.status,
+            result=payload.result,
+            source=payload.source,
+            actor_user_id=current_user.id,
+        )
+    except ValueError as exc:
+        if str(exc) == "not_found":
+            raise HTTPException(status_code=404, detail="Test run not found") from exc
+        raise
+    return TestIncidentRunResponse.model_validate(asdict(run))
+
+
+@router.post("/org/onboarding/export-check", response_model=OrgLaunchReadinessResponse)
+def run_org_onboarding_export_check(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_id = _first_org_id(context)
+    readiness = get_org_onboarding_readiness(db, org_id=org_id)
+    export_step = next(
+        (item for item in readiness.steps if item.key == "export_validation"), None
+    )
+    if export_step is None or export_step.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "export_validation_not_ready",
+                "message": "Export validation step is not complete.",
+            },
+        )
+    set_step_completion_override(
+        db,
+        org_id=org_id,
+        step_key="export_validation",
+        is_completed=True,
+        actor_user_id=current_user.id,
+        source="export_check_action",
+    )
+    refreshed = get_org_onboarding_readiness(db, org_id=org_id)
+    return _to_readiness_response(refreshed)
 
 
 @router.get(

@@ -15,10 +15,12 @@ from app.db.models import (
     Event,
     Export,
     ExternalMapping,
+    Incident,
     IntegrationConnection,
     IntegrationOperation,
     Org,
     OrgOnboardingStepCompletion,
+    OrgTestIncidentRun,
     OrgVehicleRegistry,
     User,
     UserOrg,
@@ -194,6 +196,12 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         and export_profiles_available
     )
 
+    latest_test_run = (
+        db.query(OrgTestIncidentRun)
+        .filter(OrgTestIncidentRun.org_id == org_id)
+        .order_by(OrgTestIncidentRun.started_at_utc.desc())
+        .first()
+    )
     test_run_event = (
         db.query(Event)
         .filter(
@@ -203,7 +211,9 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         .order_by(Event.occurred_at_utc.desc())
         .first()
     )
-    test_run_passed = test_run_event is not None
+    test_run_passed = bool(
+        latest_test_run is not None and latest_test_run.status == "completed"
+    )
 
     latest_export = (
         db.query(Export)
@@ -376,9 +386,13 @@ def get_org_onboarding_readiness(
     """Reusable facade for API routes and background jobs."""
     signals = collect_onboarding_signals(db, org_id=org_id)
     overrides = list_step_completion_overrides(db, org_id=org_id)
-    return build_onboarding_readiness(
+    readiness = build_onboarding_readiness(
         org_id=org_id, signals=signals, step_completion_overrides=overrides
     )
+    latest_test_run = get_latest_test_incident_run(db, org_id=org_id)
+    if latest_test_run is not None:
+        readiness.test_incident_run = _to_test_incident_run_model(latest_test_run)
+    return readiness
 
 
 def get_protocol_setup_step(
@@ -446,3 +460,142 @@ def set_step_completion_override(
     db.commit()
     db.refresh(row)
     return row
+
+
+def _to_test_incident_run_model(row: OrgTestIncidentRun) -> TestIncidentRun:
+    return TestIncidentRun(
+        run_id=row.run_id,
+        status=row.status,
+        incident_id=str(row.incident_id) if row.incident_id is not None else None,
+        started_at_utc=row.started_at_utc,
+        completed_at_utc=row.completed_at_utc,
+        step_results=list(row.step_results_json or []),
+        findings=list(row.findings_json or []),
+    )
+
+
+def get_latest_test_incident_run(
+    db: Session, *, org_id: uuid.UUID
+) -> OrgTestIncidentRun | None:
+    return (
+        db.query(OrgTestIncidentRun)
+        .filter(OrgTestIncidentRun.org_id == org_id)
+        .order_by(OrgTestIncidentRun.started_at_utc.desc())
+        .first()
+    )
+
+
+def list_test_incident_runs(
+    db: Session, *, org_id: uuid.UUID
+) -> list[OrgTestIncidentRun]:
+    return (
+        db.query(OrgTestIncidentRun)
+        .filter(OrgTestIncidentRun.org_id == org_id)
+        .order_by(OrgTestIncidentRun.started_at_utc.desc())
+        .all()
+    )
+
+
+def create_test_incident_run(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    incident_id: uuid.UUID | None,
+    findings: list[str] | None = None,
+) -> TestIncidentRun:
+    row = OrgTestIncidentRun(
+        org_id=org_id,
+        incident_id=incident_id,
+        status="in_progress",
+        findings_json=list(findings or []),
+        step_results_json=[],
+        created_by_user_id=actor_user_id,
+        started_at_utc=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    if incident_id is not None:
+        incident = (
+            db.query(Incident)
+            .filter(Incident.incident_id == incident_id, Incident.org_id == org_id)
+            .first()
+        )
+        if incident is not None:
+            incident.is_test_incident = True
+            db.add(incident)
+    db.commit()
+    db.refresh(row)
+    return _to_test_incident_run_model(row)
+
+
+def get_test_incident_run_by_id(
+    db: Session, *, org_id: uuid.UUID, run_id: uuid.UUID
+) -> OrgTestIncidentRun | None:
+    return (
+        db.query(OrgTestIncidentRun)
+        .filter(OrgTestIncidentRun.org_id == org_id, OrgTestIncidentRun.run_id == run_id)
+        .first()
+    )
+
+
+def complete_test_incident_run_step(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    run_id: uuid.UUID,
+    step_key: str,
+    step_status: str,
+    result: dict[str, object],
+    source: str,
+    actor_user_id: uuid.UUID,
+) -> TestIncidentRun:
+    row = get_test_incident_run_by_id(db, org_id=org_id, run_id=run_id)
+    if row is None:
+        raise ValueError("not_found")
+
+    step_results = list(row.step_results_json or [])
+    now_utc = datetime.now(timezone.utc)
+    next_item = {
+        "step_key": step_key,
+        "status": step_status,
+        "result": result,
+        "source": source,
+        "completed_by_user_id": str(actor_user_id),
+        "completed_at_utc": now_utc.isoformat(),
+    }
+    replaced = False
+    for index, existing in enumerate(step_results):
+        if isinstance(existing, dict) and existing.get("step_key") == step_key:
+            step_results[index] = next_item
+            replaced = True
+            break
+    if not replaced:
+        step_results.append(next_item)
+
+    row.step_results_json = step_results
+    row.status = "in_progress" if step_status in {"not_started", "in_progress"} else step_status
+    if row.status == "completed":
+        row.completed_at_utc = now_utc
+        set_step_completion_override(
+            db,
+            org_id=org_id,
+            step_key="testIncidentCompleted",
+            is_completed=True,
+            actor_user_id=actor_user_id,
+            source=source,
+        )
+    elif row.status == "blocked":
+        set_step_completion_override(
+            db,
+            org_id=org_id,
+            step_key="testIncidentCompleted",
+            is_completed=False,
+            actor_user_id=actor_user_id,
+            source=source,
+        )
+        row.completed_at_utc = None
+    row.updated_at_utc = now_utc
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _to_test_incident_run_model(row)

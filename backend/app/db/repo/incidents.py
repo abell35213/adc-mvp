@@ -27,6 +27,7 @@ def list_incidents(
     org_ids: list[_uuid.UUID] | None = None,
 ):
     query = db.query(Incident)
+    query = query.filter(Incident.is_test_incident.is_(False))
     if org_ids is not None:
         query = query.filter(Incident.org_id.in_(org_ids))
     return query.offset(skip).limit(limit).all()
@@ -40,6 +41,7 @@ def create_incident(
     adc_driver_id: str | None = None,
     severity: str | None = None,
     org_id: _uuid.UUID | None = None,
+    is_test_incident: bool = False,
 ):
     incident = Incident(
         status=status,
@@ -48,6 +50,7 @@ def create_incident(
         adc_driver_id=adc_driver_id,
         severity=severity,
         org_id=org_id,
+        is_test_incident=is_test_incident,
     )
     db.add(incident)
     db.commit()
@@ -74,6 +77,7 @@ def list_incident_queue(
         return []
 
     query = db.query(Incident).filter(Incident.org_id.in_(org_ids))
+    query = query.filter(Incident.is_test_incident.is_(False))
     if case_status:
         query = query.filter(Incident.case_status == case_status)
     if owner_user_id:
@@ -145,6 +149,7 @@ def count_incident_queue(
         return 0
 
     query = db.query(Incident).filter(Incident.org_id.in_(org_ids))
+    query = query.filter(Incident.is_test_incident.is_(False))
     if case_status:
         query = query.filter(Incident.case_status == case_status)
     if owner_user_id:
@@ -185,7 +190,9 @@ def count_incident_alerts(
         }
 
     base = db.query(Incident).filter(
-        Incident.org_id.in_(org_ids), Incident.case_status != "closed"
+        Incident.org_id.in_(org_ids),
+        Incident.case_status != "closed",
+        Incident.is_test_incident.is_(False),
     )
     stalled_cutoff = now_utc - timedelta(hours=72)
     export_aging_cutoff = now_utc - timedelta(hours=48)
@@ -201,6 +208,7 @@ def count_incident_alerts(
         .filter(
             Incident.org_id.in_(org_ids),
             Incident.case_status == "ready_for_export",
+            Incident.is_test_incident.is_(False),
             Incident.ready_for_export_at_utc.is_not(None),
             Incident.ready_for_export_at_utc <= export_aging_cutoff,
         )

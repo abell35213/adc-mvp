@@ -740,11 +740,30 @@ class VehicleQrStatsResponse(BaseModel):
 
 
 class TestIncidentRunResponse(BaseModel):
+    run_id: Optional[uuid.UUID] = None
     status: OnboardingReadinessStepStatus = "not_started"
     incident_id: Optional[uuid.UUID] = None
     started_at_utc: Optional[datetime] = None
     completed_at_utc: Optional[datetime] = None
+    step_results: list[dict[str, Any]] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
+
+
+class TestIncidentRunCreateRequest(BaseModel):
+    incident_id: Optional[uuid.UUID] = None
+    findings: list[str] = Field(default_factory=list, max_length=100)
+    source: ShortText = "onboarding"
+
+
+class TestIncidentRunStepCompleteRequest(BaseModel):
+    step_key: ShortText
+    status: OnboardingReadinessStepStatus = "completed"
+    result: dict[str, Any] = Field(default_factory=dict)
+    source: ShortText = "onboarding"
+
+
+class TestIncidentRunsResponse(BaseModel):
+    runs: list[TestIncidentRunResponse] = Field(default_factory=list)
 
 
 class OrgLaunchReadinessResponse(BaseModel):
