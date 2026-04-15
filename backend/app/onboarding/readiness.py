@@ -12,7 +12,7 @@ PILOT_REQUIRED_STEPS = {
     "users_roles",
     "integrations",
     "driver_protocol",
-    "test_run",
+    "testIncidentCompleted",
 }
 
 LAUNCH_REQUIRED_STEPS = {
@@ -23,7 +23,7 @@ LAUNCH_REQUIRED_STEPS = {
     "integrations",
     "vehicle_qr",
     "driver_protocol",
-    "test_run",
+    "testIncidentCompleted",
     "export_validation",
 }
 

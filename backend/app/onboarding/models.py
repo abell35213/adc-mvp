@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
+import uuid
 
 ReadinessStatus = Literal[
     "not_started",
@@ -80,9 +81,11 @@ class VehicleQrDeployment:
 @dataclass(slots=True)
 class TestIncidentRun:
     status: IncidentRunStatus
+    run_id: uuid.UUID | None = None
     incident_id: str | None = None
     started_at_utc: datetime | None = None
     completed_at_utc: datetime | None = None
+    step_results: list[dict[str, object]] = field(default_factory=list)
     findings: list[str] = field(default_factory=list)
 
 

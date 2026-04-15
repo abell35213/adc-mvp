@@ -418,6 +418,82 @@ class TestIntegrationDiagnosticsRoutes:
         assert org_settings_step["metadata"]["completion_source"] == "dashboard"
         assert org_settings_step["metadata"]["completed_by_user_id"]
 
+    def test_org_test_runs_crud_and_complete_step(
+        self, client, db_session, test_org, auth_headers
+    ):
+        incident = Incident(org_id=test_org.id, status="open")
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        created = client.post(
+            "/org/test-runs",
+            headers=auth_headers,
+            json={"incident_id": str(incident.incident_id), "findings": ["kicked off"]},
+        )
+        assert created.status_code == 201
+        run_id = created.json()["run_id"]
+        assert created.json()["status"] == "in_progress"
+
+        listed = client.get("/org/test-runs", headers=auth_headers)
+        assert listed.status_code == 200
+        assert len(listed.json()["runs"]) == 1
+        assert listed.json()["runs"][0]["run_id"] == run_id
+
+        completed_step = client.post(
+            f"/org/test-runs/{run_id}/complete-step",
+            headers=auth_headers,
+            json={
+                "step_key": "export-check",
+                "status": "completed",
+                "result": {"status": "ok", "artifacts": 1},
+            },
+        )
+        assert completed_step.status_code == 200
+        assert completed_step.json()["status"] == "completed"
+        assert completed_step.json()["step_results"][0]["step_key"] == "export-check"
+
+        detail = client.get(f"/org/test-runs/{run_id}", headers=auth_headers)
+        assert detail.status_code == 200
+        assert detail.json()["run_id"] == run_id
+
+        refreshed = (
+            db_session.query(Incident)
+            .filter_by(incident_id=incident.incident_id)
+            .first()
+        )
+        assert refreshed is not None
+        assert refreshed.is_test_incident is True
+
+    def test_export_check_action_endpoint(
+        self, client, db_session, test_org, auth_headers
+    ):
+        failing = client.post("/org/onboarding/export-check", headers=auth_headers)
+        assert failing.status_code == 409
+        assert failing.json()["detail"]["code"] == "export_validation_not_ready"
+
+        incident = Incident(org_id=test_org.id, status="open")
+        db_session.add(incident)
+        db_session.flush()
+        export = Export(
+            org_id=test_org.id,
+            incident_id=incident.incident_id,
+            export_type="court_defense",
+            status="ready",
+            s3_bucket="bucket",
+            s3_key="key.zip",
+            byte_size=10,
+        )
+        db_session.add(export)
+        db_session.commit()
+
+        success = client.post("/org/onboarding/export-check", headers=auth_headers)
+        assert success.status_code == 200
+        step = next(
+            item for item in success.json()["steps"] if item["key"] == "export_validation"
+        )
+        assert step["status"] == "completed"
+
     def test_users_roles_step_gate_requires_org_admin_and_safety_capable(
         self, client, auth_headers
     ):
@@ -1209,6 +1285,20 @@ class TestListIncidents:
         assert inc["evidence_captured"] == 1
         assert inc["evidence_total"] == 2
         assert "created_at_utc" in inc
+
+    def test_list_incidents_excludes_test_incidents_by_default(
+        self, client, db_session, test_org, auth_headers
+    ):
+        operational = Incident(org_id=test_org.id, status="open", is_test_incident=False)
+        test_run = Incident(org_id=test_org.id, status="open", is_test_incident=True)
+        db_session.add_all([operational, test_run])
+        db_session.commit()
+
+        resp = client.get("/incidents/", headers=auth_headers)
+        assert resp.status_code == 200
+        incident_ids = {item["incident_id"] for item in resp.json()}
+        assert str(operational.incident_id) in incident_ids
+        assert str(test_run.incident_id) not in incident_ids
 
 
 # ── POST /exports ────────────────────────────────────────────────────

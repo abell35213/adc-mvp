@@ -169,7 +169,7 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
                 title="Test run not completed",
                 detail="Complete a successful test incident run before go-live.",
                 severity="critical",
-                blocking_step_key="test_run",
+                blocking_step_key="testIncidentCompleted",
             )
         )
 
