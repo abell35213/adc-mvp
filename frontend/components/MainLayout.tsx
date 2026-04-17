@@ -98,6 +98,7 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
       area: "Operations",
       items: [
         { href: "/dashboard", label: "Dashboard" },
+        { href: "/onboarding", label: "Onboarding" },
         { href: "/incidents", label: "Incidents", activePrefixes: ["/incidents"] },
         { href: "/timeline", label: "Timeline" },
       ],
