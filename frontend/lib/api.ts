@@ -572,6 +572,23 @@ export interface IntegrationValidationResult {
   timestamp: string;
 }
 
+type IntegrationValidationResultLegacyResponse = {
+  integration_key?: string;
+  status?: OnboardingStepStatus;
+  checked_at_utc?: string;
+  detail?: string;
+  errors?: string[];
+};
+
+type IntegrationValidationResultCurrentResponse = {
+  integration_id?: string;
+  credentialStatus?: OnboardingStepStatus;
+  capabilityStatus?: OnboardingStepStatus;
+  mappingStatus?: OnboardingStepStatus;
+  messages?: string[];
+  timestamp?: string;
+};
+
 export function getOrgOnboardingStatus() {
   return request<OrgLaunchReadiness>("/org/onboarding/status");
 }
@@ -581,7 +598,34 @@ export function getOrgOnboardingQrStats() {
 }
 
 export function getIntegrationValidationResults() {
-  return request<IntegrationValidationResult[]>("/org/integrations/validation-results");
+  return request<Array<IntegrationValidationResultLegacyResponse | IntegrationValidationResultCurrentResponse>>(
+    "/org/integrations/validation-results"
+  ).then((rows) =>
+    rows.map((row, index) => {
+      const status = (row as IntegrationValidationResultCurrentResponse).credentialStatus
+        ?? (row as IntegrationValidationResultLegacyResponse).status
+        ?? "not_started";
+      const mappedMessages = (row as IntegrationValidationResultCurrentResponse).messages
+        ?? (row as IntegrationValidationResultLegacyResponse).errors
+        ?? ((row as IntegrationValidationResultLegacyResponse).detail
+          ? [(row as IntegrationValidationResultLegacyResponse).detail as string]
+          : []);
+      return {
+        integration_id:
+          (row as IntegrationValidationResultCurrentResponse).integration_id
+          ?? (row as IntegrationValidationResultLegacyResponse).integration_key
+          ?? `integration-${index}`,
+        credentialStatus: (row as IntegrationValidationResultCurrentResponse).credentialStatus ?? status,
+        capabilityStatus: (row as IntegrationValidationResultCurrentResponse).capabilityStatus ?? status,
+        mappingStatus: (row as IntegrationValidationResultCurrentResponse).mappingStatus ?? status,
+        messages: mappedMessages,
+        timestamp:
+          (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? new Date(0).toISOString(),
+      };
+    })
+  );
 }
 
 /* ── Admin vehicles ─────────────────────────────────────────────── */
