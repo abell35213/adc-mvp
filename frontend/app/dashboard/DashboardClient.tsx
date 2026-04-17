@@ -106,18 +106,33 @@ export default function DashboardClient() {
       getIncidentAlerts(),
       getOverdueTasks({ limit: 20 }),
       getMyOpenTasks({ limit: 20 }),
-      getOrgOnboardingStatus(),
-      getOrgOnboardingQrStats(),
-      getIntegrationValidationResults(),
     ])
-      .then(([summary, alertPayload, overdue, mine, readiness, qrCoverage, validations]) => {
+      .then(async ([summary, alertPayload, overdue, mine]) => {
+        const onboardingResults = await Promise.allSettled([
+          getOrgOnboardingStatus(),
+          getOrgOnboardingQrStats(),
+          getIntegrationValidationResults(),
+        ]);
+
         setMetrics(summary);
         setAlerts(alertPayload);
         setOverdueTasks(overdue.items);
         setMyOpenTasks(mine.items);
-        setOnboarding(readiness);
-        setQrStats(qrCoverage);
-        setIntegrationValidationResults(validations);
+        if (onboardingResults[0].status === "fulfilled") {
+          setOnboarding(onboardingResults[0].value);
+        } else {
+          setOnboarding(null);
+        }
+        if (onboardingResults[1].status === "fulfilled") {
+          setQrStats(onboardingResults[1].value);
+        } else {
+          setQrStats(null);
+        }
+        if (onboardingResults[2].status === "fulfilled") {
+          setIntegrationValidationResults(onboardingResults[2].value);
+        } else {
+          setIntegrationValidationResults([]);
+        }
         setOverviewError("");
       })
       .catch((err) =>
