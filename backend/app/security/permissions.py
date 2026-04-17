@@ -86,6 +86,8 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.IMPORTS_WRITE,
             Capability.VEHICLE_QR_READ,
             Capability.VEHICLE_QR_WRITE,
+            Capability.ORG_SETTINGS_READ,
+            Capability.ORG_SETTINGS_WRITE,
             Capability.INTEGRATIONS_READ,
             Capability.ONBOARDING_READ,
             Capability.ONBOARDING_WRITE,

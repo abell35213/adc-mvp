@@ -85,7 +85,7 @@ def test_export_download_checks_org_membership(client, db_session):
     assert audit.outcome == "failure"
 
 
-def test_admin_vehicle_list_allows_read_only_and_admin_roles(client, db_session):
+def test_admin_vehicle_list_requires_admin_capability(client, db_session):
     org = Org(name="Admin Org")
     manager = User(email="manager@ex.com", password_hash=hash_password("x"), role="read_only")
     admin = User(email="admin@ex.com", password_hash=hash_password("x"), role="admin")
@@ -97,7 +97,7 @@ def test_admin_vehicle_list_allows_read_only_and_admin_roles(client, db_session)
     readonly = client.get("/admin/vehicles", headers=_user_headers(manager.id, manager.role))
     allowed = client.get("/admin/vehicles", headers=_user_headers(admin.id, admin.role))
 
-    assert readonly.status_code == 200
+    assert readonly.status_code == 403
     assert allowed.status_code == 200
 
 

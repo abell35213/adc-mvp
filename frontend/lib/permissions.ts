@@ -51,6 +51,8 @@ const ROLE_CAPABILITIES: Record<string, ReadonlySet<AppCapability>> = {
     "readiness:view",
   ]),
   safety_manager: new Set<AppCapability>([
+    "org_settings:read",
+    "org_settings:write",
     "imports:read",
     "imports:write",
     "vehicle_qr:read",
@@ -105,4 +107,3 @@ export function hasRoleCapability(role: string | null | undefined, capability: A
   const normalized = (role ?? "").trim().toLowerCase();
   return ROLE_CAPABILITIES[normalized]?.has(capability) ?? false;
 }
-

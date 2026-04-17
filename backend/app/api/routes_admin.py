@@ -34,7 +34,7 @@ from app.audit.emitter import emit_audit_event, emit_standard_audit_event
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.case_ops.service import build_dashboard_snapshot
-from app.security.permissions import Capability
+from app.security.permissions import Capability, normalize_role
 from app.security.authn import build_user_auth_context
 from app.security.authz import can_access_admin_org, require_policy
 from app.db.models import (
@@ -135,6 +135,11 @@ def _require_admin_policy(
 
 def _can_access_ops_views(context) -> bool:
     return context.user.role in OPS_ALLOWED_ROLES and bool(context.org_ids)
+
+
+def _is_ops_admin_role(raw_role: str | None) -> bool:
+    normalized = normalize_role(raw_role).value
+    return normalized in {"system_admin", "org_admin"}
 
 
 def _get_or_create_instruction_set(
@@ -416,9 +421,8 @@ def list_admin_vehicles(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_READ
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicles.list",
@@ -440,9 +444,8 @@ def rotate_qr(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_WRITE
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.rotate",
@@ -523,9 +526,8 @@ def get_qr_payload(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_READ
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.read",
