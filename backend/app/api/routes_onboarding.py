@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.audit.emitter import emit_standard_audit_event
 from app.api.error_responses import raise_api_error
 from app.api.schemas import (
     ApiErrorResponse,
@@ -175,6 +176,18 @@ def mark_org_onboarding_step(
         is_completed=payload.completed,
         actor_user_id=current_user.id,
         source=payload.source,
+    )
+    emit_standard_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="onboarding.step.override",
+        event_type="onboarding_readiness_override_updated",
+        entity_type="onboarding_step",
+        entity_id=payload.step_key,
+        outcome="success",
+        metadata={"completed": payload.completed, "source": payload.source},
     )
     readiness = get_org_onboarding_readiness(db, org_id=org_id)
     return _to_readiness_response(readiness)

@@ -400,6 +400,15 @@ class TestIntegrationDiagnosticsRoutes:
         assert payload["contacts"][0]["email"] == "safety@test.org"
         assert payload["implementation_contact"]["email"] == "impl@test.org"
         assert payload["logo_url"] == "https://cdn.example.com/logo.png"
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "org_settings_updated")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.action == "org.settings.update"
+        assert audit.metadata_json["entity"]["type"] == "org_settings"
 
     def test_onboarding_status_and_mark_step(self, client, auth_headers):
         status_before = client.get("/org/onboarding/status", headers=auth_headers)
@@ -464,6 +473,16 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert refreshed is not None
         assert refreshed.is_test_incident is True
+        audit_types = {
+            row.event_type
+            for row in db_session.query(AuditEvent).filter(
+                AuditEvent.event_type.in_(
+                    ["onboarding_test_run_created", "onboarding_test_run_step_completed"]
+                )
+            )
+        }
+        assert "onboarding_test_run_created" in audit_types
+        assert "onboarding_test_run_step_completed" in audit_types
 
     def test_export_check_action_endpoint(
         self, client, db_session, test_org, auth_headers
@@ -480,6 +499,14 @@ class TestIntegrationDiagnosticsRoutes:
         assert latest["checks"]["branding_correct"] is True
         assert latest["checks"]["warnings_behavior_ok"] is True
         assert latest["checks"]["file_download_success"] is True
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "onboarding_export_validation_run")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.metadata_json["checks"]["required_sections_present"] is True
 
     def test_export_validation_cannot_be_marked_complete_manually(
         self, client, auth_headers
@@ -715,6 +742,25 @@ class TestIntegrationDiagnosticsRoutes:
             if item["user_id"] == str(test_user.id)
         )
         assert updated_user["role"] == "org_admin"
+        emitted = {
+            row.event_type
+            for row in db_session.query(AuditEvent).filter(
+                AuditEvent.event_type.in_(
+                    [
+                        "org_user_invite_created",
+                        "org_user_invite_resent",
+                        "org_user_invite_deactivated",
+                        "org_user_role_changed",
+                    ]
+                )
+            )
+        }
+        assert emitted == {
+            "org_user_invite_created",
+            "org_user_invite_resent",
+            "org_user_invite_deactivated",
+            "org_user_role_changed",
+        }
 
     def test_org_user_admin_permissions_enforced(self, client, auth_headers):
         invite_resp = client.post(
@@ -886,6 +932,60 @@ class TestIntegrationDiagnosticsRoutes:
 
         stored = db_session.query(IntegrationValidationResult).all()
         assert len(stored) == 1
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "integration_validation_completed")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.metadata_json["entity"]["type"] == "integration_connection"
+
+    def test_internal_audit_events_for_system_admin(
+        self, client, db_session, test_org, test_user
+    ):
+        org_admin = User(
+            email="org-admin-audit@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add(org_admin)
+        db_session.commit()
+        db_session.refresh(org_admin)
+        db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+        db_session.commit()
+        org_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(org_admin.id), 'role': 'org_admin'})}"
+        }
+        client.patch(
+            "/org/settings",
+            headers=org_admin_headers,
+            json={"display_name": "Audit Filter Org"},
+        )
+
+        denied = client.get("/internal/audit/events", headers=org_admin_headers)
+        assert denied.status_code == 403
+
+        system_admin = User(
+            email="system-admin-audit@example.com",
+            password_hash=hash_password("password123"),
+            role="system_admin",
+        )
+        db_session.add(system_admin)
+        db_session.commit()
+        db_session.refresh(system_admin)
+        db_session.add(UserOrg(user_id=system_admin.id, org_id=test_org.id))
+        db_session.commit()
+        system_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(system_admin.id), 'role': 'system_admin'})}"
+        }
+        allowed = client.get(
+            f"/internal/audit/events?org_id={test_org.id}&entity_type=org_settings",
+            headers=system_admin_headers,
+        )
+        assert allowed.status_code == 200
+        assert len(allowed.json()) >= 1
+        assert allowed.json()[0]["metadata"]["entity"]["type"] == "org_settings"
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(

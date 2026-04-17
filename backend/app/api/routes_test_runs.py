@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.audit.emitter import emit_standard_audit_event
 from app.api.error_responses import raise_api_error
 from app.api.schemas import (
     ApiErrorResponse,
@@ -78,6 +79,18 @@ def create_org_test_run(
         actor_user_id=current_user.id,
         incident_id=payload.incident_id,
         findings=payload.findings,
+    )
+    emit_standard_audit_event(
+        db,
+        org_id=_first_org_id(context),
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="onboarding.test_run.create",
+        event_type="onboarding_test_run_created",
+        entity_type="test_run",
+        entity_id=str(run.run_id),
+        outcome="success",
+        metadata={"incident_id": str(payload.incident_id) if payload.incident_id else None},
     )
     return TestIncidentRunResponse.model_validate(asdict(run))
 
@@ -150,4 +163,16 @@ def complete_org_test_run_step(
         if str(exc) == "not_found":
             raise_api_error(status_code=404, message="Test run not found.", code="RESOURCE_NOT_FOUND")
         raise
+    emit_standard_audit_event(
+        db,
+        org_id=_first_org_id(context),
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="onboarding.test_run.complete_step",
+        event_type="onboarding_test_run_step_completed",
+        entity_type="test_run",
+        entity_id=str(run_id),
+        outcome="success",
+        metadata={"step_key": payload.step_key, "step_status": payload.status},
+    )
     return TestIncidentRunResponse.model_validate(asdict(run))

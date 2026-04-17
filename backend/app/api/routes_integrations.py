@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 import tempfile
@@ -21,7 +21,9 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.audit.emitter import emit_standard_audit_event
 from app.api.schemas import (
+    AuditSearchResponseItem,
     DriverImportJobCreateRequest,
     DriverImportJobCreateResponse,
     DriverImportJobResponse,
@@ -81,6 +83,7 @@ from app.db.models import (
     Driver,
     DriverVehicleAssignment,
     ExternalMapping,
+    AuditEvent,
     OrgVehicleRegistry,
     VehicleImportJob,
     VehicleQrToken,
@@ -125,6 +128,7 @@ from app.onboarding.service import (
 from app.security.permissions import (
     CANONICAL_ROLES,
     Capability,
+    Role,
     has_capability,
     normalize_role,
 )
@@ -146,6 +150,32 @@ _PILOT_REQUIRED_DOMAINS = {"telematics", "messaging"}
 
 def _first_org_id(context) -> uuid.UUID:
     return context.org_ids[0]
+
+
+def _emit_org_audit(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    actor: User,
+    action: str,
+    entity_type: str,
+    entity_id: str | None = None,
+    outcome: str = "success",
+    metadata: dict | None = None,
+    event_type: str | None = None,
+) -> None:
+    emit_standard_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="user",
+        actor_id=str(actor.id),
+        action=action,
+        event_type=event_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        outcome=outcome,
+        metadata=metadata or {},
+    )
 
 
 def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
@@ -513,6 +543,25 @@ def _run_vehicle_import_background(
             item.strip().lower() for item in inactive_unit_numbers if item.strip()
         },
     )
+    completed = db.query(VehicleImportJob).filter(VehicleImportJob.job_id == job_id).first()
+    emit_standard_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="system",
+        actor_id="vehicle_import_worker",
+        action="onboarding.vehicle_import.apply",
+        event_type="onboarding_vehicle_import_applied",
+        entity_type="vehicle_import_job",
+        entity_id=str(job_id),
+        outcome="success" if completed and completed.status == "completed" else "failure",
+        metadata={
+            "job_status": completed.status if completed else None,
+            "records_processed": completed.records_processed if completed else None,
+            "records_imported": completed.records_imported if completed else None,
+            "records_updated": completed.records_updated if completed else None,
+            "records_errored": completed.records_errored if completed else None,
+        },
+    )
 
 
 def _get_required_vehicle(
@@ -639,6 +688,25 @@ def _run_driver_import_background(
         header_mapping=header_mapping,
         inactive_phones=inactive_phones,
     )
+    completed = db.query(DriverImportJob).filter(DriverImportJob.job_id == job_id).first()
+    emit_standard_audit_event(
+        db,
+        org_id=org_id,
+        actor_type="system",
+        actor_id="driver_import_worker",
+        action="onboarding.driver_import.apply",
+        event_type="onboarding_driver_import_applied",
+        entity_type="driver_import_job",
+        entity_id=str(job_id),
+        outcome="success" if completed and completed.status == "completed" else "failure",
+        metadata={
+            "job_status": completed.status if completed else None,
+            "records_processed": completed.records_processed if completed else None,
+            "records_imported": completed.records_imported if completed else None,
+            "records_updated": completed.records_updated if completed else None,
+            "records_errored": completed.records_errored if completed else None,
+        },
+    )
 
 
 def _to_driver_import_job_response(job: DriverImportJob) -> DriverImportJobResponse:
@@ -702,6 +770,16 @@ def patch_org_settings(
         org.contacts_json = [item for item in updates["contacts"] or []]
     if "implementation_contact" in updates:
         org.implementation_contact_json = updates["implementation_contact"] or {}
+    _emit_org_audit(
+        db,
+        org_id=org.id,
+        actor=current_user,
+        action="org.settings.update",
+        event_type="org_settings_updated",
+        entity_type="org_settings",
+        entity_id=str(org.id),
+        metadata={"updated_fields": sorted(updates.keys())},
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -740,6 +818,16 @@ def create_org_test_run(
         actor_user_id=current_user.id,
         incident_id=payload.incident_id,
         findings=payload.findings,
+    )
+    _emit_org_audit(
+        db,
+        org_id=_first_org_id(context),
+        actor=current_user,
+        action="onboarding.test_run.create",
+        event_type="onboarding_test_run_created",
+        entity_type="test_run",
+        entity_id=str(run.run_id),
+        metadata={"incident_id": str(payload.incident_id) if payload.incident_id else None},
     )
     return TestIncidentRunResponse.model_validate(asdict(run))
 
@@ -793,6 +881,16 @@ def complete_org_test_run_step(
         if str(exc) == "not_found":
             raise HTTPException(status_code=404, detail="Test run not found") from exc
         raise
+    _emit_org_audit(
+        db,
+        org_id=_first_org_id(context),
+        actor=current_user,
+        action="onboarding.test_run.complete_step",
+        event_type="onboarding_test_run_step_completed",
+        entity_type="test_run",
+        entity_id=str(run_id),
+        metadata={"step_key": payload.step_key, "step_status": payload.status},
+    )
     return TestIncidentRunResponse.model_validate(asdict(run))
 
 
@@ -910,6 +1008,20 @@ def run_org_onboarding_export_check(
         actor_user_id=current_user.id,
         source="export_check_action",
     )
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.export_validation.run",
+        event_type="onboarding_export_validation_run",
+        entity_type="export_validation",
+        entity_id=str(export_row.export_id),
+        metadata={
+            "status": status,
+            "checks": checks,
+            "incident_id": str(latest_incident.incident_id),
+        },
+    )
     refreshed = get_org_onboarding_readiness(db, org_id=org_id)
     return _to_readiness_response(refreshed)
 
@@ -987,6 +1099,16 @@ def mark_org_onboarding_step(
         actor_user_id=current_user.id,
         source=payload.source,
     )
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.step.override",
+        event_type="onboarding_readiness_override_updated",
+        entity_type="onboarding_step",
+        entity_id=payload.step_key,
+        metadata={"completed": payload.completed, "source": payload.source},
+    )
     readiness = get_org_onboarding_readiness(db, org_id=org_id)
     return _to_readiness_response(readiness)
 
@@ -1005,6 +1127,16 @@ def create_org_vehicle_import_job(
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     job = create_vehicle_import_job(db, org_id=org_id, provider=payload.provider)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.vehicle_import.create",
+        event_type="onboarding_vehicle_import_created",
+        entity_type="vehicle_import_job",
+        entity_id=str(job.job_id),
+        metadata={"provider": payload.provider},
+    )
     background_tasks.add_task(
         _run_vehicle_import_background,
         db,
@@ -1082,6 +1214,16 @@ def generate_vehicle_qr(
         vehicle_id=vehicle.unit_number,
         payload={"token_sha256": token_hash},
     )
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.vehicle_qr.generate",
+        event_type="onboarding_vehicle_qr_generated",
+        entity_type="vehicle",
+        entity_id=vehicle.unit_number,
+        metadata={"token_sha256": token_hash},
+    )
     db.commit()
     return VehicleQrGenerateResponse(
         vehicle_id=vehicle.unit_number,
@@ -1150,6 +1292,15 @@ def bulk_generate_vehicle_qr(
                 deployment_status="generated",
             )
         )
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.vehicle_qr.bulk_generate",
+        event_type="onboarding_vehicle_qr_generated",
+        entity_type="vehicle_qr_batch",
+        metadata={"generated_count": len(generated), "skipped_count": len(skipped)},
+    )
     db.commit()
     return VehicleQrBulkGenerateResponse(
         generated_count=len(generated),
@@ -1196,6 +1347,16 @@ def rotate_vehicle_qr(
         action=SystemEventType.VEHICLE_QR_ROTATED.value,
         vehicle_id=vehicle.unit_number,
         payload={"token_sha256": hashlib.sha256(token.qr_token.encode()).hexdigest()},
+    )
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.vehicle_qr.rotate",
+        event_type="onboarding_vehicle_qr_rotated",
+        entity_type="vehicle",
+        entity_id=vehicle.unit_number,
+        metadata={"token_sha256": hashlib.sha256(token.qr_token.encode()).hexdigest()},
     )
     db.commit()
     return VehicleQrGenerateResponse(
@@ -1274,6 +1435,16 @@ def create_org_driver_import_job(
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     job = create_driver_import_job(db, org_id=org_id, provider=payload.provider)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="onboarding.driver_import.create",
+        event_type="onboarding_driver_import_created",
+        entity_type="driver_import_job",
+        entity_id=str(job.job_id),
+        metadata={"provider": payload.provider},
+    )
     background_tasks.add_task(
         _run_driver_import_background,
         db,
@@ -1376,6 +1547,16 @@ def invite_org_user(
     db.add(invite)
     db.commit()
     db.refresh(invite)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="org.users.invite",
+        event_type="org_user_invite_created",
+        entity_type="org_user_invite",
+        entity_id=str(invite.invite_id),
+        metadata={"email": invite.email, "role": invite.role, "status": invite.status},
+    )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
         invite=OrgUserInviteSummary(
@@ -1409,9 +1590,20 @@ def patch_org_user_role(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
+    previous_role = row.role
     row.role = normalize_role(payload.role).value
     db.add(row)
     db.commit()
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="org.users.role.patch",
+        event_type="org_user_role_changed",
+        entity_type="user",
+        entity_id=str(row.id),
+        metadata={"previous_role": previous_role, "new_role": row.role},
+    )
     return list_org_users(db=db, current_user=current_user)
 
 
@@ -1438,6 +1630,16 @@ def resend_org_user_invite(
     db.add(row)
     db.commit()
     db.refresh(row)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="org.users.invite.resend",
+        event_type="org_user_invite_resent",
+        entity_type="org_user_invite",
+        entity_id=str(row.invite_id),
+        metadata={"email": row.email, "role": row.role},
+    )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
         invite=OrgUserInviteSummary(
@@ -1476,6 +1678,16 @@ def deactivate_org_user_invite(
     db.add(row)
     db.commit()
     db.refresh(row)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="org.users.invite.deactivate",
+        event_type="org_user_invite_deactivated",
+        entity_type="org_user_invite",
+        entity_id=str(row.invite_id),
+        metadata={"email": row.email, "role": row.role},
+    )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
         invite=OrgUserInviteSummary(
@@ -1553,9 +1765,25 @@ def upsert_org_integration(
     row.status = payload.status
     row.credentials_ref = payload.credentials_ref
     row.config_json = payload.config_json
+    credential_changed = bool(payload.credentials_ref)
     db.add(row)
     db.commit()
     db.refresh(row)
+    _emit_org_audit(
+        db,
+        org_id=org_id,
+        actor=current_user,
+        action="integration.connection.upsert",
+        event_type="integration_credentials_updated" if credential_changed else "integration_connection_updated",
+        entity_type="integration_connection",
+        entity_id=str(row.connection_id),
+        metadata={
+            "provider": row.provider,
+            "domain": row.domain,
+            "status": row.status,
+            "credentials_ref_set": bool(row.credentials_ref),
+        },
+    )
 
     return IntegrationConnectionHealthResponse(
         integration_id=row.connection_id,
@@ -1596,6 +1824,71 @@ def list_org_integration_validation_results(
             timestamp=row.validated_at_utc,
         )
         for row in rows
+    ]
+
+
+@router.get(
+    "/internal/audit/events",
+    response_model=list[AuditSearchResponseItem],
+)
+def list_internal_audit_events(
+    org_id: uuid.UUID | None = None,
+    action: str | None = None,
+    event_type: str | None = None,
+    outcome: str | None = None,
+    actor_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    lookback_hours: int = 168,
+    limit: int = 250,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    if normalize_role(context.user.role) != Role.SYSTEM_ADMIN:
+        raise HTTPException(status_code=403, detail="System admin access required")
+
+    lookback_cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, lookback_hours))
+    query = db.query(AuditEvent).filter(AuditEvent.occurred_at_utc >= lookback_cutoff)
+    if org_id is not None:
+        query = query.filter(AuditEvent.org_id == org_id)
+    if action:
+        query = query.filter(AuditEvent.action.ilike(f"%{action}%"))
+    if event_type:
+        query = query.filter(AuditEvent.event_type.ilike(f"%{event_type}%"))
+    if outcome:
+        query = query.filter(AuditEvent.outcome == outcome)
+    if actor_id:
+        query = query.filter(AuditEvent.actor_id.ilike(f"%{actor_id}%"))
+    rows = query.order_by(AuditEvent.occurred_at_utc.desc()).limit(max(1, min(limit, 1000))).all()
+
+    filtered_rows = rows
+    if entity_type or entity_id:
+        filtered_rows = []
+        for row in rows:
+            metadata = row.metadata_json or {}
+            entity = metadata.get("entity", {}) if isinstance(metadata, dict) else {}
+            if entity_type and entity.get("type") != entity_type:
+                continue
+            if entity_id and entity.get("id") != entity_id:
+                continue
+            filtered_rows.append(row)
+
+    return [
+        AuditSearchResponseItem(
+            audit_event_id=row.id,
+            org_id=row.org_id,
+            incident_id=row.incident_id,
+            export_id=row.export_id,
+            actor_type=row.actor_type,
+            actor_id=row.actor_id,
+            action=row.action,
+            event_type=row.event_type,
+            outcome=row.outcome,
+            occurred_at_utc=row.occurred_at_utc,
+            metadata=row.metadata_json or {},
+        )
+        for row in filtered_rows
     ]
 
 
@@ -1673,6 +1966,24 @@ def validate_org_integration(
     )
     db.add(validation)
     db.commit()
+    _emit_org_audit(
+        db,
+        org_id=row.org_id,
+        actor=current_user,
+        action="integration.connection.validate",
+        event_type="integration_validation_completed",
+        entity_type="integration_connection",
+        entity_id=str(row.connection_id),
+        outcome="success" if valid else "failure",
+        metadata={
+            "provider": row.provider,
+            "domain": row.domain,
+            "credential_status": credential_status,
+            "capability_status": capability_status,
+            "mapping_status": mapping_status,
+            "messages": messages,
+        },
+    )
 
     return IntegrationConnectionValidateResponse(
         integration_id=row.connection_id,
@@ -1710,12 +2021,27 @@ def patch_org_integration(
         raise HTTPException(status_code=404, detail="Integration not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    previous_credentials_ref = row.credentials_ref
     for field in ("status", "credentials_ref", "config_json"):
         if field in updates:
             setattr(row, field, updates[field])
     db.add(row)
     db.commit()
     db.refresh(row)
+    _emit_org_audit(
+        db,
+        org_id=row.org_id,
+        actor=current_user,
+        action="integration.connection.patch",
+        event_type=(
+            "integration_credentials_updated"
+            if "credentials_ref" in updates and updates.get("credentials_ref") != previous_credentials_ref
+            else "integration_connection_updated"
+        ),
+        entity_type="integration_connection",
+        entity_id=str(row.connection_id),
+        metadata={"updated_fields": sorted(updates.keys()), "status": row.status},
+    )
 
     return IntegrationConnectionHealthResponse(
         integration_id=row.connection_id,
@@ -1756,6 +2082,16 @@ def disable_org_integration(
     db.add(row)
     db.commit()
     db.refresh(row)
+    _emit_org_audit(
+        db,
+        org_id=row.org_id,
+        actor=current_user,
+        action="integration.connection.disable",
+        event_type="integration_connection_updated",
+        entity_type="integration_connection",
+        entity_id=str(row.connection_id),
+        metadata={"status": row.status},
+    )
 
     return IntegrationConnectionHealthResponse(
         integration_id=row.connection_id,

@@ -30,7 +30,7 @@ from app.api.schemas import (
     QrPayloadResponse,
     RotateQrResponse,
 )
-from app.audit.emitter import emit_audit_event
+from app.audit.emitter import emit_audit_event, emit_standard_audit_event
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.case_ops.service import build_dashboard_snapshot
@@ -490,15 +490,17 @@ def rotate_qr(
         },
     )
     db.add(event)
-    emit_audit_event(
+    emit_standard_audit_event(
         db,
         org_id=org_id,
         actor_type="user",
         actor_id=str(admin.id),
         action="admin.vehicle_qr.rotate",
         event_type="credential_updated",
+        entity_type="vehicle",
+        entity_id=vehicle_id,
         outcome="success",
-        metadata={"adc_vehicle_id": vehicle_id, "token_sha256": token_hash},
+        metadata={"token_sha256": token_hash},
     )
     db.commit()
 
