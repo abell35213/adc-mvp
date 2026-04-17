@@ -507,8 +507,17 @@ export function getProtocolSetupStepData() {
   return request<ProtocolSetupStepData>("/org/onboarding/protocol-setup-step");
 }
 
-export type OnboardingStepStatus = "not_started" | "in_progress" | "completed";
-export type OnboardingReadinessStatus = "not_started" | "blocked" | "pilot_ready" | "launch_ready";
+export type OnboardingStepStatus =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "blocked";
+export type OnboardingReadinessStatus =
+  | "not_started"
+  | "in_progress"
+  | "blocked"
+  | "pilot_ready"
+  | "launch_ready";
 
 export interface OnboardingReadinessStep {
   key: string;
@@ -583,7 +592,9 @@ export function getOrgOnboardingQrStats() {
 export function getIntegrationValidationResults() {
   return request<IntegrationValidationResult[]>("/org/integrations/validation-results");
 }
-
+export function getOrgOnboardingReadiness() {
+  return request<OrgLaunchReadiness>("/org/onboarding/status");
+}
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 
 export interface AdminVehicle {
