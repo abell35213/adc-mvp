@@ -484,6 +484,47 @@ class TestIntegrationDiagnosticsRoutes:
         assert "onboarding_test_run_created" in audit_types
         assert "onboarding_test_run_step_completed" in audit_types
 
+    def test_org_test_run_detail_is_org_isolated(
+        self, client, db_session, test_org, test_user
+    ):
+        incident = Incident(org_id=test_org.id, status="open")
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        owner_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': test_user.role})}"
+        }
+        created = client.post(
+            "/org/test-runs",
+            headers=owner_headers,
+            json={"incident_id": str(incident.incident_id), "findings": ["org-a-run"]},
+        )
+        assert created.status_code == 201
+        run_id = created.json()["run_id"]
+
+        foreign_org = Org(name="Foreign Test Run Org")
+        foreign_user = User(
+            email="foreign-test-run@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add_all([foreign_org, foreign_user])
+        db_session.commit()
+        db_session.refresh(foreign_org)
+        db_session.refresh(foreign_user)
+        db_session.add(UserOrg(user_id=foreign_user.id, org_id=foreign_org.id))
+        db_session.commit()
+        foreign_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(foreign_user.id), 'role': foreign_user.role})}"
+        }
+
+        denied_detail = client.get(f"/org/test-runs/{run_id}", headers=foreign_headers)
+        denied_list = client.get("/org/test-runs", headers=foreign_headers)
+        assert denied_detail.status_code == 404
+        assert denied_list.status_code == 200
+        assert denied_list.json()["runs"] == []
+
     def test_export_check_action_endpoint(
         self, client, db_session, test_org, auth_headers
     ):
