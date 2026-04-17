@@ -11,10 +11,14 @@ import IncidentFilterBar, {
 import IncidentQueueTable from "@/components/case-ops/IncidentQueueTable";
 import IncidentSummaryCards from "@/components/case-ops/IncidentSummaryCards";
 import OverdueFollowUpList from "@/components/case-ops/OverdueFollowUpList";
+import OnboardingProgressDashboard from "@/components/onboarding/OnboardingProgressDashboard";
 import {
+  getIntegrationValidationResults,
   getIncidentAlerts,
   getIncidentQueue,
   getIncidentSummaryMetrics,
+  getOrgOnboardingQrStats,
+  getOrgOnboardingStatus,
   getMyOpenTasks,
   getOverdueTasks,
   patchIncidentOwner,
@@ -24,6 +28,9 @@ import {
   type CaseOpsQueueItem,
   type CaseOpsSummaryMetrics,
   type CaseTaskWidgetItem,
+  type IntegrationValidationResult,
+  type OrgLaunchReadiness,
+  type VehicleQrStats,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 
@@ -60,6 +67,9 @@ export default function DashboardClient() {
   const [queueError, setQueueError] = useState("");
   const [overviewError, setOverviewError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [onboarding, setOnboarding] = useState<OrgLaunchReadiness | null>(null);
+  const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
+  const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -89,12 +99,18 @@ export default function DashboardClient() {
       getIncidentAlerts(),
       getOverdueTasks({ limit: 20 }),
       getMyOpenTasks({ limit: 20 }),
+      getOrgOnboardingStatus(),
+      getOrgOnboardingQrStats(),
+      getIntegrationValidationResults(),
     ])
-      .then(([summary, alertPayload, overdue, mine]) => {
+      .then(([summary, alertPayload, overdue, mine, readiness, qrCoverage, validations]) => {
         setMetrics(summary);
         setAlerts(alertPayload);
         setOverdueTasks(overdue.items);
         setMyOpenTasks(mine.items);
+        setOnboarding(readiness);
+        setQrStats(qrCoverage);
+        setIntegrationValidationResults(validations);
         setOverviewError("");
       })
       .catch((err) =>
@@ -179,6 +195,13 @@ export default function DashboardClient() {
 
         {overviewError ? <p className="text-sm text-red-600">{overviewError}</p> : null}
         {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+
+        <OnboardingProgressDashboard
+          readiness={onboarding}
+          qrStats={qrStats}
+          validationResults={integrationValidationResults}
+          loading={overviewLoading}
+        />
 
         <IncidentSummaryCards metrics={metrics} loading={overviewLoading} />
         <IncidentFilterBar

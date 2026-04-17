@@ -507,6 +507,83 @@ export function getProtocolSetupStepData() {
   return request<ProtocolSetupStepData>("/org/onboarding/protocol-setup-step");
 }
 
+export type OnboardingStepStatus = "not_started" | "in_progress" | "completed";
+export type OnboardingReadinessStatus = "not_started" | "blocked" | "pilot_ready" | "launch_ready";
+
+export interface OnboardingReadinessStep {
+  key: string;
+  label: string;
+  status: OnboardingStepStatus;
+  order: number;
+  completed_at_utc?: string | null;
+  updated_at_utc?: string | null;
+}
+
+export interface OnboardingBlocker {
+  code: string;
+  title: string;
+  detail: string;
+  severity: "critical" | "warning" | "info" | "error";
+  blocking_step_key?: string | null;
+}
+
+export interface OnboardingImportJob {
+  import_job_id: string;
+  provider: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  records_total: number;
+  records_succeeded: number;
+  records_failed: number;
+  completed_at_utc?: string | null;
+}
+
+export interface ExportValidationRun {
+  validation_run_id?: string | null;
+  status: OnboardingStepStatus;
+  validated_at_utc?: string | null;
+  checks: Record<string, boolean>;
+}
+
+export interface OrgLaunchReadiness {
+  org_id: string;
+  status: OnboardingReadinessStatus;
+  percent_complete: number;
+  steps: OnboardingReadinessStep[];
+  blockers: OnboardingBlocker[];
+  import_jobs: OnboardingImportJob[];
+  latest_export_validation?: ExportValidationRun | null;
+  snapshot_created_at_utc?: string | null;
+}
+
+export interface VehicleQrStats {
+  required_vehicle_count: number;
+  generated_count: number;
+  distributed_count: number;
+  confirmed_count: number;
+  coverage_blockers: string[];
+}
+
+export interface IntegrationValidationResult {
+  integration_id: string;
+  credentialStatus: OnboardingStepStatus;
+  capabilityStatus: OnboardingStepStatus;
+  mappingStatus: OnboardingStepStatus;
+  messages: string[];
+  timestamp: string;
+}
+
+export function getOrgOnboardingStatus() {
+  return request<OrgLaunchReadiness>("/org/onboarding/status");
+}
+
+export function getOrgOnboardingQrStats() {
+  return request<VehicleQrStats>("/org/onboarding/qr-stats");
+}
+
+export function getIntegrationValidationResults() {
+  return request<IntegrationValidationResult[]>("/org/integrations/validation-results");
+}
+
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 
 export interface AdminVehicle {
