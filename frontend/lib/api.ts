@@ -610,7 +610,7 @@ export function getIntegrationValidationResults() {
   return request<Array<IntegrationValidationResultLegacyResponse | IntegrationValidationResultCurrentResponse>>(
     "/org/integrations/validation-results"
   ).then((rows) =>
-    rows.map((row, index) => {
+    rows.map((row) => {
       const status = (row as IntegrationValidationResultCurrentResponse).credentialStatus
         ?? (row as IntegrationValidationResultLegacyResponse).status
         ?? "not_started";
@@ -619,11 +619,22 @@ export function getIntegrationValidationResults() {
         ?? ((row as IntegrationValidationResultLegacyResponse).detail
           ? [(row as IntegrationValidationResultLegacyResponse).detail as string]
           : []);
+      const fallbackIdSource = [
+        (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? "",
+        status,
+        ...mappedMessages,
+      ]
+        .join("|")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
       return {
         integration_id:
           (row as IntegrationValidationResultCurrentResponse).integration_id
           ?? (row as IntegrationValidationResultLegacyResponse).integration_key
-          ?? `integration-${index}`,
+          ?? `integration-${fallbackIdSource || "unknown"}`,
         credentialStatus: (row as IntegrationValidationResultCurrentResponse).credentialStatus ?? status,
         capabilityStatus: (row as IntegrationValidationResultCurrentResponse).capabilityStatus ?? status,
         mappingStatus: (row as IntegrationValidationResultCurrentResponse).mappingStatus ?? status,
@@ -635,9 +646,6 @@ export function getIntegrationValidationResults() {
       };
     })
   );
-}
-export function getOrgOnboardingReadiness() {
-  return request<OrgLaunchReadiness>("/org/onboarding/status");
 }
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 

@@ -32,6 +32,7 @@ import {
   type OrgLaunchReadiness,
   type VehicleQrStats,
 } from "@/lib/api";
+import { ONBOARDING_WIZARD_STORAGE_KEY } from "@/lib/onboarding";
 import { useAuth } from "@/lib/useAuth";
 
 const DEFAULT_FILTERS: IncidentFilters = {
@@ -72,7 +73,7 @@ export default function DashboardClient() {
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
   const resumeOnboardingHref = useMemo(() => {
     if (typeof window === "undefined") return "/onboarding";
-    const persistedStep = window.localStorage.getItem("adc.onboarding.currentStep");
+    const persistedStep = window.localStorage.getItem(ONBOARDING_WIZARD_STORAGE_KEY);
     return persistedStep
       ? `/onboarding?step=${encodeURIComponent(persistedStep)}`
       : "/onboarding";
