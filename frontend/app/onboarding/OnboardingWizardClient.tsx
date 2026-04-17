@@ -4,13 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import MainLayout from "@/components/MainLayout";
 import {
-  getOrgOnboardingReadiness,
+  getOrgOnboardingStatus,
   toUserErrorMessage,
   type OrgLaunchReadiness,
   type OnboardingStepStatus,
 } from "@/lib/api";
-
-const WIZARD_STORAGE_KEY = "adc.onboarding.currentStep";
+import { ONBOARDING_WIZARD_STORAGE_KEY } from "@/lib/onboarding";
 
 type WizardStep = {
   key: string;
@@ -108,6 +107,7 @@ const WIZARD_STEPS: WizardStep[] = [
 
 function getStepStatus(steps: OrgLaunchReadiness["steps"], readinessKeys: string[]): OnboardingStepStatus {
   if (readinessKeys.length === 0) {
+    if (steps.length === 0) return "not_started";
     return steps.every((step) => step.status === "completed") ? "completed" : "in_progress";
   }
 
@@ -134,12 +134,12 @@ export default function OnboardingWizardClient() {
     if (typeof window === "undefined") return WIZARD_STEPS[0].key;
     const fromQuery = new URLSearchParams(window.location.search).get("step") ?? "";
     if (WIZARD_STEPS.some((step) => step.key === fromQuery)) return fromQuery;
-    const stored = window.localStorage.getItem(WIZARD_STORAGE_KEY) ?? "";
+    const stored = window.localStorage.getItem(ONBOARDING_WIZARD_STORAGE_KEY) ?? "";
     return WIZARD_STEPS.some((step) => step.key === stored) ? stored : WIZARD_STEPS[0].key;
   });
 
   useEffect(() => {
-    getOrgOnboardingReadiness()
+    getOrgOnboardingStatus()
       .then((payload) => {
         setReadiness(payload);
         setError("");
@@ -150,7 +150,7 @@ export default function OnboardingWizardClient() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(WIZARD_STORAGE_KEY, activeStepKey);
+    window.localStorage.setItem(ONBOARDING_WIZARD_STORAGE_KEY, activeStepKey);
     router.replace(`/onboarding?step=${encodeURIComponent(activeStepKey)}`);
   }, [activeStepKey, router]);
 

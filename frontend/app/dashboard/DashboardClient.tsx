@@ -11,10 +11,14 @@ import IncidentFilterBar, {
 import IncidentQueueTable from "@/components/case-ops/IncidentQueueTable";
 import IncidentSummaryCards from "@/components/case-ops/IncidentSummaryCards";
 import OverdueFollowUpList from "@/components/case-ops/OverdueFollowUpList";
+import OnboardingProgressDashboard from "@/components/onboarding/OnboardingProgressDashboard";
 import {
+  getIntegrationValidationResults,
   getIncidentAlerts,
   getIncidentQueue,
   getIncidentSummaryMetrics,
+  getOrgOnboardingQrStats,
+  getOrgOnboardingStatus,
   getMyOpenTasks,
   getOverdueTasks,
   patchIncidentOwner,
@@ -24,7 +28,11 @@ import {
   type CaseOpsQueueItem,
   type CaseOpsSummaryMetrics,
   type CaseTaskWidgetItem,
+  type IntegrationValidationResult,
+  type OrgLaunchReadiness,
+  type VehicleQrStats,
 } from "@/lib/api";
+import { ONBOARDING_WIZARD_STORAGE_KEY } from "@/lib/onboarding";
 import { useAuth } from "@/lib/useAuth";
 
 const DEFAULT_FILTERS: IncidentFilters = {
@@ -60,9 +68,12 @@ export default function DashboardClient() {
   const [queueError, setQueueError] = useState("");
   const [overviewError, setOverviewError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [onboarding, setOnboarding] = useState<OrgLaunchReadiness | null>(null);
+  const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
+  const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
   const resumeOnboardingHref = useMemo(() => {
     if (typeof window === "undefined") return "/onboarding";
-    const persistedStep = window.localStorage.getItem("adc.onboarding.currentStep");
+    const persistedStep = window.localStorage.getItem(ONBOARDING_WIZARD_STORAGE_KEY);
     return persistedStep
       ? `/onboarding?step=${encodeURIComponent(persistedStep)}`
       : "/onboarding";
@@ -97,11 +108,32 @@ export default function DashboardClient() {
       getOverdueTasks({ limit: 20 }),
       getMyOpenTasks({ limit: 20 }),
     ])
-      .then(([summary, alertPayload, overdue, mine]) => {
+      .then(async ([summary, alertPayload, overdue, mine]) => {
+        const onboardingResults = await Promise.allSettled([
+          getOrgOnboardingStatus(),
+          getOrgOnboardingQrStats(),
+          getIntegrationValidationResults(),
+        ]);
+
         setMetrics(summary);
         setAlerts(alertPayload);
         setOverdueTasks(overdue.items);
         setMyOpenTasks(mine.items);
+        if (onboardingResults[0].status === "fulfilled") {
+          setOnboarding(onboardingResults[0].value);
+        } else {
+          setOnboarding(null);
+        }
+        if (onboardingResults[1].status === "fulfilled") {
+          setQrStats(onboardingResults[1].value);
+        } else {
+          setQrStats(null);
+        }
+        if (onboardingResults[2].status === "fulfilled") {
+          setIntegrationValidationResults(onboardingResults[2].value);
+        } else {
+          setIntegrationValidationResults([]);
+        }
         setOverviewError("");
       })
       .catch((err) =>
@@ -193,6 +225,13 @@ export default function DashboardClient() {
 
         {overviewError ? <p className="text-sm text-red-600">{overviewError}</p> : null}
         {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+
+        <OnboardingProgressDashboard
+          readiness={onboarding}
+          qrStats={qrStats}
+          validationResults={integrationValidationResults}
+          loading={overviewLoading}
+        />
 
         <IncidentSummaryCards metrics={metrics} loading={overviewLoading} />
         <IncidentFilterBar

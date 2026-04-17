@@ -512,34 +512,141 @@ export type OnboardingStepStatus =
   | "in_progress"
   | "completed"
   | "blocked";
+export type OnboardingReadinessStatus =
+  | "not_started"
+  | "in_progress"
+  | "blocked"
+  | "pilot_ready"
+  | "launch_ready";
 
 export interface OnboardingReadinessStep {
   key: string;
   label: string;
   status: OnboardingStepStatus;
   order: number;
+  completed_at_utc?: string | null;
+  updated_at_utc?: string | null;
 }
 
-export interface OnboardingReadinessBlocker {
+export interface OnboardingBlocker {
   code: string;
   title: string;
   detail: string;
-  severity: "info" | "warning" | "error";
+  severity: "critical" | "warning" | "info" | "error";
   blocking_step_key?: string | null;
+}
+
+export interface OnboardingImportJob {
+  import_job_id: string;
+  provider: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  records_total: number;
+  records_succeeded: number;
+  records_failed: number;
+  completed_at_utc?: string | null;
+}
+
+export interface ExportValidationRun {
+  validation_run_id?: string | null;
+  status: OnboardingStepStatus;
+  validated_at_utc?: string | null;
+  checks: Record<string, boolean>;
 }
 
 export interface OrgLaunchReadiness {
   org_id: string;
-  status: "not_started" | "in_progress" | "pilot_ready" | "launch_ready" | "blocked";
+  status: OnboardingReadinessStatus;
   percent_complete: number;
   steps: OnboardingReadinessStep[];
-  blockers: OnboardingReadinessBlocker[];
+  blockers: OnboardingBlocker[];
+  import_jobs: OnboardingImportJob[];
+  latest_export_validation?: ExportValidationRun | null;
+  snapshot_created_at_utc?: string | null;
 }
 
-export function getOrgOnboardingReadiness() {
+export interface VehicleQrStats {
+  required_vehicle_count: number;
+  generated_count: number;
+  distributed_count: number;
+  confirmed_count: number;
+  coverage_blockers: string[];
+}
+
+export interface IntegrationValidationResult {
+  integration_id: string;
+  credentialStatus: OnboardingStepStatus;
+  capabilityStatus: OnboardingStepStatus;
+  mappingStatus: OnboardingStepStatus;
+  messages: string[];
+  timestamp: string;
+}
+
+type IntegrationValidationResultLegacyResponse = {
+  integration_key?: string;
+  status?: OnboardingStepStatus;
+  checked_at_utc?: string;
+  detail?: string;
+  errors?: string[];
+};
+
+type IntegrationValidationResultCurrentResponse = {
+  integration_id?: string;
+  credentialStatus?: OnboardingStepStatus;
+  capabilityStatus?: OnboardingStepStatus;
+  mappingStatus?: OnboardingStepStatus;
+  messages?: string[];
+  timestamp?: string;
+};
+
+export function getOrgOnboardingStatus() {
   return request<OrgLaunchReadiness>("/org/onboarding/status");
 }
 
+export function getOrgOnboardingQrStats() {
+  return request<VehicleQrStats>("/org/onboarding/qr-stats");
+}
+
+export function getIntegrationValidationResults() {
+  return request<Array<IntegrationValidationResultLegacyResponse | IntegrationValidationResultCurrentResponse>>(
+    "/org/integrations/validation-results"
+  ).then((rows) =>
+    rows.map((row) => {
+      const status = (row as IntegrationValidationResultCurrentResponse).credentialStatus
+        ?? (row as IntegrationValidationResultLegacyResponse).status
+        ?? "not_started";
+      const mappedMessages = (row as IntegrationValidationResultCurrentResponse).messages
+        ?? (row as IntegrationValidationResultLegacyResponse).errors
+        ?? ((row as IntegrationValidationResultLegacyResponse).detail
+          ? [(row as IntegrationValidationResultLegacyResponse).detail as string]
+          : []);
+      const fallbackIdSource = [
+        (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? "",
+        status,
+        ...mappedMessages,
+      ]
+        .join("|")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return {
+        integration_id:
+          (row as IntegrationValidationResultCurrentResponse).integration_id
+          ?? (row as IntegrationValidationResultLegacyResponse).integration_key
+          ?? `integration-${fallbackIdSource || "unknown"}`,
+        credentialStatus: (row as IntegrationValidationResultCurrentResponse).credentialStatus ?? status,
+        capabilityStatus: (row as IntegrationValidationResultCurrentResponse).capabilityStatus ?? status,
+        mappingStatus: (row as IntegrationValidationResultCurrentResponse).mappingStatus ?? status,
+        messages: mappedMessages,
+        timestamp:
+          (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? new Date(0).toISOString(),
+      };
+    })
+  );
+}
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 
 export interface AdminVehicle {
