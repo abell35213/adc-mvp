@@ -66,6 +66,9 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
             "latest_export_validation": asdict(readiness.latest_export_validation)
             if readiness.latest_export_validation is not None
             else None,
+            "metrics": asdict(readiness.metrics) if readiness.metrics is not None else None,
+            "alert_conditions": [asdict(item) for item in readiness.alert_conditions],
+            "reporting_hooks": readiness.reporting_hooks,
             "snapshot_created_at_utc": readiness.snapshot_created_at_utc,
         }
     )

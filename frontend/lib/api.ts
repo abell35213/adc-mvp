@@ -553,6 +553,29 @@ export interface ExportValidationRun {
   checks: Record<string, boolean>;
 }
 
+export interface OnboardingMetricsSnapshot {
+  onboarding_started_at_utc?: string | null;
+  latest_activity_at_utc?: string | null;
+  time_to_pilot_ready_hours?: number | null;
+  time_to_launch_ready_hours?: number | null;
+  import_success_rate: number;
+  driver_import_success_rate: number;
+  qr_coverage_rate: number;
+  valid_driver_phone_ratio: number;
+  integration_validation_pass_rate: number;
+  sample_incident_completion_rate: number;
+  export_validation_rate: number;
+  common_blockers: string[];
+}
+
+export interface OnboardingAlertCondition {
+  code: string;
+  title: string;
+  severity: "critical" | "warning" | "info" | "error";
+  triggered: boolean;
+  detail: string;
+}
+
 export interface OrgLaunchReadiness {
   org_id: string;
   status: OnboardingReadinessStatus;
@@ -561,6 +584,9 @@ export interface OrgLaunchReadiness {
   blockers: OnboardingBlocker[];
   import_jobs: OnboardingImportJob[];
   latest_export_validation?: ExportValidationRun | null;
+  metrics?: OnboardingMetricsSnapshot | null;
+  alert_conditions?: OnboardingAlertCondition[];
+  reporting_hooks?: Record<string, unknown>;
   snapshot_created_at_utc?: string | null;
 }
 
