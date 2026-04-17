@@ -17,6 +17,7 @@ from app.db.models import (
     Export,
     ExternalMapping,
     Driver,
+    IntegrationValidationResult as IntegrationValidationResultRow,
     Incident,
     IntegrationConnection,
     IntegrationOperation,
@@ -240,8 +241,8 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
     test_run_rows = db.query(OrgTestIncidentRun).filter(OrgTestIncidentRun.org_id == org_id).all()
     completed_test_run_count = sum(1 for row in test_run_rows if row.status == "completed")
     integration_validation_rows = (
-        db.query(IntegrationValidationResult)
-        .filter(IntegrationValidationResult.org_id == org_id)
+        db.query(IntegrationValidationResultRow)
+        .filter(IntegrationValidationResultRow.org_id == org_id)
         .all()
     )
     integration_validation_pass_count = sum(
@@ -363,11 +364,19 @@ def _safe_ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 4)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _build_onboarding_metrics(
     *, signals: OnboardingSignals, status: str, common_blockers: list[str]
 ) -> OnboardingMetricsSnapshot:
     now_utc = datetime.now(timezone.utc)
-    started_at = signals.onboarding_started_at_utc
+    started_at = _as_utc(signals.onboarding_started_at_utc)
     elapsed_hours = (
         round((now_utc - started_at).total_seconds() / 3600, 2)
         if started_at is not None
@@ -377,7 +386,7 @@ def _build_onboarding_metrics(
     launch_ready = status == "launch_ready"
     return OnboardingMetricsSnapshot(
         onboarding_started_at_utc=started_at,
-        latest_activity_at_utc=signals.latest_activity_at_utc,
+        latest_activity_at_utc=_as_utc(signals.latest_activity_at_utc),
         time_to_pilot_ready_hours=elapsed_hours if pilot_or_better else None,
         time_to_launch_ready_hours=elapsed_hours if launch_ready else None,
         import_success_rate=_safe_ratio(
@@ -411,7 +420,7 @@ def _build_alert_conditions(
     *, signals: OnboardingSignals, status: str, critical_blocker_count: int
 ) -> list[OnboardingAlertCondition]:
     now_utc = datetime.now(timezone.utc)
-    latest_activity = signals.latest_activity_at_utc
+    latest_activity = _as_utc(signals.latest_activity_at_utc)
     stalled_onboarding = bool(
         signals.has_started_activity
         and latest_activity is not None
