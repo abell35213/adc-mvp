@@ -3,7 +3,7 @@ import Link from "next/link";
 export type OnboardingStepCardProps = {
   title: string;
   description: string;
-  status: "completed" | "in_progress" | "not_started";
+  status: "completed" | "in_progress" | "not_started" | "blocked";
   href: string;
   ctaLabel: string;
 };
@@ -11,12 +11,14 @@ export type OnboardingStepCardProps = {
 const STATUS_STYLES: Record<OnboardingStepCardProps["status"], string> = {
   completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   in_progress: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  blocked: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   not_started: "bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200",
 };
 
 const STATUS_LABELS: Record<OnboardingStepCardProps["status"], string> = {
   completed: "Completed",
   in_progress: "In progress",
+  blocked: "Blocked",
   not_started: "Not started",
 };
 
