@@ -20,6 +20,8 @@ import {
   type ImportJobStatus,
   type VehicleImportJobResponse,
 } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import { hasRoleCapability } from "@/lib/permissions";
 import {
   autoMapHeaders,
   buildDriverPreview,
@@ -82,6 +84,7 @@ function ImportSummary({ title, items }: { title: string; items: Array<{ label: 
 }
 
 export default function AdminVehiclesPage() {
+  const { user } = useAuth();
   const [vehicles, setVehicles] = useState<AdminVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -158,6 +161,8 @@ export default function AdminVehiclesPage() {
 
   const vehicleErrorCount = useMemo(() => vehicleIssues.filter((i) => i.severity === "error").length, [vehicleIssues]);
   const driverErrorCount = useMemo(() => driverIssues.filter((i) => i.severity === "error").length, [driverIssues]);
+  const canManageImports = hasRoleCapability(user?.role, "imports:write");
+  const canManageQr = hasRoleCapability(user?.role, "vehicle_qr:write");
 
   const handleGenerateQr = async (vehicle: AdminVehicle) => {
     setError("");
@@ -211,6 +216,7 @@ export default function AdminVehiclesPage() {
 
       <section className="mb-8 space-y-4 rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="text-base font-semibold text-gray-900">Vehicle CSV import</h2>
+        {!canManageImports ? <p className="text-xs text-amber-700">You have read-only access to imports.</p> : null}
         <textarea value={vehicleCsv} onChange={(e) => setVehicleCsv(e.target.value)} rows={5} className="w-full rounded-md border p-2 text-sm" placeholder="Paste vehicle CSV content here" />
         {vehiclePreview.length > 0 && <VehicleImportPreviewTable rows={vehiclePreview} />}
         <CategorizedIssueList issues={vehicleIssues} />
@@ -218,7 +224,7 @@ export default function AdminVehiclesPage() {
           <input type="checkbox" checked={vehicleConfirm} onChange={(e) => setVehicleConfirm(e.target.checked)} />
           I reviewed mapping + validation and want to apply this vehicle import.
         </label>
-        <button disabled={!vehicleConfirm || vehicleErrorCount > 0 || vehicleSubmitting || !vehicleCsv.trim()} onClick={submitVehicleImport} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button disabled={!canManageImports || !vehicleConfirm || vehicleErrorCount > 0 || vehicleSubmitting || !vehicleCsv.trim()} onClick={submitVehicleImport} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {vehicleSubmitting ? "Submitting…" : "Apply vehicle import"}
         </button>
         {vehicleJob && (
@@ -243,6 +249,7 @@ export default function AdminVehiclesPage() {
 
       <section className="mb-8 space-y-4 rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="text-base font-semibold text-gray-900">Driver CSV import</h2>
+        {!canManageImports ? <p className="text-xs text-amber-700">You have read-only access to imports.</p> : null}
         <textarea value={driverCsv} onChange={(e) => setDriverCsv(e.target.value)} rows={5} className="w-full rounded-md border p-2 text-sm" placeholder="Paste driver CSV content here" />
         {driverPreview.length > 0 && <DriverImportPreviewTable rows={driverPreview} />}
         <CategorizedIssueList issues={driverIssues} />
@@ -250,7 +257,7 @@ export default function AdminVehiclesPage() {
           <input type="checkbox" checked={driverConfirm} onChange={(e) => setDriverConfirm(e.target.checked)} />
           I reviewed mapping + validation and want to apply this driver import.
         </label>
-        <button disabled={!driverConfirm || driverErrorCount > 0 || driverSubmitting || !driverCsv.trim()} onClick={submitDriverImport} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button disabled={!canManageImports || !driverConfirm || driverErrorCount > 0 || driverSubmitting || !driverCsv.trim()} onClick={submitDriverImport} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {driverSubmitting ? "Submitting…" : "Apply driver import"}
         </button>
         {driverJob && (
@@ -290,7 +297,7 @@ export default function AdminVehiclesPage() {
                     <p className="text-xs text-gray-500">{vehicle.adc_vehicle_id}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleGenerateQr(vehicle)} disabled={busyVehicleId === vehicle.adc_vehicle_id} className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                    <button onClick={() => handleGenerateQr(vehicle)} disabled={!canManageQr || busyVehicleId === vehicle.adc_vehicle_id} className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                       {busyVehicleId === vehicle.adc_vehicle_id ? "Generating…" : "Generate/Rotate QR"}
                     </button>
                   </td>

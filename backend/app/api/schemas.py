@@ -54,7 +54,14 @@ QrToken = Annotated[
     ),
 ]
 
-UserRole = Literal["system_admin", "org_admin", "safety_manager"]
+UserRole = Literal[
+    "system_admin",
+    "org_admin",
+    "safety_manager",
+    "read_only",
+    "support_admin",
+    "support_agent",
+]
 CapabilityName = Literal[
     "incident:read",
     "incident:write",
@@ -67,8 +74,28 @@ CapabilityName = Literal[
     "driver_protocol:write",
     "vehicle_qr:read",
     "vehicle_qr:write",
+    "org_settings:read",
+    "org_settings:write",
+    "user_management:read",
+    "user_management:write",
+    "imports:read",
+    "imports:write",
+    "integrations:read",
+    "integrations:write",
+    "onboarding:read",
+    "onboarding:write",
+    "test_runs:read",
+    "test_runs:write",
+    "readiness:view",
 ]
-assert {"system_admin", "org_admin", "safety_manager"}.issubset(set(CANONICAL_ROLES))
+assert {
+    "system_admin",
+    "org_admin",
+    "safety_manager",
+    "read_only",
+    "support_admin",
+    "support_agent",
+}.issubset(set(CANONICAL_ROLES))
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",
@@ -81,6 +108,19 @@ assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "driver_protocol:write",
     "vehicle_qr:read",
     "vehicle_qr:write",
+    "org_settings:read",
+    "org_settings:write",
+    "user_management:read",
+    "user_management:write",
+    "imports:read",
+    "imports:write",
+    "integrations:read",
+    "integrations:write",
+    "onboarding:read",
+    "onboarding:write",
+    "test_runs:read",
+    "test_runs:write",
+    "readiness:view",
 }
 InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
