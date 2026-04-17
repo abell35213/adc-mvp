@@ -677,6 +677,80 @@ export interface CaseOpsQueueItem {
   blockers: CaseOpsQueueBlockerCounts;
 }
 
+
+
+export type ImportJobStatus = "pending" | "running" | "succeeded" | "failed";
+
+export interface VehicleImportJobSummary {
+  missing_qr_count: number;
+  missing_provider_mapping_count: number;
+  duplicate_like_count: number;
+  inactive_count: number;
+}
+
+export interface VehicleImportJobOutcome {
+  imported: string[];
+  updated: string[];
+  skipped: string[];
+  errored: string[];
+}
+
+export interface VehicleImportJobResponse {
+  job_id: string;
+  provider: string;
+  status: ImportJobStatus;
+  started_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  records_total: number;
+  records_processed: number;
+  records_imported: number;
+  records_updated: number;
+  records_skipped: number;
+  records_errored: number;
+  warnings: string[];
+  outcomes: VehicleImportJobOutcome;
+  summary: VehicleImportJobSummary;
+  error_message?: string | null;
+}
+
+export interface DriverImportJobSummary {
+  invalid_phone_count: number;
+  duplicate_warning_count: number;
+  missing_assignment_count: number;
+  missing_external_mapping_count: number;
+  needs_review_count: number;
+  inactive_count: number;
+}
+
+export interface DriverImportJobOutcome {
+  imported: string[];
+  updated: string[];
+  skipped: string[];
+  errored: string[];
+  invalid_phone: string[];
+  duplicate_warning: string[];
+  missing_assignment_or_mapping: string[];
+  needs_review: string[];
+}
+
+export interface DriverImportJobResponse {
+  job_id: string;
+  provider: string;
+  status: ImportJobStatus;
+  started_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  records_total: number;
+  records_processed: number;
+  records_imported: number;
+  records_updated: number;
+  records_skipped: number;
+  records_errored: number;
+  warnings: string[];
+  outcomes: DriverImportJobOutcome;
+  summary: DriverImportJobSummary;
+  error_message?: string | null;
+}
+
 export interface CaseOpsQueueResponse {
   items: CaseOpsQueueItem[];
   total: number;
@@ -729,6 +803,39 @@ export function rotateVehicleQr(vehicleId: string) {
 
 export function getVehicleQrPayload(vehicleId: string) {
   return request<{ deep_link: string }>(`/admin/vehicles/${vehicleId}/qr`);
+}
+
+
+export function createVehicleImportJob(data: {
+  provider: string;
+  csv_content: string;
+  header_mapping: Record<string, string>;
+  inactive_unit_numbers: string[];
+}) {
+  return request<{ job_id: string; status: ImportJobStatus }>("/org/vehicles/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getVehicleImportJob(jobId: string) {
+  return request<VehicleImportJobResponse>(`/org/vehicles/import-jobs/${jobId}`);
+}
+
+export function createDriverImportJob(data: {
+  provider: string;
+  csv_content: string;
+  header_mapping: Record<string, string>;
+  inactive_mobile_phones: string[];
+}) {
+  return request<{ job_id: string; status: ImportJobStatus }>("/org/drivers/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getDriverImportJob(jobId: string) {
+  return request<DriverImportJobResponse>(`/org/drivers/import-jobs/${jobId}`);
 }
 
 export function getIncidentQueue(params?: {
