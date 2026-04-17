@@ -6,6 +6,7 @@ from dataclasses import asdict
 import uuid
 
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.error_responses import raise_api_error
@@ -16,7 +17,7 @@ from app.api.schemas import (
     ProtocolSetupStepResponse,
 )
 from app.core.deps import get_current_user
-from app.db.models import User
+from app.db.models import User, UserOrg
 from app.db.session import get_db
 from app.onboarding.progress import STEP_DEFINITIONS
 from app.onboarding.service import (
@@ -69,6 +70,34 @@ def _to_readiness_response(readiness) -> OrgLaunchReadinessResponse:
     )
 
 
+def _role_counts_for_org(db: Session, *, org_id: uuid.UUID) -> dict[str, int]:
+    rows = (
+        db.query(User.role)
+        .join(UserOrg, UserOrg.user_id == User.id)
+        .filter(UserOrg.org_id == org_id, User.is_active.is_(True))
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for (role,) in rows:
+        normalized = str(role or "").strip().lower()
+        counts[normalized] = counts.get(normalized, 0) + 1
+    return counts
+
+
+def _role_violations(*, role_counts: dict[str, int]) -> list[str]:
+    violations: list[str] = []
+    if role_counts.get("org_admin", 0) < 1:
+        violations.append("no org admin assigned")
+    safety_capable_count = sum(
+        count
+        for role, count in role_counts.items()
+        if has_capability(role, Capability.INCIDENT_WRITE)
+    )
+    if safety_capable_count < 1:
+        violations.append("no safety manager assigned")
+    return violations
+
+
 @router.get(
     "/status",
     response_model=OrgLaunchReadinessResponse,
@@ -119,18 +148,25 @@ def mark_org_onboarding_step(
     if payload.step_key not in valid_steps:
         raise_api_error(status_code=422, message="Unknown step_key.", code="REQUEST_INVALID")
     if payload.step_key == "export_validation" and payload.completed:
-        raise_api_error(
+        raise HTTPException(
             status_code=409,
-            message="Use /org/onboarding/export-check to complete export validation with a test export.",
-            code="REQUEST_INVALID",
+            detail={
+                "code": "export_validation_requires_test_export",
+                "message": "Use /org/onboarding/export-check to complete export validation with a test export.",
+            },
         )
     if payload.step_key == "users_roles" and payload.completed:
         signals = collect_onboarding_signals(db, org_id=org_id)
         if signals.org_admin_count < 1 or signals.safety_capable_user_count < 1:
-            raise_api_error(
+            role_counts = _role_counts_for_org(db, org_id=org_id)
+            raise HTTPException(
                 status_code=409,
-                message="Cannot complete users_roles step until role requirements are satisfied.",
-                code="REQUEST_INVALID",
+                detail={
+                    "code": "users_roles_prerequisites_not_met",
+                    "message": "Cannot complete users_roles step until role requirements are satisfied.",
+                    "role_counts": role_counts,
+                    "violations": _role_violations(role_counts=role_counts),
+                },
             )
     set_step_completion_override(
         db,
