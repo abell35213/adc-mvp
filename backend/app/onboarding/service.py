@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 
 from sqlalchemy import func
@@ -15,6 +16,7 @@ from app.db.models import (
     Event,
     Export,
     ExternalMapping,
+    Driver,
     Incident,
     IntegrationConnection,
     IntegrationOperation,
@@ -31,6 +33,8 @@ from app.onboarding.blockers import blocked_step_keys, classify_blockers
 from app.onboarding.models import (
     ImportJob,
     IntegrationValidationResult,
+    OnboardingAlertCondition,
+    OnboardingMetricsSnapshot,
     OrgLaunchReadiness,
     ExportValidationRun,
     ProtocolSetupStep,
@@ -217,13 +221,13 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         latest_test_run is not None and latest_test_run.status == "completed"
     )
 
-    successful_export_validation_count = (
-        db.query(OrgExportValidationRun.validation_run_id)
-        .filter(
-            OrgExportValidationRun.org_id == org_id,
-            OrgExportValidationRun.status == "passed",
-        )
-        .count()
+    export_validation_rows = (
+        db.query(OrgExportValidationRun)
+        .filter(OrgExportValidationRun.org_id == org_id)
+        .all()
+    )
+    successful_export_validation_count = sum(
+        1 for row in export_validation_rows if row.status == "passed"
     )
     latest_export = (
         db.query(Export)
@@ -232,6 +236,69 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         .first()
     )
     export_validation_passed = successful_export_validation_count > 0
+    total_export_validation_count = len(export_validation_rows)
+    test_run_rows = db.query(OrgTestIncidentRun).filter(OrgTestIncidentRun.org_id == org_id).all()
+    completed_test_run_count = sum(1 for row in test_run_rows if row.status == "completed")
+    integration_validation_rows = (
+        db.query(IntegrationValidationResult)
+        .filter(IntegrationValidationResult.org_id == org_id)
+        .all()
+    )
+    integration_validation_pass_count = sum(
+        1
+        for row in integration_validation_rows
+        if row.credential_status == "completed"
+        and row.capability_status == "completed"
+        and row.mapping_status == "completed"
+    )
+    valid_driver_phone_count = (
+        db.query(func.count(Driver.driver_id))
+        .filter(
+            Driver.org_id == org_id,
+            Driver.is_active.is_(True),
+            Driver.phone_e164.is_not(None),
+            Driver.phone_e164.like("+%"),
+            func.length(Driver.phone_e164) >= 11,
+        )
+        .scalar()
+        or 0
+    )
+    total_driver_count = (
+        db.query(func.count(Driver.driver_id))
+        .filter(Driver.org_id == org_id, Driver.is_active.is_(True))
+        .scalar()
+        or 0
+    )
+    onboarding_activity_timestamps = [
+        row.requested_at_utc
+        for row in import_operations
+        if row.requested_at_utc is not None
+    ]
+    onboarding_activity_timestamps.extend(
+        [row.created_at_utc for row in driver_import_jobs if row.created_at_utc is not None]
+    )
+    onboarding_activity_timestamps.extend(
+        [row.started_at_utc for row in test_run_rows if row.started_at_utc is not None]
+    )
+    onboarding_activity_timestamps.extend(
+        [
+            row.validated_at_utc
+            for row in export_validation_rows
+            if row.validated_at_utc is not None
+        ]
+    )
+    now_utc = datetime.now(timezone.utc)
+    integration_failure_window_start = now_utc.timestamp() - (24 * 3600)
+    repeated_integration_failures = (
+        db.query(IntegrationOperation.operation_id)
+        .filter(
+            IntegrationOperation.org_id == org_id,
+            IntegrationOperation.status == "failed",
+            IntegrationOperation.requested_at_utc
+            >= datetime.fromtimestamp(integration_failure_window_start, tz=timezone.utc),
+        )
+        .count()
+    )
 
     has_started_activity = any(
         [
@@ -272,8 +339,130 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         test_run_passed=test_run_passed,
         export_validation_passed=export_validation_passed,
         successful_export_validation_count=successful_export_validation_count,
+        total_export_validation_count=total_export_validation_count,
+        total_test_run_count=len(test_run_rows),
+        completed_test_run_count=completed_test_run_count,
+        integration_validation_pass_count=integration_validation_pass_count,
+        integration_validation_total_count=len(integration_validation_rows),
+        valid_driver_phone_count=valid_driver_phone_count,
+        total_driver_count=total_driver_count,
+        onboarding_started_at_utc=min(onboarding_activity_timestamps)
+        if onboarding_activity_timestamps
+        else None,
+        latest_activity_at_utc=max(onboarding_activity_timestamps)
+        if onboarding_activity_timestamps
+        else None,
+        repeated_integration_failures=repeated_integration_failures,
         has_started_activity=has_started_activity,
     )
+
+
+def _safe_ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def _build_onboarding_metrics(
+    *, signals: OnboardingSignals, status: str, common_blockers: list[str]
+) -> OnboardingMetricsSnapshot:
+    now_utc = datetime.now(timezone.utc)
+    started_at = signals.onboarding_started_at_utc
+    elapsed_hours = (
+        round((now_utc - started_at).total_seconds() / 3600, 2)
+        if started_at is not None
+        else None
+    )
+    pilot_or_better = status in {"pilot_ready", "launch_ready"}
+    launch_ready = status == "launch_ready"
+    return OnboardingMetricsSnapshot(
+        onboarding_started_at_utc=started_at,
+        latest_activity_at_utc=signals.latest_activity_at_utc,
+        time_to_pilot_ready_hours=elapsed_hours if pilot_or_better else None,
+        time_to_launch_ready_hours=elapsed_hours if launch_ready else None,
+        import_success_rate=_safe_ratio(
+            signals.successful_import_count,
+            signals.successful_import_count + signals.failed_import_count,
+        ),
+        driver_import_success_rate=_safe_ratio(
+            signals.successful_driver_import_count,
+            signals.successful_driver_import_count + signals.failed_driver_import_count,
+        ),
+        qr_coverage_rate=_safe_ratio(signals.qr_codes_distributed, signals.vehicles_total),
+        valid_driver_phone_ratio=_safe_ratio(
+            signals.valid_driver_phone_count, signals.total_driver_count
+        ),
+        integration_validation_pass_rate=_safe_ratio(
+            signals.integration_validation_pass_count,
+            signals.integration_validation_total_count,
+        ),
+        sample_incident_completion_rate=_safe_ratio(
+            signals.completed_test_run_count, signals.total_test_run_count
+        ),
+        export_validation_rate=_safe_ratio(
+            signals.successful_export_validation_count,
+            signals.total_export_validation_count,
+        ),
+        common_blockers=common_blockers,
+    )
+
+
+def _build_alert_conditions(
+    *, signals: OnboardingSignals, status: str, critical_blocker_count: int
+) -> list[OnboardingAlertCondition]:
+    now_utc = datetime.now(timezone.utc)
+    latest_activity = signals.latest_activity_at_utc
+    stalled_onboarding = bool(
+        signals.has_started_activity
+        and latest_activity is not None
+        and (now_utc - latest_activity).total_seconds() >= 7 * 24 * 3600
+    )
+    repeated_integration_failures = signals.repeated_integration_failures >= 3
+    unresolved_critical_blockers = critical_blocker_count > 0
+    low_qr_coverage = bool(
+        signals.vehicles_total > 0 and _safe_ratio(signals.qr_codes_distributed, signals.vehicles_total) < 0.8
+    )
+    no_test_incident_near_launch = bool(
+        status in {"pilot_ready", "launch_ready"}
+        and (signals.completed_test_run_count == 0 or not signals.test_run_passed)
+    )
+    return [
+        OnboardingAlertCondition(
+            code="stalled_onboarding",
+            title="Onboarding stalled",
+            severity="warning",
+            triggered=stalled_onboarding,
+            detail="No onboarding activity detected in the last 7 days after onboarding started.",
+        ),
+        OnboardingAlertCondition(
+            code="repeated_integration_failures",
+            title="Repeated integration failures",
+            severity="error",
+            triggered=repeated_integration_failures,
+            detail="Three or more integration operations have recently failed and require remediation.",
+        ),
+        OnboardingAlertCondition(
+            code="unresolved_critical_blockers",
+            title="Unresolved critical blockers",
+            severity="error",
+            triggered=unresolved_critical_blockers,
+            detail="Critical blockers are still open and are preventing launch readiness.",
+        ),
+        OnboardingAlertCondition(
+            code="low_pilot_qr_coverage",
+            title="Low pilot QR coverage",
+            severity="warning",
+            triggered=low_qr_coverage,
+            detail="Distributed QR coverage is below 80% of required active vehicles.",
+        ),
+        OnboardingAlertCondition(
+            code="no_successful_test_incident_near_launch",
+            title="No successful test incident near launch",
+            severity="error",
+            triggered=no_test_incident_near_launch,
+            detail="No completed test incident run is available while readiness is targeting launch.",
+        ),
+    ]
 
 
 def build_onboarding_readiness(
@@ -313,6 +502,9 @@ def build_onboarding_readiness(
             }
     percent_complete = completion_percent(steps)
     status = derive_readiness_status(steps=steps, percent_complete=percent_complete)
+    blocker_counts = Counter(item.code for item in classified)
+    common_blockers = [code for code, _ in blocker_counts.most_common(5)]
+    critical_blocker_count = sum(1 for item in classified if item.severity == "critical")
 
     import_jobs = [
         ImportJob(
@@ -391,6 +583,27 @@ def build_onboarding_readiness(
         integration_validations=integration_validations,
         vehicle_qr_deployment=qr_deployment,
         test_incident_run=test_incident_run,
+        metrics=_build_onboarding_metrics(
+            signals=signals, status=status, common_blockers=common_blockers
+        ),
+        alert_conditions=_build_alert_conditions(
+            signals=signals,
+            status=status,
+            critical_blocker_count=critical_blocker_count,
+        ),
+        reporting_hooks={
+            "internal_dashboard": {
+                "metrics_path": "/org/onboarding/status#metrics",
+                "alerts_path": "/org/onboarding/status#alert_conditions",
+                "snapshot_created_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+            "reporting": {
+                "org_id": str(org_id),
+                "status": status,
+                "percent_complete": percent_complete,
+                "common_blockers": common_blockers,
+            },
+        },
         snapshot_created_at_utc=datetime.now(timezone.utc),
     )
 

@@ -801,6 +801,29 @@ class ExportValidationRunResponse(BaseModel):
     details: dict[str, str] = Field(default_factory=dict)
 
 
+class OnboardingMetricsSnapshotResponse(BaseModel):
+    onboarding_started_at_utc: Optional[datetime] = None
+    latest_activity_at_utc: Optional[datetime] = None
+    time_to_pilot_ready_hours: Optional[float] = None
+    time_to_launch_ready_hours: Optional[float] = None
+    import_success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    driver_import_success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    qr_coverage_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    valid_driver_phone_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    integration_validation_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    sample_incident_completion_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    export_validation_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    common_blockers: list[ShortText] = Field(default_factory=list)
+
+
+class OnboardingAlertConditionResponse(BaseModel):
+    code: ShortText
+    title: ShortText
+    severity: ValidationSeverity = "warning"
+    triggered: bool = False
+    detail: str
+
+
 class TestIncidentRunCreateRequest(BaseModel):
     incident_id: Optional[uuid.UUID] = None
     findings: list[str] = Field(default_factory=list, max_length=100)
@@ -831,6 +854,9 @@ class OrgLaunchReadinessResponse(BaseModel):
     vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
     test_incident_run: Optional[TestIncidentRunResponse] = None
     latest_export_validation: Optional[ExportValidationRunResponse] = None
+    metrics: Optional[OnboardingMetricsSnapshotResponse] = None
+    alert_conditions: list[OnboardingAlertConditionResponse] = Field(default_factory=list)
+    reporting_hooks: dict[str, Any] = Field(default_factory=dict)
     snapshot_created_at_utc: Optional[datetime] = None
 
 

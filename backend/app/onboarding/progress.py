@@ -37,6 +37,16 @@ class OnboardingSignals:
     test_run_passed: bool = False
     export_validation_passed: bool = False
     successful_export_validation_count: int = 0
+    total_export_validation_count: int = 0
+    total_test_run_count: int = 0
+    completed_test_run_count: int = 0
+    integration_validation_pass_count: int = 0
+    integration_validation_total_count: int = 0
+    valid_driver_phone_count: int = 0
+    total_driver_count: int = 0
+    onboarding_started_at_utc: datetime | None = None
+    latest_activity_at_utc: datetime | None = None
+    repeated_integration_failures: int = 0
     has_started_activity: bool = False
 
 
