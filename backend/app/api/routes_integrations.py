@@ -139,8 +139,8 @@ from app.services.vault_fs import VaultFilesystem
 
 router = APIRouter()
 
-_integration_admin = require_user_role("system_admin", "org_admin")
-_org_user_admin = require_user_role("system_admin", "org_admin")
+_integration_admin = require_user_role("system_admin", "org_admin", "support_admin")
+_org_user_admin = require_user_role("system_admin", "org_admin", "support_admin")
 _PILOT_MIN_MAPPED_DRIVERS = 3
 _PILOT_MIN_MAPPED_VEHICLES = 3
 _ASSIGNMENT_CONFIDENCE_MEDIUM_THRESHOLD = 0.7
@@ -150,6 +150,12 @@ _PILOT_REQUIRED_DOMAINS = {"telematics", "messaging"}
 
 def _first_org_id(context) -> uuid.UUID:
     return context.org_ids[0]
+
+
+def _require_phase6_capability(current_user: User, capability: Capability, *, message: str) -> None:
+    if has_capability(current_user.role, capability):
+        return
+    raise HTTPException(status_code=403, detail=message)
 
 
 def _emit_org_audit(
@@ -734,6 +740,9 @@ def get_org_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.ORG_SETTINGS_READ, message="Insufficient permission to view org settings"
+    )
     context = build_user_auth_context(db, current_user)
     org = db.query(Org).filter(Org.id == _first_org_id(context)).first()
     if org is None:
@@ -755,6 +764,9 @@ def patch_org_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.ORG_SETTINGS_WRITE, message="Insufficient permission to manage org settings"
+    )
     context = build_user_auth_context(db, current_user)
     org = db.query(Org).filter(Org.id == _first_org_id(context)).first()
     if org is None:
@@ -800,6 +812,9 @@ def get_org_onboarding_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.READINESS_VIEW, message="Insufficient permission to view onboarding readiness"
+    )
     context = build_user_auth_context(db, current_user)
     readiness = get_org_onboarding_readiness(db, org_id=_first_org_id(context))
     return _to_readiness_response(readiness)
@@ -811,6 +826,9 @@ def create_org_test_run(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.TEST_RUNS_WRITE, message="Insufficient permission to manage sample tests"
+    )
     context = build_user_auth_context(db, current_user)
     run = create_test_incident_run(
         db,
@@ -837,6 +855,9 @@ def list_org_test_runs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.TEST_RUNS_READ, message="Insufficient permission to access sample tests"
+    )
     context = build_user_auth_context(db, current_user)
     rows = list_test_incident_runs(db, org_id=_first_org_id(context))
     return TestIncidentRunsResponse(runs=[_to_test_run_response_row(row) for row in rows])
@@ -848,6 +869,9 @@ def get_org_test_run(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.TEST_RUNS_READ, message="Insufficient permission to access sample tests"
+    )
     context = build_user_auth_context(db, current_user)
     row = get_test_incident_run_by_id(db, org_id=_first_org_id(context), run_id=run_id)
     if row is None:
@@ -865,6 +889,9 @@ def complete_org_test_run_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.TEST_RUNS_WRITE, message="Insufficient permission to manage sample tests"
+    )
     context = build_user_auth_context(db, current_user)
     try:
         run = complete_test_incident_run_step(
@@ -899,6 +926,9 @@ def run_org_onboarding_export_check(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.ONBOARDING_WRITE, message="Insufficient permission to run onboarding validations"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     org = db.query(Org).filter(Org.id == org_id).first()
@@ -1034,6 +1064,9 @@ def get_org_onboarding_protocol_setup_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.ONBOARDING_READ, message="Insufficient permission to access onboarding validations"
+    )
     context = build_user_auth_context(db, current_user)
     step = get_protocol_setup_step(db, org_id=_first_org_id(context))
     return ProtocolSetupStepResponse.model_validate(asdict(step))
@@ -1064,6 +1097,9 @@ def mark_org_onboarding_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.ONBOARDING_WRITE, message="Insufficient permission to manage onboarding validations"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     valid_steps = {item.key for item in STEP_DEFINITIONS}
@@ -1124,6 +1160,9 @@ def create_org_vehicle_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.IMPORTS_WRITE, message="Insufficient permission to manage imports"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     job = create_vehicle_import_job(db, org_id=org_id, provider=payload.provider)
@@ -1158,6 +1197,9 @@ def get_org_vehicle_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.IMPORTS_READ, message="Insufficient permission to access imports"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(VehicleImportJob)
@@ -1181,6 +1223,9 @@ def generate_vehicle_qr(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.VEHICLE_QR_WRITE, message="Insufficient permission to manage QR deployment"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
@@ -1241,6 +1286,9 @@ def bulk_generate_vehicle_qr(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.VEHICLE_QR_WRITE, message="Insufficient permission to manage QR deployment"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     generated: list[VehicleQrGenerateResponse] = []
@@ -1316,6 +1364,9 @@ def rotate_vehicle_qr(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.VEHICLE_QR_WRITE, message="Insufficient permission to manage QR deployment"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
@@ -1372,6 +1423,9 @@ def download_vehicle_qr_printable(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.VEHICLE_QR_READ, message="Insufficient permission to access QR deployment"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
@@ -1417,6 +1471,9 @@ def get_org_onboarding_qr_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.READINESS_VIEW, message="Insufficient permission to view onboarding readiness"
+    )
     context = build_user_auth_context(db, current_user)
     return _vehicle_qr_stats(db, org_id=_first_org_id(context))
 
@@ -1432,6 +1489,9 @@ def create_org_driver_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.IMPORTS_WRITE, message="Insufficient permission to manage imports"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     job = create_driver_import_job(db, org_id=org_id, provider=payload.provider)
@@ -1466,6 +1526,9 @@ def get_org_driver_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.IMPORTS_READ, message="Insufficient permission to access imports"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(DriverImportJob)
@@ -1485,6 +1548,9 @@ def list_org_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.USER_MANAGEMENT_READ, message="Insufficient permission to access user management"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     users = (
@@ -1535,6 +1601,9 @@ def invite_org_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(_org_user_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.USER_MANAGEMENT_WRITE, message="Insufficient permission to manage users"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     invite = OrgUserInvite(
@@ -1580,6 +1649,9 @@ def patch_org_user_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(_org_user_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.USER_MANAGEMENT_WRITE, message="Insufficient permission to manage users"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     row = (
@@ -1615,6 +1687,9 @@ def resend_org_user_invite(
     db: Session = Depends(get_db),
     current_user: User = Depends(_org_user_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.USER_MANAGEMENT_WRITE, message="Insufficient permission to manage users"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     row = (
@@ -1664,6 +1739,9 @@ def deactivate_org_user_invite(
     db: Session = Depends(get_db),
     current_user: User = Depends(_org_user_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.USER_MANAGEMENT_WRITE, message="Insufficient permission to manage users"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     row = (
@@ -1711,6 +1789,9 @@ def list_org_integrations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_READ, message="Insufficient permission to access integrations"
+    )
     context = build_user_auth_context(db, current_user)
     rows = (
         db.query(IntegrationConnection)
@@ -1744,6 +1825,9 @@ def upsert_org_integration(
     db: Session = Depends(get_db),
     current_user: User = Depends(_integration_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_WRITE, message="Insufficient permission to manage integrations"
+    )
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     row = (
@@ -1807,6 +1891,9 @@ def list_org_integration_validation_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.READINESS_VIEW, message="Insufficient permission to view onboarding readiness"
+    )
     context = build_user_auth_context(db, current_user)
     rows = (
         db.query(IntegrationValidationResult)
@@ -1901,6 +1988,9 @@ def get_org_integration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_READ, message="Insufficient permission to access integrations"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(IntegrationConnection)
@@ -1935,6 +2025,9 @@ def validate_org_integration(
     db: Session = Depends(get_db),
     current_user: User = Depends(_integration_admin),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_WRITE, message="Insufficient permission to manage integrations"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(IntegrationConnection)
@@ -2008,6 +2101,9 @@ def patch_org_integration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_WRITE, message="Insufficient permission to manage integrations"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(IntegrationConnection)
@@ -2066,6 +2162,9 @@ def disable_org_integration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_phase6_capability(
+        current_user, Capability.INTEGRATIONS_WRITE, message="Insufficient permission to manage integrations"
+    )
     context = build_user_auth_context(db, current_user)
     row = (
         db.query(IntegrationConnection)

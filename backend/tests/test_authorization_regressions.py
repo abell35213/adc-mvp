@@ -85,19 +85,19 @@ def test_export_download_checks_org_membership(client, db_session):
     assert audit.outcome == "failure"
 
 
-def test_admin_vehicle_list_requires_vehicle_qr_read_capability(client, db_session):
+def test_admin_vehicle_list_requires_admin_capability(client, db_session):
     org = Org(name="Admin Org")
-    manager = User(email="manager@ex.com", password_hash=hash_password("x"), role="safety_manager")
+    manager = User(email="manager@ex.com", password_hash=hash_password("x"), role="read_only")
     admin = User(email="admin@ex.com", password_hash=hash_password("x"), role="admin")
     db_session.add_all([org, manager, admin])
     db_session.commit()
     db_session.add_all([UserOrg(user_id=manager.id, org_id=org.id), UserOrg(user_id=admin.id, org_id=org.id)])
     db_session.commit()
 
-    denied = client.get("/admin/vehicles", headers=_user_headers(manager.id, manager.role))
+    readonly = client.get("/admin/vehicles", headers=_user_headers(manager.id, manager.role))
     allowed = client.get("/admin/vehicles", headers=_user_headers(admin.id, admin.role))
 
-    assert denied.status_code == 403
+    assert readonly.status_code == 403
     assert allowed.status_code == 200
 
 
@@ -118,3 +118,47 @@ def test_driver_status_requires_incident_ownership(client, db_session):
         headers=_driver_headers(other.driver_id),
     )
     assert denied.status_code == 404
+
+
+def test_phase6_org_settings_write_denied_for_read_only(client, db_session):
+    org = Org(name="Read Only Org")
+    user = User(email="readonly@ex.com", password_hash=hash_password("x"), role="read_only")
+    db_session.add_all([org, user])
+    db_session.commit()
+    db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+    db_session.commit()
+
+    denied = client.patch(
+        "/org/settings",
+        json={"display_name": "Updated"},
+        headers=_user_headers(user.id, user.role),
+    )
+
+    assert denied.status_code == 403
+
+
+def test_phase6_import_write_denied_for_read_only(client, db_session):
+    org = Org(name="Import Org")
+    user = User(email="readonly-import@ex.com", password_hash=hash_password("x"), role="read_only")
+    db_session.add_all([org, user])
+    db_session.commit()
+    db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+    db_session.commit()
+
+    denied = client.post(
+        "/org/vehicles/import",
+        json={
+            "provider": "csv_upload",
+            "csv_content": "unit_number,vin\\nUNIT-1,123",
+            "header_mapping": {"unit_number": "unit_number", "vin": "vin"},
+            "inactive_unit_numbers": [],
+        },
+        headers=_user_headers(user.id, user.role),
+    )
+    allowed_readiness = client.get(
+        "/org/onboarding/status",
+        headers=_user_headers(user.id, user.role),
+    )
+
+    assert denied.status_code == 403
+    assert allowed_readiness.status_code == 200

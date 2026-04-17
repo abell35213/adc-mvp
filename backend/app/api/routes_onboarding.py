@@ -38,7 +38,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 
 def _require_onboarding_access(user: User, *, write: bool = False) -> None:
-    capability = Capability.EXPORT_WRITE if write else Capability.EXPORT_READ
+    capability = Capability.ONBOARDING_WRITE if write else Capability.READINESS_VIEW
     if not has_capability(user.role, capability):
         raise_api_error(
             status_code=403,

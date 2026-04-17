@@ -1096,7 +1096,20 @@
               "driver_protocol:read",
               "driver_protocol:write",
               "vehicle_qr:read",
-              "vehicle_qr:write"
+              "vehicle_qr:write",
+              "org_settings:read",
+              "org_settings:write",
+              "user_management:read",
+              "user_management:write",
+              "imports:read",
+              "imports:write",
+              "integrations:read",
+              "integrations:write",
+              "onboarding:read",
+              "onboarding:write",
+              "test_runs:read",
+              "test_runs:write",
+              "readiness:view"
             ],
             "type": "string"
           },
@@ -1122,7 +1135,10 @@
           "enum": [
             "system_admin",
             "org_admin",
-            "safety_manager"
+            "safety_manager",
+            "read_only",
+            "support_admin",
+            "support_agent"
           ],
           "title": "Role",
           "type": "string"
@@ -1183,7 +1199,10 @@
           "enum": [
             "system_admin",
             "org_admin",
-            "safety_manager"
+            "safety_manager",
+            "read_only",
+            "support_admin",
+            "support_agent"
           ],
           "title": "Role",
           "type": "string"

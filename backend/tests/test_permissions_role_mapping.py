@@ -15,5 +15,19 @@ def test_read_only_capabilities_are_read_only():
     capabilities = get_user_capabilities("read_only")
     assert Capability.INCIDENT_READ in capabilities
     assert Capability.EXPORT_READ in capabilities
+    assert Capability.READINESS_VIEW in capabilities
+    assert Capability.USER_MANAGEMENT_READ in capabilities
     assert Capability.INCIDENT_WRITE not in capabilities
     assert Capability.EXPORT_WRITE not in capabilities
+    assert Capability.IMPORTS_WRITE not in capabilities
+
+
+def test_support_admin_includes_phase6_management_capabilities():
+    capabilities = get_user_capabilities("support_admin")
+    assert Capability.ORG_SETTINGS_WRITE in capabilities
+    assert Capability.USER_MANAGEMENT_WRITE in capabilities
+    assert Capability.IMPORTS_WRITE in capabilities
+    assert Capability.VEHICLE_QR_WRITE in capabilities
+    assert Capability.INTEGRATIONS_WRITE in capabilities
+    assert Capability.ONBOARDING_WRITE in capabilities
+    assert Capability.TEST_RUNS_WRITE in capabilities

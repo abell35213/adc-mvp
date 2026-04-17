@@ -38,7 +38,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 
 def _require_test_run_access(user: User, *, write: bool = False) -> None:
-    capability = Capability.INCIDENT_WRITE if write else Capability.INCIDENT_READ
+    capability = Capability.TEST_RUNS_WRITE if write else Capability.TEST_RUNS_READ
     if not has_capability(user.role, capability):
         raise_api_error(
             status_code=403,
