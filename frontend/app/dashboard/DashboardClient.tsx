@@ -206,6 +206,13 @@ export default function DashboardClient() {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Work active incidents, manage ownership, and clear blockers fast.
           </p>
+          <button
+            type="button"
+            onClick={() => router.push(resumeOnboardingHref)}
+            className="mt-3 rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            Resume onboarding wizard
+          </button>
         </header>
 
         {overviewError ? <p className="text-sm text-red-600">{overviewError}</p> : null}
