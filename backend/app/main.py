@@ -22,6 +22,7 @@ from app.api.routes.routes_notes import router as notes_router
 from app.api.routes.routes_driver_report import router as driver_report_router
 from app.api.routes.routes_tasks import router as tasks_router
 from app.api.routes.routes_demo import router as demo_router
+from app.api.routes.routes_entitlements import router as entitlements_router
 from app.api.routes_admin import router as admin_router
 from app.api.routes_twilio import router as twilio_router
 from app.health.routes import router as health_router
@@ -58,6 +59,7 @@ app.include_router(case_ops_router, tags=["case-ops"])
 app.include_router(notes_router, tags=["notes"])
 app.include_router(tasks_router, tags=["tasks"])
 app.include_router(demo_router)
+app.include_router(entitlements_router)
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
 app.include_router(onboarding_router)
@@ -75,4 +77,7 @@ async def validate_startup_configuration() -> None:
 
     validate_startup_config(settings)
     init_sentry(service="api")
-    logger.info("startup_complete", extra={"deploy_version": settings.RELEASE, "app_env": settings.APP_ENV})
+    logger.info(
+        "startup_complete",
+        extra={"deploy_version": settings.RELEASE, "app_env": settings.APP_ENV},
+    )
