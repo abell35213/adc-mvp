@@ -14,6 +14,7 @@ from app.commercial.demo import (
     reset_demo_tenant,
     seed_demo_tenant,
 )
+from app.commercial.enforcement import require_feature_enabled
 from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
@@ -58,12 +59,38 @@ def _require_demo_mutation_role(user: User) -> None:
         )
 
 
+def _enforce_demo_feature(
+    db: Session,
+    *,
+    org_id,
+    current_user: User,
+    feature_key: str,
+    action: str,
+) -> None:
+    require_feature_enabled(
+        db,
+        org_id=org_id,
+        actor_id=str(current_user.id),
+        actor_role=current_user.role,
+        feature_key=feature_key,
+        action=action,
+        allow_internal_override=True,
+    )
+
+
 @router.get("/scenarios", response_model=list[DemoScenarioSummary])
 def get_demo_scenarios(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     context = build_user_auth_context(db, current_user)
+    _enforce_demo_feature(
+        db,
+        org_id=context.org_ids[0],
+        current_user=current_user,
+        feature_key="demo.workspace",
+        action="demo.workspace.read",
+    )
     ensure_demo_org(db, org_id=context.org_ids[0])
     return list_scenarios(db, org_id=context.org_ids[0])
 
@@ -75,7 +102,16 @@ def post_demo_reset(
 ):
     _require_demo_mutation_role(current_user)
     context = build_user_auth_context(db, current_user)
-    deleted = reset_demo_tenant(db, org_id=context.org_ids[0], actor_id=str(current_user.id))
+    _enforce_demo_feature(
+        db,
+        org_id=context.org_ids[0],
+        current_user=current_user,
+        feature_key="demo.incident_seed",
+        action="demo.workspace.mutate",
+    )
+    deleted = reset_demo_tenant(
+        db, org_id=context.org_ids[0], actor_id=str(current_user.id)
+    )
     return DemoResetResponse(deleted=deleted)
 
 
@@ -87,6 +123,13 @@ def post_demo_seed(
 ):
     _require_demo_mutation_role(current_user)
     context = build_user_auth_context(db, current_user)
+    _enforce_demo_feature(
+        db,
+        org_id=context.org_ids[0],
+        current_user=current_user,
+        feature_key="demo.incident_seed",
+        action="demo.workspace.mutate",
+    )
     try:
         seeded = seed_demo_tenant(
             db,
@@ -95,7 +138,9 @@ def post_demo_seed(
             scenario_key=payload.scenario_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown scenario") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown scenario"
+        ) from exc
     return DemoSeedResponse(**seeded)
 
 
@@ -107,6 +152,13 @@ def post_demo_launch(
 ):
     _require_demo_mutation_role(current_user)
     context = build_user_auth_context(db, current_user)
+    _enforce_demo_feature(
+        db,
+        org_id=context.org_ids[0],
+        current_user=current_user,
+        feature_key="demo.incident_seed",
+        action="demo.workspace.mutate",
+    )
     try:
         seeded = launch_scenario(
             db,
@@ -115,5 +167,7 @@ def post_demo_launch(
             scenario_id=scenario_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown scenario") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown scenario"
+        ) from exc
     return DemoLaunchResponse(**seeded)
