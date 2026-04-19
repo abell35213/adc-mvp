@@ -1527,6 +1527,314 @@ class OrgExportValidationRun(Base):
     )
 
 
+class OrgPlanEntitlement(Base):
+    """Organization plan and entitlement state."""
+
+    __tablename__ = "org_plan_entitlements"
+
+    entitlement_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    plan_code = Column(Text, nullable=False, default="starter", server_default="starter")
+    billing_status = Column(
+        Text, nullable=False, default="active", server_default="active"
+    )
+    core_incident_protocol = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    entitlements_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    effective_from_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    effective_to_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_org_plan_entitlements_org_current", "org_id", "effective_to_utc"),
+    )
+
+
+class DemoScenario(Base):
+    """Curated demo scenarios, optionally seeded for an organization."""
+
+    __tablename__ = "demo_scenarios"
+
+    scenario_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    scenario_key = Column(Text, nullable=False)
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    seeded_by = Column(Text, nullable=True)
+    seed_batch_id = Column(Text, nullable=True)
+    seed_metadata_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_demo_scenarios_org_key", "org_id", "scenario_key", unique=True),
+        Index("ix_demo_scenarios_org_active", "org_id", "is_active"),
+    )
+
+
+class HelpCategory(Base):
+    """Knowledge base category metadata."""
+
+    __tablename__ = "help_categories"
+
+    category_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    slug = Column(Text, nullable=False)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    metadata_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    is_published = Column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
+    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_help_categories_org_slug", "org_id", "slug", unique=True),
+        Index("ix_help_categories_org_published", "org_id", "is_published", "sort_order"),
+    )
+
+
+class HelpArticle(Base):
+    """Help center article content and publication metadata."""
+
+    __tablename__ = "help_articles"
+
+    article_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    category_id = Column(
+        UUID(as_uuid=True), ForeignKey("help_categories.category_id"), nullable=True, index=True
+    )
+    slug = Column(Text, nullable=False)
+    title = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)
+    body_markdown = Column(Text, nullable=False)
+    metadata_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    is_published = Column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
+    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_help_articles_org_slug", "org_id", "slug", unique=True),
+        Index(
+            "ix_help_articles_org_published_category",
+            "org_id",
+            "is_published",
+            "category_id",
+            "published_at_utc",
+        ),
+    )
+
+
+class TrustSection(Base):
+    """Trust center section content and publication metadata."""
+
+    __tablename__ = "trust_sections"
+
+    section_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    slug = Column(Text, nullable=False)
+    title = Column(Text, nullable=False)
+    body_markdown = Column(Text, nullable=False)
+    metadata_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    sort_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    is_published = Column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
+    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_trust_sections_org_slug", "org_id", "slug", unique=True),
+        Index(
+            "ix_trust_sections_org_published_sort",
+            "org_id",
+            "is_published",
+            "sort_order",
+            "published_at_utc",
+        ),
+    )
+
+
+class DeploymentScopeSnapshot(Base):
+    """Point-in-time deployment scope snapshot for an organization."""
+
+    __tablename__ = "deployment_scope_snapshots"
+
+    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    scope_version = Column(Text, nullable=False)
+    scope_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    captured_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    captured_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_deployment_scope_snapshots_org_captured",
+            "org_id",
+            "captured_at_utc",
+        ),
+    )
+
+
+class HelpArticleView(Base):
+    """Per-view telemetry events for help article usage."""
+
+    __tablename__ = "help_article_views"
+
+    view_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    article_id = Column(
+        UUID(as_uuid=True), ForeignKey("help_articles.article_id"), nullable=False, index=True
+    )
+    viewer_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    source = Column(Text, nullable=True)
+    metadata_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    viewed_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_help_article_views_org_article_viewed",
+            "org_id",
+            "article_id",
+            "viewed_at_utc",
+        ),
+    )
+
+
+class ExpansionReadinessSnapshot(Base):
+    """Optional cached expansion readiness summary per org and scope."""
+
+    __tablename__ = "expansion_readiness_snapshots"
+
+    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+    )
+    scope_key = Column(Text, nullable=False)
+    readiness_score = Column(Integer, nullable=True)
+    status = Column(Text, nullable=False, default="unknown", server_default="unknown")
+    summary_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    computed_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_expansion_readiness_snapshots_org_scope",
+            "org_id",
+            "scope_key",
+            unique=True,
+        ),
+        Index(
+            "ix_expansion_readiness_snapshots_org_computed",
+            "org_id",
+            "computed_at_utc",
+        ),
+    )
+
+
 # ── Driver protocol models ────────────────────────────────────────────
 
 
