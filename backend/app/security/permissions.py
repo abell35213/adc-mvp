@@ -174,3 +174,14 @@ def has_capability(raw_role: str | None, capability: Capability | str) -> bool:
         capability if isinstance(capability, Capability) else Capability(capability)
     )
     return resolved in get_user_capabilities(raw_role)
+
+
+DEMO_MUTATION_ALLOWED_ROLES: frozenset[Role] = frozenset({
+    Role.SYSTEM_ADMIN,
+    Role.SUPPORT_ADMIN,
+})
+
+
+def can_mutate_demo_tenant(raw_role: str | None) -> bool:
+    """Return whether the provided role can mutate demo tenant state."""
+    return normalize_role(raw_role) in DEMO_MUTATION_ALLOWED_ROLES
