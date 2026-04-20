@@ -24,6 +24,7 @@ from app.api.routes.routes_tasks import router as tasks_router
 from app.api.routes.routes_demo import router as demo_router
 from app.api.routes.routes_entitlements import router as entitlements_router
 from app.api.routes.routes_help import router as help_router
+from app.api.routes.routes_reporting import router as reporting_router
 from app.api.routes.routes_trust import router as trust_router
 from app.api.routes.routes_deployment import router as deployment_router
 from app.api.routes_admin import router as admin_router
@@ -63,6 +64,7 @@ app.include_router(notes_router, tags=["notes"])
 app.include_router(tasks_router, tags=["tasks"])
 app.include_router(demo_router)
 app.include_router(entitlements_router)
+app.include_router(reporting_router)
 app.include_router(help_router)
 app.include_router(trust_router)
 app.include_router(deployment_router)
