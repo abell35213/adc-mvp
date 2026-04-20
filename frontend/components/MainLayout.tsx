@@ -130,6 +130,12 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
           activePrefixes: ["/admin/vehicles"],
           hidden: !canManageQr,
         },
+        {
+          href: "/admin/plan-features",
+          label: "Plan & Features",
+          activePrefixes: ["/admin/plan-features"],
+          hidden: !hasRoleCapability(user.role, "user_management:write"),
+        },
       ],
     },
   ];
