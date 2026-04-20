@@ -486,6 +486,48 @@ class CaseOpsAlertsResponse(BaseModel):
     export_aging: int = 0
 
 
+class ReportAdoptionResponse(BaseModel):
+    total_incidents: int = 0
+    reviewed_incidents: int = 0
+    assigned_incidents: int = 0
+    ready_for_export_incidents: int = 0
+    exported_incidents: int = 0
+    review_rate_percent: float = 0.0
+    assignment_rate_percent: float = 0.0
+    export_readiness_rate_percent: float = 0.0
+    export_completion_rate_percent: float = 0.0
+    adoption_score_percent: float = 0.0
+
+
+class ReportIncidentOperationsResponse(BaseModel):
+    open_incidents: int = 0
+    unassigned_incidents: int = 0
+    blocked_incidents: int = 0
+    export_aging_incidents: int = 0
+    stalled_incidents: int = 0
+    overdue_tasks: int = 0
+    case_status_counts: dict[str, int] = Field(default_factory=dict)
+    avg_time_to_first_review_hours: float = 0.0
+    incidents_reviewed: int = 0
+
+
+class ReportExportTurnaroundResponse(BaseModel):
+    total_exports: int = 0
+    completed_exports: int = 0
+    failed_exports: int = 0
+    in_flight_exports: int = 0
+    avg_turnaround_hours: float = 0.0
+    p95_turnaround_hours: float = 0.0
+    within_24h_rate_percent: float = 0.0
+
+
+class ReportEvidenceCompletenessResponse(BaseModel):
+    total_incidents: int = 0
+    avg_completeness_percent: float = 0.0
+    readiness_breakdown: dict[str, int] = Field(default_factory=dict)
+    artifact_status_counts: dict[str, int] = Field(default_factory=dict)
+
+
 class CaseTaskWidgetItem(BaseModel):
     task_id: uuid.UUID
     incident_id: uuid.UUID
