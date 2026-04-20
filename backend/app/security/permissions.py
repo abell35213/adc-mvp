@@ -40,6 +40,12 @@ class Capability(str, Enum):
     TEST_RUNS_READ = "test_runs:read"
     TEST_RUNS_WRITE = "test_runs:write"
     READINESS_VIEW = "readiness:view"
+    DEMO_MANAGE = "demo:manage"
+    ENTITLEMENTS_MANAGE = "entitlements:manage"
+    TRUST_DOCS_PUBLISH = "trust_docs:publish"
+    DEPLOYMENT_SCOPE_MANAGE = "deployment_scope:manage"
+    REPORTING_BASIC_READ = "reporting:basic_read"
+    REPORTING_PREMIUM_READ = "reporting:premium_read"
 
 
 CANONICAL_ROLES: tuple[str, ...] = tuple(role.value for role in Role)
@@ -68,14 +74,49 @@ _ROLE_ALIASES: dict[str, Role] = {
     "readonly": Role.READ_ONLY,
     "support_admin": Role.SUPPORT_ADMIN,
     "support admin": Role.SUPPORT_ADMIN,
+    "support-admin": Role.SUPPORT_ADMIN,
+    "supportadministrator": Role.SUPPORT_ADMIN,
     "support-agent": Role.SUPPORT_AGENT,
     "support_agent": Role.SUPPORT_AGENT,
     "support agent": Role.SUPPORT_AGENT,
+    "supportagent": Role.SUPPORT_AGENT,
+    "support": Role.SUPPORT_AGENT,
 }
 
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
     Role.SYSTEM_ADMIN: frozenset(Capability),
-    Role.ORG_ADMIN: frozenset(Capability),
+    Role.ORG_ADMIN: frozenset(
+        {
+            Capability.INCIDENT_READ,
+            Capability.INCIDENT_WRITE,
+            Capability.INCIDENT_CLOSE,
+            Capability.INCIDENT_REOPEN,
+            Capability.INCIDENT_ESCALATE,
+            Capability.EXPORT_READ,
+            Capability.EXPORT_WRITE,
+            Capability.DRIVER_PROTOCOL_READ,
+            Capability.DRIVER_PROTOCOL_WRITE,
+            Capability.VEHICLE_QR_READ,
+            Capability.VEHICLE_QR_WRITE,
+            Capability.ORG_SETTINGS_READ,
+            Capability.ORG_SETTINGS_WRITE,
+            Capability.USER_MANAGEMENT_READ,
+            Capability.USER_MANAGEMENT_WRITE,
+            Capability.IMPORTS_READ,
+            Capability.IMPORTS_WRITE,
+            Capability.INTEGRATIONS_READ,
+            Capability.INTEGRATIONS_WRITE,
+            Capability.ONBOARDING_READ,
+            Capability.ONBOARDING_WRITE,
+            Capability.TEST_RUNS_READ,
+            Capability.TEST_RUNS_WRITE,
+            Capability.READINESS_VIEW,
+            Capability.ENTITLEMENTS_MANAGE,
+            Capability.DEPLOYMENT_SCOPE_MANAGE,
+            Capability.REPORTING_BASIC_READ,
+            Capability.REPORTING_PREMIUM_READ,
+        }
+    ),
     Role.SAFETY_MANAGER: frozenset(
         {
             Capability.INCIDENT_READ,
@@ -94,6 +135,9 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.TEST_RUNS_READ,
             Capability.TEST_RUNS_WRITE,
             Capability.READINESS_VIEW,
+            Capability.DEPLOYMENT_SCOPE_MANAGE,
+            Capability.REPORTING_BASIC_READ,
+            Capability.REPORTING_PREMIUM_READ,
         }
     ),
     Role.CLAIMS_USER: frozenset(
@@ -103,6 +147,8 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.EXPORT_READ,
             Capability.EXPORT_WRITE,
             Capability.READINESS_VIEW,
+            Capability.REPORTING_BASIC_READ,
+            Capability.REPORTING_PREMIUM_READ,
         }
     ),
     Role.READ_ONLY: frozenset(
@@ -117,6 +163,7 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.ORG_SETTINGS_READ,
             Capability.USER_MANAGEMENT_READ,
             Capability.READINESS_VIEW,
+            Capability.REPORTING_BASIC_READ,
         }
     ),
     Role.SUPPORT_ADMIN: frozenset(
@@ -139,6 +186,12 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.TEST_RUNS_READ,
             Capability.TEST_RUNS_WRITE,
             Capability.READINESS_VIEW,
+            Capability.DEMO_MANAGE,
+            Capability.ENTITLEMENTS_MANAGE,
+            Capability.TRUST_DOCS_PUBLISH,
+            Capability.DEPLOYMENT_SCOPE_MANAGE,
+            Capability.REPORTING_BASIC_READ,
+            Capability.REPORTING_PREMIUM_READ,
         }
     ),
     Role.SUPPORT_AGENT: frozenset(
@@ -153,6 +206,9 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.ONBOARDING_READ,
             Capability.TEST_RUNS_READ,
             Capability.READINESS_VIEW,
+            Capability.ENTITLEMENTS_MANAGE,
+            Capability.TRUST_DOCS_PUBLISH,
+            Capability.REPORTING_BASIC_READ,
         }
     ),
 }
@@ -176,12 +232,6 @@ def has_capability(raw_role: str | None, capability: Capability | str) -> bool:
     return resolved in get_user_capabilities(raw_role)
 
 
-DEMO_MUTATION_ALLOWED_ROLES: frozenset[Role] = frozenset({
-    Role.SYSTEM_ADMIN,
-    Role.SUPPORT_ADMIN,
-})
-
-
 def can_mutate_demo_tenant(raw_role: str | None) -> bool:
     """Return whether the provided role can mutate demo tenant state."""
-    return normalize_role(raw_role) in DEMO_MUTATION_ALLOWED_ROLES
+    return has_capability(raw_role, Capability.DEMO_MANAGE)

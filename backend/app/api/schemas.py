@@ -87,6 +87,12 @@ CapabilityName = Literal[
     "test_runs:read",
     "test_runs:write",
     "readiness:view",
+    "demo:manage",
+    "entitlements:manage",
+    "trust_docs:publish",
+    "deployment_scope:manage",
+    "reporting:basic_read",
+    "reporting:premium_read",
 ]
 assert {
     "system_admin",
@@ -121,6 +127,12 @@ assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "test_runs:read",
     "test_runs:write",
     "readiness:view",
+    "demo:manage",
+    "entitlements:manage",
+    "trust_docs:publish",
+    "deployment_scope:manage",
+    "reporting:basic_read",
+    "reporting:premium_read",
 }
 InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]

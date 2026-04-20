@@ -19,15 +19,13 @@ from app.commercial.trust import (
     unpublish_trust_section,
     upsert_trust_section,
 )
-from app.core.deps import get_current_user, require_user_role
+from app.core.deps import get_current_user
 from app.db.models import TrustSection, User
 from app.db.session import get_db
 from app.security.authn import build_user_auth_context
+from app.security.permissions import Capability, has_capability
 
 router = APIRouter(prefix="/trust", tags=["trust"])
-
-_internal_trust_admin = require_user_role("system_admin", "support_admin")
-
 
 class TrustSectionItem(BaseModel):
     section_id: str
@@ -84,6 +82,14 @@ def _serialize_section(section: TrustSection) -> TrustSectionItem:
     )
 
 
+def _require_internal_publish_capability(current_user: User) -> None:
+    if not has_capability(current_user.role, Capability.TRUST_DOCS_PUBLISH):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+
 @router.get("/sections", response_model=list[TrustSectionItem])
 def get_sections(
     publication_state: Literal["published", "draft", "all"] = Query(default=PUBLICATION_STATE_PUBLISHED),
@@ -118,8 +124,9 @@ def get_summary(
 def put_internal_section(
     payload: TrustSectionUpsertRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_internal_trust_admin),
+    current_user: User = Depends(get_current_user),
 ):
+    _require_internal_publish_capability(current_user)
     org_id = _resolve_org_id(db, current_user)
     row = upsert_trust_section(
         db,
@@ -140,8 +147,9 @@ def put_internal_section(
 def post_publish_section(
     section_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_internal_trust_admin),
+    current_user: User = Depends(get_current_user),
 ):
+    _require_internal_publish_capability(current_user)
     org_id = _resolve_org_id(db, current_user)
     try:
         row = publish_trust_section(
@@ -160,8 +168,9 @@ def post_publish_section(
 def post_unpublish_section(
     section_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_internal_trust_admin),
+    current_user: User = Depends(get_current_user),
 ):
+    _require_internal_publish_capability(current_user)
     org_id = _resolve_org_id(db, current_user)
     try:
         row = unpublish_trust_section(

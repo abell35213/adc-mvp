@@ -15,7 +15,7 @@ from app.commercial.enforcement import (
     is_internal_override_actor,
     resolve_org_access_snapshot,
 )
-from app.core.deps import get_current_user, require_user_role
+from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.repo.org_content import (
     get_org_plan_entitlement,
@@ -23,16 +23,9 @@ from app.db.repo.org_content import (
 )
 from app.db.session import get_db
 from app.security.authn import build_user_auth_context
+from app.security.permissions import Capability, has_capability
 
 router = APIRouter(prefix="/org", tags=["org-entitlements"])
-
-_org_entitlement_mutator = require_user_role(
-    "system_admin",
-    "org_admin",
-    "support_admin",
-    "support_agent",
-)
-
 
 class OrgPlanResponse(BaseModel):
     org_id: uuid.UUID
@@ -152,8 +145,13 @@ def get_org_entitlements(
 def patch_org_entitlements(
     payload: OrgEntitlementPatchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_org_entitlement_mutator),
+    current_user: User = Depends(get_current_user),
 ):
+    if not has_capability(current_user.role, Capability.ENTITLEMENTS_MANAGE):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
     org_id, _ = _resolve_org_context(db, current_user)
     existing = get_org_plan_entitlement(db, org_id)
     if existing is None:

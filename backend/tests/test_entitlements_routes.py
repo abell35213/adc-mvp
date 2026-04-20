@@ -70,6 +70,13 @@ def support_admin_user(db_session, test_org):
 
 
 @pytest.fixture()
+def support_agent_user(db_session, test_org):
+    return _create_user(
+        db_session, test_org, role="support_agent", email="support-agent@example.com"
+    )
+
+
+@pytest.fixture()
 def client(db_session):
     def _override():
         try:
@@ -184,3 +191,12 @@ def test_patch_entitlements_internal_override_writes_audit_metadata(
     metadata = feature_event.metadata_json or {}
     assert metadata["internal_override"]["applied"] is True
     assert metadata["internal_override"]["actor_role"] == "support_admin"
+
+
+def test_patch_entitlements_allows_support_agent_capability(client, support_agent_user):
+    resp = client.patch(
+        "/org/entitlements",
+        headers=_auth_headers(support_agent_user),
+        json={"entitlements": {"reporting.dashboard": True}},
+    )
+    assert resp.status_code == 200

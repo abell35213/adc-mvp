@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.emitter import emit_audit_event
 from app.db.models import TrustSection
+from app.security.permissions import Capability, has_capability
 
 DeploymentScope = Literal[
     "single_site",
@@ -45,9 +46,6 @@ _VALID_PUBLICATION_STATES = {
     PUBLICATION_STATE_ALL,
 }
 
-_INTERNAL_TRUST_ROLES = {"system_admin", "support_admin"}
-
-
 def _normalize_publication_state(publication_state: str) -> str:
     normalized = (publication_state or PUBLICATION_STATE_PUBLISHED).strip().lower()
     if normalized not in _VALID_PUBLICATION_STATES:
@@ -56,7 +54,7 @@ def _normalize_publication_state(publication_state: str) -> str:
 
 
 def _is_internal_trust_actor(role: str | None) -> bool:
-    return (role or "").strip().lower() in _INTERNAL_TRUST_ROLES
+    return has_capability(role, Capability.TRUST_DOCS_PUBLISH)
 
 
 def _matches_audience(metadata: dict | None, audience: str | None) -> bool:
