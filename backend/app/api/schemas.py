@@ -855,7 +855,9 @@ class OrgLaunchReadinessResponse(BaseModel):
     test_incident_run: Optional[TestIncidentRunResponse] = None
     latest_export_validation: Optional[ExportValidationRunResponse] = None
     metrics: Optional[OnboardingMetricsSnapshotResponse] = None
-    alert_conditions: list[OnboardingAlertConditionResponse] = Field(default_factory=list)
+    alert_conditions: list[OnboardingAlertConditionResponse] = Field(
+        default_factory=list
+    )
     reporting_hooks: dict[str, Any] = Field(default_factory=dict)
     snapshot_created_at_utc: Optional[datetime] = None
 
@@ -874,6 +876,54 @@ class ProtocolSetupStepResponse(BaseModel):
     required_media_prompts_defaulted: bool = False
     export_profile_defaulted: bool = False
     export_profiles_available: list[ShortText] = Field(default_factory=list)
+
+
+DeploymentScopeKey = Literal["pilot", "partial_rollout", "full_rollout"]
+ExpansionReadinessState = Literal[
+    "not_started", "planning", "pilot_ready", "scale_ready", "blocked"
+]
+
+
+class DeploymentScopeRequest(BaseModel):
+    scope: DeploymentScopeKey
+    targets: dict[str, int] = Field(default_factory=dict)
+    readiness_override: Optional[ExpansionReadinessState] = None
+    source: ShortText = "manual"
+
+
+class DeploymentScopeResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    scope_version: ShortText = "v1"
+    targets: dict[str, int] = Field(default_factory=dict)
+    readiness_override: Optional[ExpansionReadinessState] = None
+    source: ShortText = "manual"
+    captured_at_utc: Optional[datetime] = None
+
+
+class DeploymentCoverageResponse(BaseModel):
+    key: ShortText
+    label: ShortText
+    covered: int = Field(default=0, ge=0)
+    total: int = Field(default=0, ge=0)
+    percent: int = Field(default=0, ge=0, le=100)
+
+
+class DeploymentProgressResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    percent_complete: int = Field(default=0, ge=0, le=100)
+    coverage: list[DeploymentCoverageResponse] = Field(default_factory=list)
+    blockers: list[ShortText] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+
+
+class ExpansionReadinessResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    status: ExpansionReadinessState = "not_started"
+    readiness_score: int = Field(default=0, ge=0, le=100)
+    blockers: list[ShortText] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+    coverage: list[DeploymentCoverageResponse] = Field(default_factory=list)
+    override_applied: bool = False
 
 
 class OrgMappingsSummaryCounts(BaseModel):
