@@ -9,6 +9,8 @@ import {
   type OrgLaunchReadiness,
   type OnboardingStepStatus,
 } from "@/lib/api";
+import DemoTenantBanner from "@/components/commercial/DemoTenantBanner";
+import RelatedDocsPanel from "@/components/commercial/RelatedDocsPanel";
 import { ONBOARDING_WIZARD_STORAGE_KEY } from "@/lib/onboarding";
 
 type WizardStep = {
@@ -176,6 +178,7 @@ export default function OnboardingWizardClient() {
   return (
     <MainLayout title="Onboarding Wizard">
       <div className="space-y-4">
+        <DemoTenantBanner tenantName="Org onboarding workspace" mode="Pilot" />
         <header className="space-y-2">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Launch onboarding wizard</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -287,6 +290,26 @@ export default function OnboardingWizardClient() {
             </div>
           </section>
         </div>
+
+        <RelatedDocsPanel
+          docs={[
+            {
+              title: "Integration setup",
+              href: "/onboarding/integration-setup",
+              description: "Resolve connectivity and validation failures for data sources.",
+            },
+            {
+              title: "QR deployment",
+              href: "/onboarding/qr-deployment",
+              description: "Track distribution coverage and assignment gaps by vehicle.",
+            },
+            {
+              title: "Sample incident validation",
+              href: "/onboarding/sample-incident-validation",
+              description: "Run a dry-run workflow before launch readiness sign-off.",
+            },
+          ]}
+        />
       </div>
     </MainLayout>
   );
