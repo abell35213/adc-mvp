@@ -496,6 +496,58 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    def test_driver_initiate_retry_reenqueues_missing_tasks_after_partial_failure(
+        self,
+        mock_dash,
+        mock_tele,
+        mock_notify_manager,
+        client,
+        db_session,
+        test_driver,
+        driver_headers,
+        test_assignment,
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock(side_effect=[RuntimeError("broker outage"), None])
+        mock_notify_manager.delay = MagicMock()
+
+        first = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers={**driver_headers, "Idempotency-Key": "idem-002"},
+        )
+        assert first.status_code == 500
+
+        second = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers={**driver_headers, "Idempotency-Key": "idem-002"},
+        )
+        assert second.status_code == 200
+        assert second.json()["capture_started"] is True
+
+        incident_id = second.json()["incident_id"]
+        protocol_event = (
+            db_session.query(Event)
+            .filter(
+                Event.incident_id == incident_id,
+                Event.event_type == "incident_protocol_initiated",
+            )
+            .one()
+        )
+        assert protocol_event.payload["enqueued_tasks"] == [
+            "dashcam",
+            "telematics",
+            "safety_manager",
+        ]
+
+        mock_dash.delay.assert_called_once()
+        assert mock_tele.delay.call_count == 2
+        mock_notify_manager.delay.assert_called_once()
+
+    @patch("app.api.routes_driver.notify_safety_manager")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
     def test_driver_initiate_reuses_existing_active_incident_for_driver(
         self,
         mock_dash,

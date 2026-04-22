@@ -402,6 +402,78 @@ def _evidence_capture_state(events: list, incident_status: str) -> str:
     return "pending"
 
 
+_INCIDENT_INITIATION_TASKS = (
+    ("dashcam", capture_dashcam),
+    ("telematics", capture_telematics_bundle),
+    ("safety_manager", notify_safety_manager),
+)
+
+
+def _get_protocol_event(
+    db: Session,
+    *,
+    incident_id: uuid.UUID,
+    driver_id: uuid.UUID,
+) -> Event | None:
+    """Return the driver's incident protocol event if present."""
+    return (
+        db.query(Event)
+        .filter(
+            Event.incident_id == incident_id,
+            Event.event_type == SystemEventType.INCIDENT_PROTOCOL_INITIATED.value,
+            Event.actor_type == "driver_app",
+            Event.actor_id == str(driver_id),
+        )
+        .order_by(Event.created_at_utc.asc())
+        .first()
+    )
+
+
+def _enqueue_initiation_tasks(
+    db: Session,
+    *,
+    incident_id: uuid.UUID,
+    driver_id: uuid.UUID,
+    window_start: str | None,
+    window_end: str | None,
+) -> bool:
+    """Enqueue incident initiation tasks and persist per-task enqueue progress.
+
+    Returns True when at least one task was newly enqueued in this request.
+    """
+    protocol_event = _get_protocol_event(
+        db,
+        incident_id=incident_id,
+        driver_id=driver_id,
+    )
+    payload = protocol_event.payload if protocol_event and isinstance(protocol_event.payload, dict) else {}
+    enqueued_tasks = payload.setdefault("enqueued_tasks", [])
+
+    if not isinstance(enqueued_tasks, list):
+        enqueued_tasks = []
+        payload["enqueued_tasks"] = enqueued_tasks
+
+    incident_id_str = str(incident_id)
+    enqueued_any = False
+    for task_key, task_func in _INCIDENT_INITIATION_TASKS:
+        if task_key in enqueued_tasks:
+            continue
+
+        if task_key in {"dashcam", "telematics"}:
+            task_func.delay(incident_id_str, window_start, window_end)
+        else:
+            task_func.delay(incident_id_str)
+
+        enqueued_tasks.append(task_key)
+        enqueued_any = True
+        if protocol_event is not None:
+            protocol_event.payload = payload
+            db.add(protocol_event)
+            db.commit()
+
+    return enqueued_any
+
+
 @router.post("/incidents/initiate", response_model=DriverIncidentInitiateResponse)
 def initiate_incident(
     body: DriverIncidentInitiateRequest,
@@ -423,16 +495,18 @@ def initiate_incident(
         idempotency_key=idempotency_key,
     )
 
-    if not initiation.protocol_already_started:
-        str_id = str(initiation.incident.incident_id)
-        capture_dashcam.delay(str_id, body.window_start, body.window_end)
-        capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
-        notify_safety_manager.delay(str_id)
+    capture_started = _enqueue_initiation_tasks(
+        db,
+        incident_id=initiation.incident.incident_id,
+        driver_id=driver.driver_id,
+        window_start=body.window_start,
+        window_end=body.window_end,
+    )
 
     return DriverIncidentInitiateResponse(
         incident_id=initiation.incident.incident_id,
         safety_notified=True,
-        capture_started=not initiation.protocol_already_started,
+        capture_started=capture_started,
     )
 
 
