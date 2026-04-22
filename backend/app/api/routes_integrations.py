@@ -66,6 +66,7 @@ router = APIRouter()
 
 _integration_admin = require_user_role("system_admin", "org_admin")
 _org_user_admin = require_user_role("system_admin", "org_admin")
+_org_user_role_editor = require_user_role("system_admin")
 
 
 def _first_org_id(context) -> uuid.UUID:
@@ -310,7 +311,7 @@ def patch_org_user_role(
     user_id: uuid.UUID,
     payload: OrgPatchUserRoleRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_org_user_admin),
+    current_user: User = Depends(_org_user_role_editor),
 ):
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
