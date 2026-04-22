@@ -301,6 +301,17 @@ def capture_dashcam(
                 )
                 art_id = _deterministic_uuid(artifact_key)
                 if _artifact_exists(db, art_id):
+                    set_evidence_request_status(
+                        db,
+                        evidence_request=evidence_request,
+                        status="fulfilled",
+                        response_payload_json={
+                            "artifact_id": str(art_id),
+                            "artifact_type": artifact_type,
+                            "status": "already_captured",
+                        },
+                    )
+                    captured_stream_count += 1
                     continue
                 s3_key = s3_key_builder.dashcam_key(
                     org_id=org_id,

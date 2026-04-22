@@ -421,6 +421,56 @@ class TestCaptureDashcam:
         assert first["status"] == "captured"
         assert second["status"] == "skipped_duplicate"
 
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_existing_artifact_counts_as_captured_for_final_status(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
+        """A retry should stay downloaded when a clip artifact already exists."""
+        mock_get_db.return_value = db_session
+
+        samsara_inst = MagicMock()
+        samsara_inst.fetch_dashcam_stream.return_value = b"video-bytes"
+        MockSamsara.return_value = samsara_inst
+        MockS3.return_value = MagicMock()
+
+        from app.tasks.evidence_tasks import capture_dashcam
+        from app.tasks.evidence_tasks import _deterministic_uuid, _idempotency_key
+        from app.db.repo.artifacts import create_artifact
+
+        workflow_key = f"dashcam:{incident.incident_id}:2024-01-01T00:00:00Z:2024-01-01T01:00:00Z"
+        artifact_type = "dash_cam_video_road"
+        art_id = _deterministic_uuid(
+            _idempotency_key(workflow_key, "road_facing", artifact_type, "video")
+        )
+
+        create_artifact(
+            db_session,
+            incident_id=incident.incident_id,
+            artifact_type=artifact_type,
+            status="captured",
+            artifact_id=art_id,
+        )
+
+        result = capture_dashcam(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+
+        assert result["status"] == "captured"
+        assert result["captured_streams"] == 2
+
+        operation = (
+            db_session.query(IntegrationOperation)
+            .filter(IntegrationOperation.incident_id == incident.incident_id)
+            .order_by(IntegrationOperation.requested_at_utc.desc())
+            .first()
+        )
+        assert operation is not None
+        assert operation.status == "downloaded"
+
 
 # ── capture_telematics_bundle ───────────────────────────────────────
 
