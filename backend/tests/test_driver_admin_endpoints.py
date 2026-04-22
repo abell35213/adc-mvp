@@ -657,6 +657,35 @@ class TestDriverTimelineEvents:
         assert event.occurred_at_utc is not None
         assert event.payload["source"] == "driver-app"
 
+    def test_timeline_event_write_rejects_other_driver_incident(
+        self, client, db_session, test_org, test_driver, driver_headers
+    ):
+        other_driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15557654321",
+            display_name="Other Driver",
+        )
+        db_session.add(other_driver)
+        db_session.commit()
+        db_session.refresh(other_driver)
+
+        incident = Incident(
+            org_id=test_org.id,
+            adc_vehicle_id="veh-789",
+            adc_driver_id=str(other_driver.driver_id),
+            status="evidence_capturing",
+        )
+        db_session.add(incident)
+        db_session.commit()
+
+        resp = client.post(
+            f"/driver/incidents/{incident.incident_id}/timeline-events",
+            json={"event_name": "driver_safety_gate_viewed"},
+            headers=driver_headers,
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Incident not assigned to driver"
+
 
 class TestDriverActiveIncidentAndStatus:
     def test_get_active_incident_returns_latest_for_driver(

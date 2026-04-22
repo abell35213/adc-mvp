@@ -548,6 +548,8 @@ def write_driver_timeline_event(
     incident = get_incident(db, incident_id, org_ids=[driver.org_id])
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
+    if incident.adc_driver_id != str(driver.driver_id):
+        raise HTTPException(status_code=403, detail="Incident not assigned to driver")
 
     event_kwargs = {
         "org_id": incident.org_id,
