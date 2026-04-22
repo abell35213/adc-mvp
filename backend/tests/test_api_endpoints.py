@@ -339,6 +339,19 @@ class TestIntegrationDiagnosticsRoutes:
         assert summary_resp.status_code == 200
         assert summary_resp.json()["retryable_failures"] == 1
 
+    @patch("app.api.routes_integrations.process_twilio_status_callback")
+    def test_provider_twilio_status_webhook_preserves_forbidden_status(
+        self, mock_process_status_callback, client
+    ):
+        mock_process_status_callback.return_value = MagicMock(
+            status_code=403, body={"detail": "Invalid Twilio signature"}
+        )
+
+        response = client.post("/provider-webhooks/twilio/status", data={"MessageSid": "SM123"})
+
+        assert response.status_code == 403
+        assert response.text == "Invalid Twilio signature"
+
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(
         self, mock_begin_capture, client, auth_headers

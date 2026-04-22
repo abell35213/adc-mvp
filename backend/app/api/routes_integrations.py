@@ -405,4 +405,6 @@ async def provider_twilio_status_webhook(request: Request, db: Session = Depends
         signature_valid=signature_valid,
         signature_error=signature_error,
     )
+    if result.status_code == 403:
+        return Response(status_code=403, content=result.body.get("detail", "Invalid Twilio signature"))
     return result.body
