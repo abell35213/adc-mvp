@@ -62,7 +62,7 @@ export default function IncidentStatusScreen({ navigation }: Props) {
     if (!incidentStatus.safety_notified) {
       items.push('Notify safety manager.');
     }
-    if (incidentStatus.capture_state !== 'completed') {
+    if (incidentStatus.capture_state !== 'complete') {
       items.push('Continue evidence upload and verification.');
     }
     if (incidentStatus.status !== 'closed') {
@@ -77,7 +77,7 @@ export default function IncidentStatusScreen({ navigation }: Props) {
       return { uploaded: 0, pending: 0, failed: 0 };
     }
 
-    if (incidentStatus.capture_state === 'completed') {
+    if (incidentStatus.capture_state === 'complete') {
       return { uploaded: 1, pending: 0, failed: 0 };
     }
 
@@ -121,7 +121,7 @@ export default function IncidentStatusScreen({ navigation }: Props) {
             <Chip selected={Boolean(incidentStatus?.safety_notified)}>
               Safety notified: {incidentStatus?.safety_notified ? 'Yes' : 'No'}
             </Chip>
-            <Chip selected={incidentStatus?.capture_state === 'completed'}>
+            <Chip selected={incidentStatus?.capture_state === 'complete'}>
               Capture: {incidentStatus?.capture_state ?? 'unknown'}
             </Chip>
           </View>

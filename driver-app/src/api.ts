@@ -85,7 +85,15 @@ export type DriverIncidentStatusResponse = {
   incident_id: string;
   status: 'open' | 'evidence_capturing' | 'closed' | string;
   safety_notified: boolean;
-  capture_state: 'pending' | 'in_progress' | 'completed' | 'failed' | string;
+  capture_state:
+    | 'pending'
+    | 'in_progress'
+    | 'requested'
+    | 'lockdown'
+    | 'complete'
+    | 'closed'
+    | 'failed'
+    | string;
   last_evidence_update_utc?: string | null;
 };
 
