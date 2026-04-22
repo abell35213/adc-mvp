@@ -16,7 +16,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Artifact, Base, Event, Export, Incident, IntegrationOperation, Org
+from app.db.models import (
+    Artifact,
+    Base,
+    Event,
+    Export,
+    Incident,
+    IntegrationOperation,
+    MessageOperation,
+    Org,
+)
 from app.domain.system_event_types import SystemEventType
 from app.tasks.notification_tasks import notify_safety_manager
 
@@ -996,3 +1005,5 @@ class TestNotifySafetyManager:
         assert second["status"] == "skipped_duplicate"
         assert mock_send_sms.call_count == 1
         assert mock_place_call.call_count == 1
+        message_operations = db_session.query(MessageOperation).all()
+        assert len(message_operations) == 2

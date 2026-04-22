@@ -157,29 +157,23 @@ def notify_safety_manager(self, incident_id: str):
         }
 
         if org.sms_enabled:
-            sms_operation = create_message_operation(
-                db,
-                org_id=incident.org_id,
-                incident_id=inc_uuid,
-                provider="twilio",
-                domain="messaging",
-                purpose="safety_manager_sms_notification",
-                to_e164=phone,
-                status="queued",
-                payload_json={"task": "notify_safety_manager"},
-            )
             sms_event_key = f"{workflow_key}:sms_sent"
             if _event_exists(
                 db, inc_uuid, SystemEventType.SAFETY_MANAGER_SMS_SENT, sms_event_key
             ):
                 result["sms_status"] = "already_sent"
-                update_message_operation_status(
-                    db,
-                    sms_operation,
-                    to_status="sent",
-                    details_json={"reason": "already_sent_event_exists"},
-                )
             else:
+                sms_operation = create_message_operation(
+                    db,
+                    org_id=incident.org_id,
+                    incident_id=inc_uuid,
+                    provider="twilio",
+                    domain="messaging",
+                    purpose="safety_manager_sms_notification",
+                    to_e164=phone,
+                    status="queued",
+                    payload_json={"task": "notify_safety_manager"},
+                )
                 try:
                     sms_sid = send_sms(phone, message)
                     result["sms_sid"] = sms_sid
@@ -226,29 +220,23 @@ def notify_safety_manager(self, incident_id: str):
                     errors.append(f"SMS failed: {normalized_error.operator_message}")
 
         if org.voice_enabled:
-            call_operation = create_message_operation(
-                db,
-                org_id=incident.org_id,
-                incident_id=inc_uuid,
-                provider="twilio",
-                domain="voice",
-                purpose="safety_manager_voice_notification",
-                to_e164=phone,
-                status="queued",
-                payload_json={"task": "notify_safety_manager"},
-            )
             call_event_key = f"{workflow_key}:call_placed"
             if _event_exists(
                 db, inc_uuid, SystemEventType.SAFETY_MANAGER_CALL_PLACED, call_event_key
             ):
                 result["call_status"] = "already_placed"
-                update_message_operation_status(
-                    db,
-                    call_operation,
-                    to_status="sent",
-                    details_json={"reason": "already_placed_event_exists"},
-                )
             else:
+                call_operation = create_message_operation(
+                    db,
+                    org_id=incident.org_id,
+                    incident_id=inc_uuid,
+                    provider="twilio",
+                    domain="voice",
+                    purpose="safety_manager_voice_notification",
+                    to_e164=phone,
+                    status="queued",
+                    payload_json={"task": "notify_safety_manager"},
+                )
                 try:
                     call_sid = place_call(phone, twiml)
                     result["call_sid"] = call_sid
