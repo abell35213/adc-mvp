@@ -41,26 +41,28 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
       },
       transitionWorkflow: (toState) => {
         setWorkflowState((previousState) =>
-          transitionProtocol(
-            {
-              state: previousState,
-              incidentDraftStatus: 'idle',
-              uploadState: 'idle',
-              updatedAt: new Date().toISOString(),
-              version: 1,
-              context: {
-                isAuthenticated: true,
-                vehicleResolved: false,
-                safetyAcknowledged: false,
-                submissionValidations: {
-                  hasIncidentType: false,
-                  hasDescription: false,
-                  hasMedia: false,
+          previousState === toState
+            ? previousState
+            : transitionProtocol(
+                {
+                  state: previousState,
+                  incidentDraftStatus: 'idle',
+                  uploadState: 'idle',
+                  updatedAt: new Date().toISOString(),
+                  version: 1,
+                  context: {
+                    isAuthenticated: true,
+                    vehicleResolved: false,
+                    safetyAcknowledged: false,
+                    submissionValidations: {
+                      hasIncidentType: false,
+                      hasDescription: false,
+                      hasMedia: false,
+                    },
+                  },
                 },
-              },
-            },
-            toState,
-          ).state,
+                toState,
+              ).state,
         );
       },
       resetProtocol: () => {
