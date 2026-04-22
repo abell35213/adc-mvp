@@ -79,6 +79,7 @@ def query_incident_queue(
     page_size: int = 25,
 ) -> dict:
     skip = max(page - 1, 0) * page_size
+    apply_blocker_filter = blockers is not None
     incidents = list_incident_queue(
         db,
         org_ids=org_ids,
@@ -89,20 +90,20 @@ def query_incident_queue(
         created_to_utc=created_to_utc,
         search=search,
         sort=sort,
-        skip=skip,
-        limit=page_size,
-    )
-    total = count_incident_queue(
-        db,
-        org_ids=org_ids,
-        case_status=case_status,
-        owner_user_id=owner_user_id,
-        readiness_state=readiness_state,
-        created_from_utc=created_from_utc,
-        created_to_utc=created_to_utc,
-        search=search,
+        skip=0 if apply_blocker_filter else skip,
+        limit=None if apply_blocker_filter else page_size,
     )
     if not incidents:
+        total = 0 if apply_blocker_filter else count_incident_queue(
+            db,
+            org_ids=org_ids,
+            case_status=case_status,
+            owner_user_id=owner_user_id,
+            readiness_state=readiness_state,
+            created_from_utc=created_from_utc,
+            created_to_utc=created_to_utc,
+            search=search,
+        )
         return {"items": [], "total": total, "page": page, "page_size": page_size}
 
     incident_ids = [incident.incident_id for incident in incidents]
@@ -128,7 +129,23 @@ def query_incident_queue(
         if _matches_blocker_filter(snapshot=snapshot, blockers=blockers):
             queue_items.append(queue_item)
 
-    return {"items": queue_items, "total": total, "page": page, "page_size": page_size}
+    if apply_blocker_filter:
+        total = len(queue_items)
+        page_items = queue_items[skip : skip + page_size]
+    else:
+        total = count_incident_queue(
+            db,
+            org_ids=org_ids,
+            case_status=case_status,
+            owner_user_id=owner_user_id,
+            readiness_state=readiness_state,
+            created_from_utc=created_from_utc,
+            created_to_utc=created_to_utc,
+            search=search,
+        )
+        page_items = queue_items
+
+    return {"items": page_items, "total": total, "page": page, "page_size": page_size}
 
 
 def query_summary_metrics(

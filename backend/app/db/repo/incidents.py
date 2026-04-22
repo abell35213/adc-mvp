@@ -67,7 +67,7 @@ def list_incident_queue(
     search: str | None = None,
     sort: str = "newest",
     skip: int = 0,
-    limit: int = 50,
+    limit: int | None = 50,
 ) -> list[Incident]:
     """List case queue incidents with filters, pagination, and sorting."""
     if not org_ids:
@@ -127,7 +127,10 @@ def list_incident_queue(
     else:
         query = query.order_by(Incident.created_at_utc.desc())
 
-    return query.offset(skip).limit(limit).all()
+    query = query.offset(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all()
 
 
 def count_incident_queue(
