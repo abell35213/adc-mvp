@@ -1109,7 +1109,13 @@
               "onboarding:write",
               "test_runs:read",
               "test_runs:write",
-              "readiness:view"
+              "readiness:view",
+              "demo:manage",
+              "entitlements:manage",
+              "trust_docs:publish",
+              "deployment_scope:manage",
+              "reporting:basic_read",
+              "reporting:premium_read"
             ],
             "type": "string"
           },
