@@ -169,8 +169,7 @@ def run_driver_import_job(
         }
 
         existing_by_phone = {
-            row.phone_e164: row
-            for row in db.query(Driver).filter(Driver.org_id == org_id).all()
+            row.phone_e164: row for row in db.query(Driver).all() if row.phone_e164
         }
         assigned_driver_ids = {
             str(row.driver_id)
@@ -276,6 +275,18 @@ def run_driver_import_job(
                 outcomes["imported"].append(phone_e164)
                 existing_by_phone[phone_e164] = existing
             else:
+                if existing.org_id != org_id:
+                    message = (
+                        f"{phone_e164}: already exists in another organization; skipped"
+                    )
+                    outcomes["errored"].append(message)
+                    outcomes["duplicate_warning"].append(message)
+                    outcomes["skipped"].append(message)
+                    summary["duplicate_warning_count"] += 1
+                    summary["needs_review_count"] += 1
+                    outcomes["needs_review"].append(message)
+                    warnings.append(f"Driver {message}.")
+                    continue
                 existing.display_name = display_name
                 existing.is_active = bool(staged["is_active"])
                 outcomes["updated"].append(phone_e164)
@@ -316,6 +327,7 @@ def run_driver_import_job(
         db.refresh(job)
         return job
     except Exception as exc:
+        db.rollback()
         job.status = "failed"
         job.error_message = str(exc)
         job.completed_at_utc = datetime.now(timezone.utc)
