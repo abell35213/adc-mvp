@@ -145,6 +145,28 @@ class TestCreateIncident:
         assert str(call_kwargs["incident_id"]) == incident_id
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_create_incident_normalizes_window_bounds_for_orchestration(
+        self, mock_begin_capture, client, auth_headers
+    ):
+        resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v2",
+                "samsara_vehicle_id": "s2",
+                "adc_driver_id": "d2",
+                "window_start": "2026-01-01T10:00:00Z",
+                "window_end": "2026-01-01T10:30:00Z",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        mock_begin_capture.assert_called_once()
+        call_kwargs = mock_begin_capture.call_args.kwargs
+        assert call_kwargs["window_start"] == "2026-01-01T10:00:00+00:00"
+        assert call_kwargs["window_end"] == "2026-01-01T10:30:00+00:00"
+
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_create_incident_writes_events(
         self, mock_begin_capture, client, db_session, auth_headers
     ):

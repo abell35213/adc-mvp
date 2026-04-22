@@ -129,8 +129,10 @@ def create_incident_endpoint(
             actor_id=str(current_user.id),
         )
 
-        window_start = body.window_start
-        window_end = body.window_end
+        window_start = (
+            body.window_start.isoformat() if body.window_start is not None else None
+        )
+        window_end = body.window_end.isoformat() if body.window_end is not None else None
         request_correlation_id = (
             request.headers.get("x-correlation-id") or get_request_id() or str(uuid.uuid4())
         )
