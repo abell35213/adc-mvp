@@ -125,26 +125,27 @@ export default function IncidentDetailClient() {
   }, [id]);
 
   const refreshWorkspacePanels = useCallback(() => {
-    return Promise.all([
+    return Promise.allSettled([
       getIncidentWorkspace(id).then(setWorkspace),
       listIncidentNotes(id).then((res) => setNotes(res.items)),
       listIncidentTasks(id).then((res) => setTasks(res.items)),
-    ]).catch((err) => {
-      console.warn("Workspace refresh failed", err);
+    ]).then((results) => {
+      const failures = results.filter((result) => result.status === "rejected");
+      if (failures.length > 0) {
+        console.warn("Workspace refresh partially failed", failures);
+      }
     });
   }, [id]);
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      getIncident(id).then(setIncident),
-      getIncidentWorkspace(id).then(setWorkspace),
-      listIncidentNotes(id).then((res) => setNotes(res.items)),
-      listIncidentTasks(id).then((res) => setTasks(res.items)),
-    ])
+    getIncident(id)
+      .then(setIncident)
       .catch((err) => setError(toUserErrorMessage(err, "Failed to load incident")))
       .finally(() => setLoading(false));
-  }, [id, user]);
+
+    refreshWorkspacePanels();
+  }, [id, refreshWorkspacePanels, user]);
 
   useEffect(() => {
     if (!user) return;
