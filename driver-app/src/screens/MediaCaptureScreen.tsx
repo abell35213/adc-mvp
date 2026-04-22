@@ -157,15 +157,24 @@ export default function MediaCaptureScreen({ navigation }: Props) {
 
   useEffect(() => {
     const initialize = async () => {
-      try {
-        const [activeIncident, storedRaw] = await Promise.all([
-          getDriverActiveIncident(),
-          SecureStore.getItemAsync(STORAGE_KEY),
-        ]);
+      let nextIncidentId: string | null = null;
+      let storedRaw: string | null = null;
 
-        const nextIncidentId = activeIncident?.incident_id ?? null;
+      const [activeIncidentResult, storedDraftResult] = await Promise.allSettled([
+        getDriverActiveIncident(),
+        SecureStore.getItemAsync(STORAGE_KEY),
+      ]);
+
+      if (activeIncidentResult.status === 'fulfilled') {
+        nextIncidentId = activeIncidentResult.value?.incident_id ?? null;
         setIncidentId(nextIncidentId);
+      }
 
+      if (storedDraftResult.status === 'fulfilled') {
+        storedRaw = storedDraftResult.value;
+      }
+
+      try {
         if (!storedRaw) {
           return;
         }
