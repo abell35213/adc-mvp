@@ -59,6 +59,24 @@ function formatWindow(start?: string | null, end?: string | null): string | null
   return `${startLabel} → ${endLabel}`;
 }
 
+function getExportSortTimestamp(item: ExportSummary): number {
+  const candidates = [
+    item.created_at_utc,
+    item.requested_at_utc,
+    item.updated_at_utc,
+  ];
+
+  for (const value of candidates) {
+    if (!value) continue;
+    const parsed = new Date(value).getTime();
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
 export default function IncidentDetailExportPanel({
   incidentId,
   exports,
@@ -73,7 +91,11 @@ export default function IncidentDetailExportPanel({
   const [errorMessage, setErrorMessage] = useState("");
   const [readyExport, setReadyExport] = useState<ExportSummary | null>(null);
 
-  const recentExports = exports.slice(0, 5);
+  const sortedExports = useMemo(
+    () => [...exports].sort((a, b) => getExportSortTimestamp(b) - getExportSortTimestamp(a)),
+    [exports]
+  );
+  const recentExports = sortedExports.slice(0, 5);
   const latestExport = recentExports[0];
   const latestFailedExportId =
     activeExportId && (status === "failed" || status === "expired")
