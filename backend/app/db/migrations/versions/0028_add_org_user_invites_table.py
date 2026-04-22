@@ -1,7 +1,7 @@
 """add org user invites table
 
-Revision ID: 0021_add_org_user_invites_table
-Revises: 0020_add_org_settings_and_onboarding_completion
+Revision ID: 0028_add_org_user_invites_table
+Revises: 0027_add_provider_webhook_event
 Create Date: 2026-04-22 00:00:00.000000
 """
 
@@ -12,8 +12,8 @@ from typing import Union
 
 
 # revision identifiers, used by Alembic.
-revision: str = "0021"
-down_revision: Union[str, None] = "0020"
+revision: str = "0028"
+down_revision: Union[str, None] = "0027"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 
