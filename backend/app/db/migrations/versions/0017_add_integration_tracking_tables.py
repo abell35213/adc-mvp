@@ -1,7 +1,7 @@
 """Add integration tracking and webhook persistence tables.
 
-Revision ID: 20260411_0001
-Revises:
+Revision ID: 0017
+Revises: 0016
 Create Date: 2026-04-11
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = "20260411_0001"
-down_revision = None
+revision = "0017"
+down_revision = "0016"
 branch_labels = None
 depends_on = None
 
