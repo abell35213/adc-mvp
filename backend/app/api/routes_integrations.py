@@ -1647,7 +1647,7 @@ def patch_org_user_role(
     user_id: uuid.UUID,
     payload: OrgPatchUserRoleRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(_org_user_role_editor),
+    current_user: User = Depends(_org_user_admin),
 ):
     _require_phase6_capability(
         current_user, Capability.USER_MANAGEMENT_WRITE, message="Insufficient permission to manage users"
