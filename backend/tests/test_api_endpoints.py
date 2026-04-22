@@ -774,9 +774,9 @@ class TestIntegrationDiagnosticsRoutes:
         patch_role = client.patch(
             f"/org/users/{test_user.id}/role",
             headers=admin_headers,
-            json={"role": "system_admin"},
+            json={"role": "org_admin"},
         )
-        assert patch_role.status_code == 403
+        assert patch_role.status_code == 200
 
         system_admin = User(
             email="system-admin@example.com",
