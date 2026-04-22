@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.emitter import emit_audit_event
 from app.db.models import HelpArticle, HelpCategory
+from app.security.permissions import Capability, has_capability
 
 DOCS_FEATURES: tuple[str, ...] = (
     "docs.playbooks",
@@ -25,11 +26,8 @@ _VALID_PUBLICATION_STATES = {
     PUBLICATION_STATE_ALL,
 }
 
-_INTERNAL_DOCS_ROLES = {"system_admin", "support_admin", "support_agent"}
-
-
 def _is_internal_docs_actor(role: str | None) -> bool:
-    return (role or "").strip().lower() in _INTERNAL_DOCS_ROLES
+    return has_capability(role, Capability.TRUST_DOCS_PUBLISH)
 
 
 def _normalize_publication_state(publication_state: str) -> str:

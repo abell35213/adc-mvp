@@ -110,6 +110,23 @@ def auth_headers(seeded_org):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture()
+def read_only_headers(db_session, seeded_org):
+    org, _ = seeded_org
+    user = User(
+        email="readonly-expansion@example.com",
+        password_hash=hash_password("testpass"),
+        role="read_only",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+    db_session.commit()
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_deployment_scope_crud_and_progress_routes(client, auth_headers):
     get_scope = client.get("/org/deployment-scope", headers=auth_headers)
     assert get_scope.status_code == 200
@@ -149,3 +166,12 @@ def test_deployment_scope_crud_and_progress_routes(client, auth_headers):
     assert readiness.status_code == 200
     assert readiness.json()["status"] == "planning"
     assert readiness.json()["override_applied"] is True
+
+
+def test_read_only_cannot_mutate_deployment_scope(client, read_only_headers):
+    response = client.patch(
+        "/org/deployment-scope",
+        json={"scope": "partial_rollout"},
+        headers=read_only_headers,
+    )
+    assert response.status_code == 403
