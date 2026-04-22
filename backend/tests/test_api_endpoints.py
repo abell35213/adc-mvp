@@ -715,6 +715,41 @@ class TestPatchIncidentOwner:
         assert response.status_code == 404
         assert response.json()["detail"] == "Owner user not found"
 
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_patch_owner_rejects_owner_from_other_member_org(
+        self, mock_begin_capture, client, db_session, test_org, test_user, auth_headers
+    ):
+        incident_id = self._create_incident(client, auth_headers)
+
+        secondary_org = Org(name="Secondary Org")
+        secondary_owner = User(
+            email="secondary-owner@example.com",
+            password_hash=hash_password("testpass"),
+            role="safety_manager",
+        )
+        db_session.add_all([secondary_org, secondary_owner])
+        db_session.commit()
+        db_session.refresh(secondary_org)
+        db_session.refresh(secondary_owner)
+
+        # Multi-org actor can access both orgs, but assignment must remain scoped
+        # to the incident's org only.
+        db_session.add_all(
+            [
+                UserOrg(user_id=test_user.id, org_id=secondary_org.id),
+                UserOrg(user_id=secondary_owner.id, org_id=secondary_org.id),
+            ]
+        )
+        db_session.commit()
+
+        response = client.patch(
+            f"/incidents/{incident_id}/owner",
+            json={"operation": "assign", "owner_user_id": str(secondary_owner.id)},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Owner user not found"
+
 
 # ── GET /incidents (list) ───────────────────────────────────────────
 

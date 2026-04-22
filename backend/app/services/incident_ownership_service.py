@@ -27,7 +27,10 @@ def patch_incident_owner(
         assert owner_user_id is not None
         is_user_in_org = (
             db.query(UserOrg)
-            .filter(UserOrg.user_id == owner_user_id, UserOrg.org_id.in_(org_ids))
+            .filter(
+                UserOrg.user_id == owner_user_id,
+                UserOrg.org_id == incident.org_id,
+            )
             .first()
             is not None
         )
