@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const UPLOAD_QUEUE_STORAGE_KEY = 'driver_upload_queue_v1';
 const UPLOAD_QUEUE_VERSION = 1;
@@ -100,6 +101,23 @@ async function persistState(nextState: UploadQueueState): Promise<void> {
   await AsyncStorage.setItem(UPLOAD_QUEUE_STORAGE_KEY, JSON.stringify(nextState));
 }
 
+async function readPersistedState(): Promise<UploadQueueState | null> {
+  const asyncRaw = await AsyncStorage.getItem(UPLOAD_QUEUE_STORAGE_KEY);
+  if (asyncRaw) {
+    return normalizeState(JSON.parse(asyncRaw) as Partial<UploadQueueState>);
+  }
+
+  const secureRaw = await SecureStore.getItemAsync(UPLOAD_QUEUE_STORAGE_KEY);
+  if (!secureRaw) {
+    return null;
+  }
+
+  const migratedState = normalizeState(JSON.parse(secureRaw) as Partial<UploadQueueState>);
+  await AsyncStorage.setItem(UPLOAD_QUEUE_STORAGE_KEY, JSON.stringify(migratedState));
+  await SecureStore.deleteItemAsync(UPLOAD_QUEUE_STORAGE_KEY);
+  return migratedState;
+}
+
 function emit(nextState: UploadQueueState): void {
   for (const listener of listeners) {
     listener(nextState);
@@ -132,12 +150,11 @@ export async function hydrateUploadQueueStore(): Promise<void> {
 
   hydrateInFlight = (async () => {
     try {
-      const raw = await AsyncStorage.getItem(UPLOAD_QUEUE_STORAGE_KEY);
-      if (!raw) {
+      const persistedState = await readPersistedState();
+      if (!persistedState) {
         queueState = { ...EMPTY_STATE, updatedAt: makeNowIso() };
       } else {
-        const parsed = JSON.parse(raw) as Partial<UploadQueueState>;
-        queueState = normalizeState(parsed);
+        queueState = persistedState;
       }
     } catch {
       queueState = { ...EMPTY_STATE, updatedAt: makeNowIso() };
