@@ -62,12 +62,14 @@ def list_incidents_endpoint(
     result = []
     for inc in incidents:
         artifacts = get_artifacts_by_incident(db, inc.incident_id)
+        events = get_events_by_incident(db, inc.incident_id)
+        exports = get_exports_by_incident(db, inc.incident_id)
         captured = sum(1 for a in artifacts if a.status == "captured")
         snapshot = build_case_snapshot(
             incident=inc,
             artifacts=artifacts,
-            events=[],
-            exports=[],
+            events=events,
+            exports=exports,
         )
         result.append(
             IncidentListItem(

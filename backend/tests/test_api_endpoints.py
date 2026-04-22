@@ -508,6 +508,59 @@ class TestListIncidents:
         assert inc["evidence_total"] == 2
         assert "created_at_utc" in inc
 
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_list_incidents_uses_events_and_exports_for_snapshot(
+        self, mock_begin_capture, client, db_session, auth_headers
+    ):
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
+        incident_id = uuid.UUID(create_resp.json()["incident_id"])
+
+        db_session.add(
+            Artifact(
+                incident_id=incident_id,
+                artifact_type="dashcam_road",
+                status="captured",
+            )
+        )
+        db_session.add_all(
+            [
+                Event(
+                    incident_id=incident_id,
+                    event_type="timeline_validated",
+                    actor_type="system",
+                    actor_id="system",
+                ),
+                Event(
+                    incident_id=incident_id,
+                    event_type="export_completed",
+                    actor_type="system",
+                    actor_id="system",
+                ),
+                Export(
+                    incident_id=incident_id,
+                    status="ready",
+                ),
+            ]
+        )
+        db_session.commit()
+
+        resp = client.get("/incidents/", headers=auth_headers)
+        assert resp.status_code == 200
+
+        inc = [i for i in resp.json() if i["incident_id"] == str(incident_id)][0]
+        assert inc["completeness_percent"] == 100
+        assert inc["readiness_state"] == "ready_for_export"
+        assert inc["blocker_counts"] == {"critical": 0, "important": 0, "optional": 0}
+
 
 # ── POST /exports ────────────────────────────────────────────────────
 
