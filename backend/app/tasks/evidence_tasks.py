@@ -994,10 +994,10 @@ def capture_telematics_bundle(
         overall_status = "available"
         if failed_count == len(datasets):
             overall_status = "failed"
+        elif available_count == 0 and failed_count == 0 and unavailable_count > 0:
+            overall_status = "unavailable"
         elif failed_count > 0 or unavailable_count > 0:
             overall_status = "partial"
-        elif available_count == 0:
-            overall_status = "unavailable"
         operation.result_json = {
             "status": overall_status,
             "request_statuses": request_statuses,

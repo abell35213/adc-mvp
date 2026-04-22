@@ -479,6 +479,35 @@ class TestCaptureTelematicsBundle:
         assert len(unavailable) == 1
         assert len(captured) == 9
 
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.vault_s3.VaultS3")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_all_datasets_unavailable_sets_unavailable_status(
+        self, MockSamsara, MockS3, mock_get_db, db_session, incident
+    ):
+        mock_get_db.return_value = db_session
+
+        samsara_inst = MagicMock()
+        samsara_inst.get_eld_logs.return_value = []
+        samsara_inst.get_vehicle_locations.return_value = []
+        samsara_inst.get_safety_events.return_value = []
+        samsara_inst.get_vehicle_state.return_value = []
+        MockSamsara.return_value = samsara_inst
+
+        s3_inst = MagicMock()
+        s3_inst.put_bytes.return_value = "s3://b/k"
+        MockS3.return_value = s3_inst
+
+        from app.tasks.evidence_tasks import capture_telematics_bundle
+
+        result = capture_telematics_bundle(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+
+        assert result["status"] == "unavailable"
+
     @patch("app.services.schema_validate.validate_payload", return_value=True)
     @patch("app.tasks.evidence_tasks._get_db")
     @patch("app.services.vault_s3.VaultS3")
