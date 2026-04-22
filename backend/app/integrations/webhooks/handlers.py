@@ -57,6 +57,30 @@ def process_twilio_status_callback(
         payload=payload,
     )
 
+    if not signature_valid:
+        event = create_provider_webhook_event(
+            db,
+            org_id=None,
+            provider="twilio",
+            domain="messaging",
+            event_type="status_callback",
+            status="received",
+            external_reference=message_sid,
+            idempotency_key=idempotency_key,
+            signature_valid=False,
+            raw_payload=raw_payload,
+            payload_json=payload,
+        )
+        update_provider_webhook_event(
+            db,
+            event,
+            status="failed",
+            processing_outcome="invalid_signature",
+            error_message="twilio_signature_validation_failed",
+            error_details_json={"reason": signature_error or "invalid_signature"},
+        )
+        return WebhookResult(status_code=403, body={"detail": "Invalid Twilio signature"})
+
     existing = get_provider_webhook_event_by_idempotency_key(
         db,
         provider="twilio",
@@ -96,19 +120,6 @@ def process_twilio_status_callback(
         raw_payload=sanitized_raw_payload,
         payload_json=sanitized_payload,
     )
-
-    if not signature_valid:
-        increment(MetricNames.WEBHOOK_SIGNATURE_FAILURES)
-        increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
-        update_provider_webhook_event(
-            db,
-            event,
-            status="failed",
-            processing_outcome="invalid_signature",
-            error_message="twilio_signature_validation_failed",
-            error_details_json={"reason": signature_error or "invalid_signature"},
-        )
-        return WebhookResult(status_code=403, body={"detail": "Invalid Twilio signature"})
 
     message_status = (payload.get("MessageStatus") or "").strip().lower()
     error_code = payload.get("ErrorCode") or None

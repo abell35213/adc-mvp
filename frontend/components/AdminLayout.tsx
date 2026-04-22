@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { hasRoleCapability } from "@/lib/permissions";
 
 const NAV_ITEMS = [
   { href: "/admin/driver-protocol", label: "Driver Protocol" },
@@ -13,14 +14,6 @@ const NAV_ITEMS = [
   { href: "/admin/ops", label: "Ops Dashboard" },
   { href: "/admin/ops/audit", label: "Audit Search" },
 ];
-
-const AUTHORIZED_OPS_ROLES = new Set([
-  "admin",
-  "org_admin",
-  "system_admin",
-  "support_admin",
-  "support_agent",
-]);
 
 type AdminLayoutProps = {
   title: string;
@@ -35,7 +28,7 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
     return <div className="p-6 text-gray-500">Loading…</div>;
   }
 
-  if (!user || !AUTHORIZED_OPS_ROLES.has(user.role)) {
+  if (!user || !hasRoleCapability(user.role, "vehicle_qr:read")) {
     return (
       <div className="p-6 text-sm text-gray-500">
         Admin access required.

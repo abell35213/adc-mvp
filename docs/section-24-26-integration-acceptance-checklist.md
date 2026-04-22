@@ -2,6 +2,8 @@
 
 This checklist adds explicit QA scenarios for Sections 24–26 and ties each scenario to automated coverage (API/integration tests) plus go-live runbook validation.
 
+> Delivery tracking for Sections 26–28 is maintained in `docs/operations/section-26-28-readiness-backlog.md` (Sprints 1–5 with owners, estimates, dependencies, DoD, and KPI targets).
+
 ## Section 24 acceptance criteria (integration reliability)
 
 - [ ] **AC-24.1 Invalid credentials are treated as intervention-required**

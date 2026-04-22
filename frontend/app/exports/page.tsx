@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MainLayout from "@/components/MainLayout";
+import FeatureGate from "@/components/commercial/FeatureGate";
+import RelatedDocsPanel from "@/components/commercial/RelatedDocsPanel";
 import {
   listExports,
   downloadExport,
@@ -183,6 +185,22 @@ export default function ExportsPage() {
           Export history with filters, package health, and detailed audit/download visibility.
         </p>
       </div>
+
+      <FeatureGate
+        available={false}
+        requiredPlan="Enterprise"
+        reason="Export package comparison and anomaly scoring are available on Enterprise plans."
+      >
+        <section className="mb-4 rounded-lg border bg-white p-3 shadow dark:border-gray-700 dark:bg-gray-800">
+          <h3 className="font-semibold">Compliance package compare</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Compare two exports for missing evidence artifacts and timeline drift.
+          </p>
+          <button type="button" disabled className="mt-3 rounded bg-gray-300 px-3 py-1 text-sm text-gray-700">
+            Compare exports
+          </button>
+        </section>
+      </FeatureGate>
 
       <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border bg-white p-3 shadow dark:border-gray-700 dark:bg-gray-800 md:grid-cols-6">
         <input
@@ -382,6 +400,28 @@ export default function ExportsPage() {
           </aside>
         </div>
       )}
+
+      <div className="mt-4">
+        <RelatedDocsPanel
+          docs={[
+            {
+              title: "Incident queue",
+              href: "/incidents",
+              description: "Return to incident operations to complete evidence capture gaps.",
+            },
+            {
+              title: "Onboarding export validation",
+              href: "/onboarding?step=export-validation",
+              description: "Verify export generation as part of launch readiness.",
+            },
+            {
+              title: "Deployment coverage",
+              href: "/deployment",
+              description: "Track market-level operational readiness before broader rollout.",
+            },
+          ]}
+        />
+      </div>
     </MainLayout>
   );
 }

@@ -67,6 +67,37 @@ def list_audit_events(
     return query.order_by(AuditEvent.occurred_at_utc.desc()).limit(limit).all()
 
 
+def list_audit_events_for_admin(
+    db: Session,
+    *,
+    org_id: uuid.UUID | None = None,
+    actor_id: str | None = None,
+    event_type: str | None = None,
+    action: str | None = None,
+    outcome: str | None = None,
+    occurred_after_utc: datetime | None = None,
+    occurred_before_utc: datetime | None = None,
+    limit: int = 500,
+) -> list[AuditEvent]:
+    """List audit events for privileged users across orgs (optionally scoped)."""
+    query = db.query(AuditEvent)
+    if org_id is not None:
+        query = query.filter(AuditEvent.org_id == org_id)
+    if actor_id is not None:
+        query = query.filter(AuditEvent.actor_id == actor_id)
+    if event_type is not None:
+        query = query.filter(AuditEvent.event_type == event_type)
+    if action is not None:
+        query = query.filter(AuditEvent.action == action)
+    if outcome is not None:
+        query = query.filter(AuditEvent.outcome == outcome)
+    if occurred_after_utc is not None:
+        query = query.filter(AuditEvent.occurred_at_utc >= occurred_after_utc)
+    if occurred_before_utc is not None:
+        query = query.filter(AuditEvent.occurred_at_utc <= occurred_before_utc)
+    return query.order_by(AuditEvent.occurred_at_utc.desc()).limit(limit).all()
+
+
 def update_audit_event_retention(
     db: Session,
     *,

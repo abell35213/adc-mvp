@@ -68,6 +68,9 @@ export function Hero() {
               Contact
             </Link>
             </div>
+            <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
+              Login
+            </Link>
             <Link href="/company/contact" className={marketingTokens.buttonVariants.primary}>
               Book demo
             </Link>

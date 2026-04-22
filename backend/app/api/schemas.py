@@ -54,7 +54,14 @@ QrToken = Annotated[
     ),
 ]
 
-UserRole = Literal["system_admin", "org_admin", "safety_manager"]
+UserRole = Literal[
+    "system_admin",
+    "org_admin",
+    "safety_manager",
+    "read_only",
+    "support_admin",
+    "support_agent",
+]
 CapabilityName = Literal[
     "incident:read",
     "incident:write",
@@ -67,8 +74,34 @@ CapabilityName = Literal[
     "driver_protocol:write",
     "vehicle_qr:read",
     "vehicle_qr:write",
+    "org_settings:read",
+    "org_settings:write",
+    "user_management:read",
+    "user_management:write",
+    "imports:read",
+    "imports:write",
+    "integrations:read",
+    "integrations:write",
+    "onboarding:read",
+    "onboarding:write",
+    "test_runs:read",
+    "test_runs:write",
+    "readiness:view",
+    "demo:manage",
+    "entitlements:manage",
+    "trust_docs:publish",
+    "deployment_scope:manage",
+    "reporting:basic_read",
+    "reporting:premium_read",
 ]
-assert {"system_admin", "org_admin", "safety_manager"}.issubset(set(CANONICAL_ROLES))
+assert {
+    "system_admin",
+    "org_admin",
+    "safety_manager",
+    "read_only",
+    "support_admin",
+    "support_agent",
+}.issubset(set(CANONICAL_ROLES))
 assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "incident:read",
     "incident:write",
@@ -81,6 +114,25 @@ assert set(ALL_RECOMMENDED_CAPABILITIES) == {
     "driver_protocol:write",
     "vehicle_qr:read",
     "vehicle_qr:write",
+    "org_settings:read",
+    "org_settings:write",
+    "user_management:read",
+    "user_management:write",
+    "imports:read",
+    "imports:write",
+    "integrations:read",
+    "integrations:write",
+    "onboarding:read",
+    "onboarding:write",
+    "test_runs:read",
+    "test_runs:write",
+    "readiness:view",
+    "demo:manage",
+    "entitlements:manage",
+    "trust_docs:publish",
+    "deployment_scope:manage",
+    "reporting:basic_read",
+    "reporting:premium_read",
 }
 InstructionScope = Literal["default", "company", "insurer"]
 IncidentSeverity = Literal["minor", "serious", "critical"]
@@ -446,6 +498,48 @@ class CaseOpsAlertsResponse(BaseModel):
     export_aging: int = 0
 
 
+class ReportAdoptionResponse(BaseModel):
+    total_incidents: int = 0
+    reviewed_incidents: int = 0
+    assigned_incidents: int = 0
+    ready_for_export_incidents: int = 0
+    exported_incidents: int = 0
+    review_rate_percent: float = 0.0
+    assignment_rate_percent: float = 0.0
+    export_readiness_rate_percent: float = 0.0
+    export_completion_rate_percent: float = 0.0
+    adoption_score_percent: float = 0.0
+
+
+class ReportIncidentOperationsResponse(BaseModel):
+    open_incidents: int = 0
+    unassigned_incidents: int = 0
+    blocked_incidents: int = 0
+    export_aging_incidents: int = 0
+    stalled_incidents: int = 0
+    overdue_tasks: int = 0
+    case_status_counts: dict[str, int] = Field(default_factory=dict)
+    avg_time_to_first_review_hours: float = 0.0
+    incidents_reviewed: int = 0
+
+
+class ReportExportTurnaroundResponse(BaseModel):
+    total_exports: int = 0
+    completed_exports: int = 0
+    failed_exports: int = 0
+    in_flight_exports: int = 0
+    avg_turnaround_hours: float = 0.0
+    p95_turnaround_hours: float = 0.0
+    within_24h_rate_percent: float = 0.0
+
+
+class ReportEvidenceCompletenessResponse(BaseModel):
+    total_incidents: int = 0
+    avg_completeness_percent: float = 0.0
+    readiness_breakdown: dict[str, int] = Field(default_factory=dict)
+    artifact_status_counts: dict[str, int] = Field(default_factory=dict)
+
+
 class CaseTaskWidgetItem(BaseModel):
     task_id: uuid.UUID
     incident_id: uuid.UUID
@@ -708,16 +802,97 @@ class VehicleQrDeploymentResponse(BaseModel):
     status: OnboardingReadinessStepStatus = "not_started"
     vehicles_total: int = Field(default=0, ge=0)
     qr_codes_generated: int = Field(default=0, ge=0)
-    qr_codes_activated: int = Field(default=0, ge=0)
+    qr_codes_distributed: int = Field(default=0, ge=0)
+    qr_codes_confirmed: int = Field(default=0, ge=0)
     last_rotated_at_utc: Optional[datetime] = None
+    coverage_blockers: list[ShortText] = Field(default_factory=list)
+
+
+class VehicleQrGenerateResponse(BaseModel):
+    vehicle_id: ShortText
+    qr_token: QrToken
+    deployment_status: Literal["generated", "distributed", "confirmed"] = "generated"
+
+
+class VehicleQrBulkGenerateRequest(BaseModel):
+    vehicle_ids: list[ShortText] = Field(default_factory=list, max_length=500)
+
+
+class VehicleQrBulkGenerateResponse(BaseModel):
+    generated_count: int = Field(default=0, ge=0)
+    skipped_count: int = Field(default=0, ge=0)
+    generated: list[VehicleQrGenerateResponse] = Field(default_factory=list)
+    skipped_vehicle_ids: list[ShortText] = Field(default_factory=list)
+
+
+class VehicleQrStatsResponse(BaseModel):
+    required_vehicle_count: int = Field(default=0, ge=0)
+    generated_count: int = Field(default=0, ge=0)
+    distributed_count: int = Field(default=0, ge=0)
+    confirmed_count: int = Field(default=0, ge=0)
+    coverage_blockers: list[ShortText] = Field(default_factory=list)
 
 
 class TestIncidentRunResponse(BaseModel):
+    run_id: Optional[uuid.UUID] = None
     status: OnboardingReadinessStepStatus = "not_started"
     incident_id: Optional[uuid.UUID] = None
     started_at_utc: Optional[datetime] = None
     completed_at_utc: Optional[datetime] = None
+    step_results: list[dict[str, Any]] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
+
+
+class ExportValidationRunResponse(BaseModel):
+    validation_run_id: Optional[uuid.UUID] = None
+    export_id: Optional[uuid.UUID] = None
+    incident_id: Optional[uuid.UUID] = None
+    status: OnboardingReadinessStepStatus = "not_started"
+    validated_at_utc: Optional[datetime] = None
+    checks: dict[str, bool] = Field(default_factory=dict)
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    missing_items: list[dict[str, str]] = Field(default_factory=list)
+    details: dict[str, str] = Field(default_factory=dict)
+
+
+class OnboardingMetricsSnapshotResponse(BaseModel):
+    onboarding_started_at_utc: Optional[datetime] = None
+    latest_activity_at_utc: Optional[datetime] = None
+    time_to_pilot_ready_hours: Optional[float] = None
+    time_to_launch_ready_hours: Optional[float] = None
+    import_success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    driver_import_success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    qr_coverage_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    valid_driver_phone_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    integration_validation_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    sample_incident_completion_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    export_validation_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    common_blockers: list[ShortText] = Field(default_factory=list)
+
+
+class OnboardingAlertConditionResponse(BaseModel):
+    code: ShortText
+    title: ShortText
+    severity: ValidationSeverity = "warning"
+    triggered: bool = False
+    detail: str
+
+
+class TestIncidentRunCreateRequest(BaseModel):
+    incident_id: Optional[uuid.UUID] = None
+    findings: list[str] = Field(default_factory=list, max_length=100)
+    source: ShortText = "onboarding"
+
+
+class TestIncidentRunStepCompleteRequest(BaseModel):
+    step_key: ShortText
+    status: OnboardingReadinessStepStatus = "completed"
+    result: dict[str, Any] = Field(default_factory=dict)
+    source: ShortText = "onboarding"
+
+
+class TestIncidentRunsResponse(BaseModel):
+    runs: list[TestIncidentRunResponse] = Field(default_factory=list)
 
 
 class OrgLaunchReadinessResponse(BaseModel):
@@ -732,6 +907,12 @@ class OrgLaunchReadinessResponse(BaseModel):
     )
     vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
     test_incident_run: Optional[TestIncidentRunResponse] = None
+    latest_export_validation: Optional[ExportValidationRunResponse] = None
+    metrics: Optional[OnboardingMetricsSnapshotResponse] = None
+    alert_conditions: list[OnboardingAlertConditionResponse] = Field(
+        default_factory=list
+    )
+    reporting_hooks: dict[str, Any] = Field(default_factory=dict)
     snapshot_created_at_utc: Optional[datetime] = None
 
 
@@ -739,6 +920,117 @@ class OrgOnboardingStepUpdateRequest(BaseModel):
     step_key: ShortText
     completed: bool = True
     source: ShortText = "manual"
+
+
+class ProtocolSetupStepResponse(BaseModel):
+    instruction_set_selected: bool = False
+    instruction_source: InstructionScope = "default"
+    safety_contact_configured: bool = False
+    safety_manager_phone: Optional[PhoneE164] = None
+    required_media_prompts_defaulted: bool = False
+    export_profile_defaulted: bool = False
+    export_profiles_available: list[ShortText] = Field(default_factory=list)
+
+
+DeploymentScopeKey = Literal["pilot", "partial_rollout", "full_rollout"]
+ExpansionReadinessState = Literal[
+    "not_started", "planning", "pilot_ready", "scale_ready", "blocked"
+]
+
+
+class DeploymentScopeRequest(BaseModel):
+    scope: DeploymentScopeKey
+    targets: dict[str, int] = Field(default_factory=dict)
+    readiness_override: Optional[ExpansionReadinessState] = None
+    source: ShortText = "manual"
+
+
+class DeploymentScopeResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    scope_version: ShortText = "v1"
+    targets: dict[str, int] = Field(default_factory=dict)
+    readiness_override: Optional[ExpansionReadinessState] = None
+    source: ShortText = "manual"
+    captured_at_utc: Optional[datetime] = None
+
+
+class DeploymentCoverageResponse(BaseModel):
+    key: ShortText
+    label: ShortText
+    covered: int = Field(default=0, ge=0)
+    total: int = Field(default=0, ge=0)
+    percent: int = Field(default=0, ge=0, le=100)
+
+
+class DeploymentProgressResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    percent_complete: int = Field(default=0, ge=0, le=100)
+    coverage: list[DeploymentCoverageResponse] = Field(default_factory=list)
+    blockers: list[ShortText] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+
+
+class ExpansionReadinessResponse(BaseModel):
+    scope: DeploymentScopeKey = "pilot"
+    status: ExpansionReadinessState = "not_started"
+    readiness_score: int = Field(default=0, ge=0, le=100)
+    blockers: list[ShortText] = Field(default_factory=list)
+    recommended_next_actions: list[str] = Field(default_factory=list)
+    coverage: list[DeploymentCoverageResponse] = Field(default_factory=list)
+    override_applied: bool = False
+
+
+class OrgMappingsSummaryCounts(BaseModel):
+    total: int = Field(default=0, ge=0)
+    mapped: int = Field(default=0, ge=0)
+    unmapped: int = Field(default=0, ge=0)
+
+
+class OrgMappingsAssignmentConfidence(BaseModel):
+    level: Literal["low", "medium", "high"] = "low"
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    assigned_mapped_drivers: int = Field(default=0, ge=0)
+    mapped_drivers: int = Field(default=0, ge=0)
+
+
+class OrgMappingsStaleWarnings(BaseModel):
+    placeholder_supported: bool = True
+    stale_count: int = Field(default=0, ge=0)
+    stale_warning_codes: list[ShortText] = Field(default_factory=list)
+
+
+class OrgMappingsPilotReadinessFlags(BaseModel):
+    enough_mapped_drivers_for_pilot: bool = False
+    enough_mapped_vehicles_for_pilot: bool = False
+    enough_qr_generated_for_required_vehicles: bool = False
+    enough_qr_distributed_for_required_vehicles: bool = False
+    no_blocking_integration_credentials: bool = False
+    pilot_scope_ready: bool = False
+
+
+class OrgMappingsSummaryResponse(BaseModel):
+    drivers: OrgMappingsSummaryCounts = Field(default_factory=OrgMappingsSummaryCounts)
+    vehicles: OrgMappingsSummaryCounts = Field(default_factory=OrgMappingsSummaryCounts)
+    assignment_confidence: OrgMappingsAssignmentConfidence = Field(
+        default_factory=OrgMappingsAssignmentConfidence
+    )
+    stale_warnings: OrgMappingsStaleWarnings = Field(
+        default_factory=OrgMappingsStaleWarnings
+    )
+    pilot_readiness: OrgMappingsPilotReadinessFlags = Field(
+        default_factory=OrgMappingsPilotReadinessFlags
+    )
+
+
+class OrgMappingsIssue(BaseModel):
+    code: ShortText
+    message: str
+    severity: Literal["warning", "error"] = "warning"
+    blocker_panel_action: ShortText
+
+
+class OrgMappingsIssuesResponse(BaseModel):
+    issues: list[OrgMappingsIssue] = Field(default_factory=list)
 
 
 class OrgUserSummary(BaseModel):
@@ -1242,6 +1534,7 @@ class IntegrationHealthItem(BaseModel):
 
 
 IntegrationConnectionStatus = Literal["pending", "active", "inactive", "error"]
+IntegrationValidationStatus = Literal["pass", "fail", "partial_support"]
 IntegrationOperationStatus = Literal[
     "requested",
     "submitted_to_provider",
@@ -1277,11 +1570,33 @@ class IntegrationConnectionUpdateRequest(BaseModel):
     config_json: dict[str, Any] | None = None
 
 
+class IntegrationConnectionUpsertRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    domain: str = Field(min_length=1, max_length=128)
+    status: IntegrationConnectionStatus = "pending"
+    credentials_ref: str | None = None
+    config_json: dict[str, Any] = Field(default_factory=dict)
+
+
 class IntegrationConnectionValidateResponse(BaseModel):
     integration_id: uuid.UUID
     valid: bool
     status: IntegrationConnectionStatus
     message: str
+    credentialStatus: IntegrationValidationStatus
+    capabilityStatus: IntegrationValidationStatus
+    mappingStatus: IntegrationValidationStatus
+    messages: list[str] = Field(default_factory=list)
+    timestamp: datetime
+
+
+class IntegrationValidationResultResponse(BaseModel):
+    integration_id: uuid.UUID | None = None
+    credentialStatus: IntegrationValidationStatus
+    capabilityStatus: IntegrationValidationStatus
+    mappingStatus: IntegrationValidationStatus
+    messages: list[str] = Field(default_factory=list)
+    timestamp: datetime
 
 
 class IntegrationOperationDiagnosticsResponse(BaseModel):
@@ -1309,6 +1624,100 @@ class IntegrationOperationDiagnosticsResponse(BaseModel):
     started_at_utc: datetime | None = None
     completed_at_utc: datetime | None = None
     updated_at_utc: datetime | None = None
+
+
+class VehicleImportJobCreateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    csv_content: str = Field(min_length=1)
+    header_mapping: dict[str, str] = Field(default_factory=dict)
+    inactive_unit_numbers: list[str] = Field(default_factory=list)
+
+
+class VehicleImportJobCreateResponse(BaseModel):
+    job_id: uuid.UUID
+    status: ImportJobStatus
+
+
+class VehicleImportJobSummary(BaseModel):
+    missing_qr_count: int = Field(default=0, ge=0)
+    missing_provider_mapping_count: int = Field(default=0, ge=0)
+    duplicate_like_count: int = Field(default=0, ge=0)
+    inactive_count: int = Field(default=0, ge=0)
+
+
+class VehicleImportJobOutcome(BaseModel):
+    imported: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    errored: list[str] = Field(default_factory=list)
+
+
+class VehicleImportJobResponse(BaseModel):
+    job_id: uuid.UUID
+    provider: str
+    status: ImportJobStatus
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
+    records_total: int = Field(default=0, ge=0)
+    records_processed: int = Field(default=0, ge=0)
+    records_imported: int = Field(default=0, ge=0)
+    records_updated: int = Field(default=0, ge=0)
+    records_skipped: int = Field(default=0, ge=0)
+    records_errored: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    outcomes: VehicleImportJobOutcome = Field(default_factory=VehicleImportJobOutcome)
+    summary: VehicleImportJobSummary = Field(default_factory=VehicleImportJobSummary)
+    error_message: str | None = None
+
+
+class DriverImportJobCreateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=128)
+    csv_content: str = Field(min_length=1)
+    header_mapping: dict[str, str] = Field(default_factory=dict)
+    inactive_mobile_phones: list[str] = Field(default_factory=list)
+
+
+class DriverImportJobCreateResponse(BaseModel):
+    job_id: uuid.UUID
+    status: ImportJobStatus
+
+
+class DriverImportJobSummary(BaseModel):
+    invalid_phone_count: int = Field(default=0, ge=0)
+    duplicate_warning_count: int = Field(default=0, ge=0)
+    missing_assignment_count: int = Field(default=0, ge=0)
+    missing_external_mapping_count: int = Field(default=0, ge=0)
+    needs_review_count: int = Field(default=0, ge=0)
+    inactive_count: int = Field(default=0, ge=0)
+
+
+class DriverImportJobOutcome(BaseModel):
+    imported: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    errored: list[str] = Field(default_factory=list)
+    invalid_phone: list[str] = Field(default_factory=list)
+    duplicate_warning: list[str] = Field(default_factory=list)
+    missing_assignment_or_mapping: list[str] = Field(default_factory=list)
+    needs_review: list[str] = Field(default_factory=list)
+
+
+class DriverImportJobResponse(BaseModel):
+    job_id: uuid.UUID
+    provider: str
+    status: ImportJobStatus
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
+    records_total: int = Field(default=0, ge=0)
+    records_processed: int = Field(default=0, ge=0)
+    records_imported: int = Field(default=0, ge=0)
+    records_updated: int = Field(default=0, ge=0)
+    records_skipped: int = Field(default=0, ge=0)
+    records_errored: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    outcomes: DriverImportJobOutcome = Field(default_factory=DriverImportJobOutcome)
+    summary: DriverImportJobSummary = Field(default_factory=DriverImportJobSummary)
+    error_message: str | None = None
 
 
 class EvidenceRequestSummary(BaseModel):
