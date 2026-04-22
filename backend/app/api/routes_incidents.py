@@ -45,6 +45,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+_UNAVAILABLE_REASON_MESSAGES: dict[str, str] = {
+    "camera_offline": "Camera footage is unavailable for the requested time window.",
+    "stream_unavailable": "Dashcam footage is temporarily unavailable. Please retry shortly.",
+    "dataset_unavailable": "Telematics data is unavailable for the requested time window.",
+}
+_DEFAULT_UNAVAILABLE_MESSAGE = "This artifact is currently unavailable."
+
+
+def _safe_unavailable_message(reason_code: str | None) -> str | None:
+    if not reason_code:
+        return None
+    return _UNAVAILABLE_REASON_MESSAGES.get(reason_code, _DEFAULT_UNAVAILABLE_MESSAGE)
+
+
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
@@ -184,7 +198,7 @@ def get_incident_endpoint(
                     else None
                 ),
                 unavailable_reason=a.unavailable_reason_code,
-                unavailable_message=a.unavailable_reason_detail,
+                unavailable_message=_safe_unavailable_message(a.unavailable_reason_code),
             )
             for a in artifacts
         ],

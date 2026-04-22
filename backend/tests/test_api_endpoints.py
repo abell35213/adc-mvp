@@ -315,6 +315,7 @@ class TestGetIncident:
             artifact_type="dashcam_road",
             status="unavailable",
             unavailable_reason_code="camera_offline",
+            unavailable_reason_detail="RuntimeError: provider token=secret",
         )
         db_session.add(art)
         db_session.commit()
@@ -328,6 +329,51 @@ class TestGetIncident:
         ]
         assert len(found) == 1
         assert found[0]["unavailable_reason"] == "camera_offline"
+        assert (
+            found[0]["unavailable_message"]
+            == "Camera footage is unavailable for the requested time window."
+        )
+
+    @patch("app.api.routes_incidents.capture_telematics_bundle")
+    @patch("app.api.routes_incidents.capture_dashcam")
+    def test_get_incident_artifact_uses_default_safe_unavailable_message(
+        self, mock_dash, mock_tele, client, db_session, auth_headers
+    ):
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "serious",
+                "adc_vehicle_id": "veh-1",
+                "samsara_vehicle_id": "sm-1",
+                "adc_driver_id": "drv-1",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["incident_id"]
+
+        art = Artifact(
+            incident_id=uuid.UUID(incident_id),
+            artifact_type="telematics_trip",
+            status="unavailable",
+            unavailable_reason_code="unknown_failure",
+            unavailable_reason_detail="ConnectionError: provider account 123 failed",
+        )
+        db_session.add(art)
+        db_session.commit()
+
+        resp = client.get(f"/incidents/{incident_id}", headers=auth_headers)
+        data = resp.json()
+        found = [
+            a
+            for a in data["evidence_inventory"]
+            if a["artifact_type"] == "telematics_trip"
+        ]
+        assert len(found) == 1
+        assert found[0]["unavailable_reason"] == "unknown_failure"
+        assert found[0]["unavailable_message"] == "This artifact is currently unavailable."
 
     def test_get_incident_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
