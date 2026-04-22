@@ -205,10 +205,14 @@ def test_twilio_status_callback_invalid_signature_is_not_short_circuited_by_dupl
     events = (
         db_session.query(ProviderWebhookEvent)
         .filter(ProviderWebhookEvent.event_type == "status_callback")
-        .order_by(ProviderWebhookEvent.received_at_utc.asc())
+        .order_by(
+            ProviderWebhookEvent.received_at_utc.asc(),
+            ProviderWebhookEvent.webhook_event_id.asc(),
+        )
         .all()
     )
     assert len(events) == 2
-    assert events[0].status == "processed"
-    assert events[1].status == "failed"
-    assert events[1].processing_outcome == "invalid_signature"
+    assert {event.status for event in events} == {"processed", "failed"}
+    failed_events = [event for event in events if event.status == "failed"]
+    assert len(failed_events) == 1
+    assert failed_events[0].processing_outcome == "invalid_signature"
