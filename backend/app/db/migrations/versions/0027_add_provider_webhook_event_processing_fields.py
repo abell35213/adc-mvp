@@ -1,7 +1,7 @@
 """add provider webhook event processing fields
 
-Revision ID: 0018
-Revises: 0017
+Revision ID: 0027_add_provider_webhook_event
+Revises: 0026_add_driver_import_jobs_table
 Create Date: 2026-04-22
 
 """
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0018"
-down_revision: Union[str, None] = "0017"
+revision: str = "0027"
+down_revision: Union[str, None] = "0026"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
