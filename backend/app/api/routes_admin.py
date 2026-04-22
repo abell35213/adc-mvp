@@ -30,10 +30,11 @@ from app.api.schemas import (
     QrPayloadResponse,
     RotateQrResponse,
 )
-from app.audit.emitter import emit_audit_event
+from app.audit.emitter import emit_audit_event, emit_standard_audit_event
 from app.core.config import settings
 from app.core.deps import get_current_user
-from app.security.permissions import Capability
+from app.case_ops.service import build_dashboard_snapshot
+from app.security.permissions import Capability, normalize_role
 from app.security.authn import build_user_auth_context
 from app.security.authz import can_access_admin_org, require_policy
 from app.db.models import (
@@ -134,6 +135,11 @@ def _require_admin_policy(
 
 def _can_access_ops_views(context) -> bool:
     return context.user.role in OPS_ALLOWED_ROLES and bool(context.org_ids)
+
+
+def _is_ops_admin_role(raw_role: str | None) -> bool:
+    normalized = normalize_role(raw_role).value
+    return normalized in {"system_admin", "org_admin"}
 
 
 def _get_or_create_instruction_set(
@@ -415,9 +421,8 @@ def list_admin_vehicles(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_READ
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicles.list",
@@ -439,9 +444,8 @@ def rotate_qr(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_WRITE
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.rotate",
@@ -489,15 +493,17 @@ def rotate_qr(
         },
     )
     db.add(event)
-    emit_audit_event(
+    emit_standard_audit_event(
         db,
         org_id=org_id,
         actor_type="user",
         actor_id=str(admin.id),
         action="admin.vehicle_qr.rotate",
         event_type="credential_updated",
+        entity_type="vehicle",
+        entity_id=vehicle_id,
         outcome="success",
-        metadata={"adc_vehicle_id": vehicle_id, "token_sha256": token_hash},
+        metadata={"token_sha256": token_hash},
     )
     db.commit()
 
@@ -520,9 +526,8 @@ def get_qr_payload(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
-            context, context.org_ids[0], Capability.VEHICLE_QR_READ
-        ),
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.read",
@@ -725,6 +730,28 @@ def get_ops_dashboard(
         .limit(100)
         .all()
     )
+    case_metric_incidents = (
+        db.query(Incident)
+        .filter(Incident.org_id == org_id)
+        .all()
+    )
+    incident_ids = [row.incident_id for row in case_metric_incidents]
+    artifacts_by_incident: dict[uuid.UUID, list[Artifact]] = {}
+    events_by_incident: dict[uuid.UUID, list[Event]] = {}
+    exports_by_incident: dict[uuid.UUID, list[Export]] = {}
+    if incident_ids:
+        for artifact in db.query(Artifact).filter(Artifact.incident_id.in_(incident_ids)).all():
+            artifacts_by_incident.setdefault(artifact.incident_id, []).append(artifact)
+        for event in db.query(Event).filter(Event.incident_id.in_(incident_ids)).all():
+            events_by_incident.setdefault(event.incident_id, []).append(event)
+        for export in db.query(Export).filter(Export.incident_id.in_(incident_ids)).all():
+            exports_by_incident.setdefault(export.incident_id, []).append(export)
+    case_metrics = build_dashboard_snapshot(
+        incidents=case_metric_incidents,
+        artifacts_by_incident=artifacts_by_incident,
+        events_by_incident=events_by_incident,
+        exports_by_incident=exports_by_incident,
+    )
     emit_audit_event(
         db,
         org_id=org_id,
@@ -802,6 +829,23 @@ def get_ops_dashboard(
         org_messaging_reliability=MessagingReliabilityResponse(
             **get_messaging_reliability_summary(db, org_id=org_id)
         ),
+        case_metrics={
+            "total_open_cases": case_metrics.total_open_cases,
+            "not_ready_cases": case_metrics.not_ready_cases,
+            "conditionally_ready_cases": case_metrics.conditionally_ready_cases,
+            "ready_for_export_cases": case_metrics.ready_for_export_cases,
+            "exported_cases": case_metrics.exported_cases,
+            "closed_cases": case_metrics.closed_cases,
+            "cases_with_critical_blockers": case_metrics.cases_with_critical_blockers,
+            "cases_with_important_blockers": case_metrics.cases_with_important_blockers,
+            "aging": {
+                "average_age_days": case_metrics.aging.average_age_days,
+                "p95_age_days": case_metrics.aging.p95_age_days,
+                "over_24h": case_metrics.aging.over_24h,
+                "over_72h": case_metrics.aging.over_72h,
+                "over_7d": case_metrics.aging.over_7d,
+            },
+        },
     )
 
 

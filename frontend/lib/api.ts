@@ -206,6 +206,10 @@ export interface Incident {
   created_at_utc?: string;
   evidence_captured?: number;
   evidence_total?: number;
+  completeness_percent?: number;
+  completeness_status?: string;
+  readiness_state?: string;
+  blocker_counts?: Record<string, number>;
   driver_response?: DriverResponseSummary | null;
   driver_protocol_summary?: DriverProtocolSummary | null;
 }
@@ -347,6 +351,8 @@ export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
   timeline: EventSummary[];
+  completeness_missing_items?: string[];
+  blockers?: Array<{ code: string; message: string; severity: string }>;
 }
 
 export function listIncidents() {
@@ -487,11 +493,327 @@ export function resetDriverProtocolInstructions(scope?: string) {
   );
 }
 
+export interface ProtocolSetupStepData {
+  instruction_set_selected: boolean;
+  instruction_source: "default" | "company" | "insurer";
+  safety_contact_configured: boolean;
+  safety_manager_phone: string | null;
+  required_media_prompts_defaulted: boolean;
+  export_profile_defaulted: boolean;
+  export_profiles_available: string[];
+}
+
+export function getProtocolSetupStepData() {
+  return request<ProtocolSetupStepData>("/org/onboarding/protocol-setup-step");
+}
+
+export type OnboardingStepStatus =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "blocked";
+export type OnboardingReadinessStatus =
+  | "not_started"
+  | "in_progress"
+  | "blocked"
+  | "pilot_ready"
+  | "launch_ready";
+
+export interface OnboardingReadinessStep {
+  key: string;
+  label: string;
+  status: OnboardingStepStatus;
+  order: number;
+  completed_at_utc?: string | null;
+  updated_at_utc?: string | null;
+}
+
+export interface OnboardingBlocker {
+  code: string;
+  title: string;
+  detail: string;
+  severity: "critical" | "warning" | "info" | "error";
+  blocking_step_key?: string | null;
+}
+
+export interface OnboardingImportJob {
+  import_job_id: string;
+  provider: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  records_total: number;
+  records_succeeded: number;
+  records_failed: number;
+  completed_at_utc?: string | null;
+}
+
+export interface ExportValidationRun {
+  validation_run_id?: string | null;
+  status: OnboardingStepStatus;
+  validated_at_utc?: string | null;
+  checks: Record<string, boolean>;
+}
+
+export interface OnboardingMetricsSnapshot {
+  onboarding_started_at_utc?: string | null;
+  latest_activity_at_utc?: string | null;
+  time_to_pilot_ready_hours?: number | null;
+  time_to_launch_ready_hours?: number | null;
+  import_success_rate: number;
+  driver_import_success_rate: number;
+  qr_coverage_rate: number;
+  valid_driver_phone_ratio: number;
+  integration_validation_pass_rate: number;
+  sample_incident_completion_rate: number;
+  export_validation_rate: number;
+  common_blockers: string[];
+}
+
+export interface OnboardingAlertCondition {
+  code: string;
+  title: string;
+  severity: "critical" | "warning" | "info" | "error";
+  triggered: boolean;
+  detail: string;
+}
+
+export interface OrgLaunchReadiness {
+  org_id: string;
+  status: OnboardingReadinessStatus;
+  percent_complete: number;
+  steps: OnboardingReadinessStep[];
+  blockers: OnboardingBlocker[];
+  import_jobs: OnboardingImportJob[];
+  latest_export_validation?: ExportValidationRun | null;
+  metrics?: OnboardingMetricsSnapshot | null;
+  alert_conditions?: OnboardingAlertCondition[];
+  reporting_hooks?: Record<string, unknown>;
+  snapshot_created_at_utc?: string | null;
+}
+
+export interface VehicleQrStats {
+  required_vehicle_count: number;
+  generated_count: number;
+  distributed_count: number;
+  confirmed_count: number;
+  coverage_blockers: string[];
+}
+
+export interface IntegrationValidationResult {
+  integration_id: string;
+  credentialStatus: OnboardingStepStatus;
+  capabilityStatus: OnboardingStepStatus;
+  mappingStatus: OnboardingStepStatus;
+  messages: string[];
+  timestamp: string;
+}
+
+type IntegrationValidationResultLegacyResponse = {
+  integration_key?: string;
+  status?: OnboardingStepStatus;
+  checked_at_utc?: string;
+  detail?: string;
+  errors?: string[];
+};
+
+type IntegrationValidationResultCurrentResponse = {
+  integration_id?: string;
+  credentialStatus?: OnboardingStepStatus;
+  capabilityStatus?: OnboardingStepStatus;
+  mappingStatus?: OnboardingStepStatus;
+  messages?: string[];
+  timestamp?: string;
+};
+
+export function getOrgOnboardingStatus() {
+  return request<OrgLaunchReadiness>("/org/onboarding/status");
+}
+
+export function getOrgOnboardingQrStats() {
+  return request<VehicleQrStats>("/org/onboarding/qr-stats");
+}
+
+export function getIntegrationValidationResults() {
+  return request<Array<IntegrationValidationResultLegacyResponse | IntegrationValidationResultCurrentResponse>>(
+    "/org/integrations/validation-results"
+  ).then((rows) =>
+    rows.map((row) => {
+      const status = (row as IntegrationValidationResultCurrentResponse).credentialStatus
+        ?? (row as IntegrationValidationResultLegacyResponse).status
+        ?? "not_started";
+      const mappedMessages = (row as IntegrationValidationResultCurrentResponse).messages
+        ?? (row as IntegrationValidationResultLegacyResponse).errors
+        ?? ((row as IntegrationValidationResultLegacyResponse).detail
+          ? [(row as IntegrationValidationResultLegacyResponse).detail as string]
+          : []);
+      const fallbackIdSource = [
+        (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? "",
+        status,
+        ...mappedMessages,
+      ]
+        .join("|")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return {
+        integration_id:
+          (row as IntegrationValidationResultCurrentResponse).integration_id
+          ?? (row as IntegrationValidationResultLegacyResponse).integration_key
+          ?? `integration-${fallbackIdSource || "unknown"}`,
+        credentialStatus: (row as IntegrationValidationResultCurrentResponse).credentialStatus ?? status,
+        capabilityStatus: (row as IntegrationValidationResultCurrentResponse).capabilityStatus ?? status,
+        mappingStatus: (row as IntegrationValidationResultCurrentResponse).mappingStatus ?? status,
+        messages: mappedMessages,
+        timestamp:
+          (row as IntegrationValidationResultCurrentResponse).timestamp
+          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
+          ?? new Date(0).toISOString(),
+      };
+    })
+  );
+}
 /* ── Admin vehicles ─────────────────────────────────────────────── */
 
 export interface AdminVehicle {
   adc_vehicle_id: string;
   display_label: string;
+}
+
+export type CaseOpsQueueSort = "urgency" | "readiness" | "newest";
+
+export interface CaseOpsQueueBlockerCounts {
+  total: number;
+  critical: number;
+  important: number;
+  optional: number;
+}
+
+export interface CaseOpsQueueItem {
+  incident_id: string;
+  case_status: string;
+  owner_user_id?: string | null;
+  readiness_state: string;
+  created_at_utc?: string | null;
+  last_activity_at_utc?: string | null;
+  severity?: string | null;
+  adc_vehicle_id?: string | null;
+  adc_driver_id?: string | null;
+  completeness_percent: number;
+  blockers: CaseOpsQueueBlockerCounts;
+}
+
+
+
+export type ImportJobStatus = "pending" | "running" | "succeeded" | "failed";
+
+export interface VehicleImportJobSummary {
+  missing_qr_count: number;
+  missing_provider_mapping_count: number;
+  duplicate_like_count: number;
+  inactive_count: number;
+}
+
+export interface VehicleImportJobOutcome {
+  imported: string[];
+  updated: string[];
+  skipped: string[];
+  errored: string[];
+}
+
+export interface VehicleImportJobResponse {
+  job_id: string;
+  provider: string;
+  status: ImportJobStatus;
+  started_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  records_total: number;
+  records_processed: number;
+  records_imported: number;
+  records_updated: number;
+  records_skipped: number;
+  records_errored: number;
+  warnings: string[];
+  outcomes: VehicleImportJobOutcome;
+  summary: VehicleImportJobSummary;
+  error_message?: string | null;
+}
+
+export interface DriverImportJobSummary {
+  invalid_phone_count: number;
+  duplicate_warning_count: number;
+  missing_assignment_count: number;
+  missing_external_mapping_count: number;
+  needs_review_count: number;
+  inactive_count: number;
+}
+
+export interface DriverImportJobOutcome {
+  imported: string[];
+  updated: string[];
+  skipped: string[];
+  errored: string[];
+  invalid_phone: string[];
+  duplicate_warning: string[];
+  missing_assignment_or_mapping: string[];
+  needs_review: string[];
+}
+
+export interface DriverImportJobResponse {
+  job_id: string;
+  provider: string;
+  status: ImportJobStatus;
+  started_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  records_total: number;
+  records_processed: number;
+  records_imported: number;
+  records_updated: number;
+  records_skipped: number;
+  records_errored: number;
+  warnings: string[];
+  outcomes: DriverImportJobOutcome;
+  summary: DriverImportJobSummary;
+  error_message?: string | null;
+}
+
+export interface CaseOpsQueueResponse {
+  items: CaseOpsQueueItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CaseOpsSummaryMetrics {
+  open_incidents: number;
+  unassigned_incidents: number;
+  blocked_incidents: number;
+  export_aging_incidents: number;
+  stalled_incidents: number;
+  overdue_tasks: number;
+}
+
+export interface CaseOpsAlerts {
+  stalled: number;
+  unassigned: number;
+  overdue: number;
+  blocked: number;
+  export_aging: number;
+}
+
+export interface CaseTaskWidgetItem {
+  task_id: string;
+  incident_id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_at_utc?: string | null;
+  assigned_to_user_id?: string | null;
+  created_at_utc?: string | null;
+}
+
+export interface CaseTaskWidgetResponse {
+  items: CaseTaskWidgetItem[];
 }
 
 export function listAdminVehicles() {
@@ -507,6 +829,299 @@ export function rotateVehicleQr(vehicleId: string) {
 
 export function getVehicleQrPayload(vehicleId: string) {
   return request<{ deep_link: string }>(`/admin/vehicles/${vehicleId}/qr`);
+}
+
+
+export function createVehicleImportJob(data: {
+  provider: string;
+  csv_content: string;
+  header_mapping: Record<string, string>;
+  inactive_unit_numbers: string[];
+}) {
+  return request<{ job_id: string; status: ImportJobStatus }>("/org/vehicles/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getVehicleImportJob(jobId: string) {
+  return request<VehicleImportJobResponse>(`/org/vehicles/import-jobs/${jobId}`);
+}
+
+export function createDriverImportJob(data: {
+  provider: string;
+  csv_content: string;
+  header_mapping: Record<string, string>;
+  inactive_mobile_phones: string[];
+}) {
+  return request<{ job_id: string; status: ImportJobStatus }>("/org/drivers/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getDriverImportJob(jobId: string) {
+  return request<DriverImportJobResponse>(`/org/drivers/import-jobs/${jobId}`);
+}
+
+export function getIncidentQueue(params?: {
+  status?: string;
+  readiness_state?: string;
+  blockers?: string;
+  search?: string;
+  sort?: CaseOpsQueueSort;
+  page?: number;
+  page_size?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.readiness_state) query.set("readiness_state", params.readiness_state);
+  if (params?.blockers) query.set("blockers", params.blockers);
+  if (params?.search) query.set("search", params.search);
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.page_size) query.set("page_size", String(params.page_size));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<CaseOpsQueueResponse>(`/incidents/queue${suffix}`);
+}
+
+export function getIncidentSummaryMetrics() {
+  return request<CaseOpsSummaryMetrics>("/incidents/summary-metrics");
+}
+
+export function getIncidentAlerts() {
+  return request<CaseOpsAlerts>("/incidents/alerts");
+}
+
+export function getMyOpenTasks(params?: { limit?: number }) {
+  const suffix = params?.limit ? `?limit=${params.limit}` : "";
+  return request<CaseTaskWidgetResponse>(`/tasks/my-open${suffix}`);
+}
+
+export function getOverdueTasks(params?: { limit?: number }) {
+  const suffix = params?.limit ? `?limit=${params.limit}` : "";
+  return request<CaseTaskWidgetResponse>(`/tasks/overdue${suffix}`);
+}
+
+export function patchIncidentOwner(incidentId: string, data: {
+  operation: "assign" | "reassign" | "clear";
+  owner_user_id?: string | null;
+}) {
+  return request<{ incident_id: string; owner_user_id?: string | null }>(`/incidents/${incidentId}/owner`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function patchIncidentStatus(incidentId: string, data: {
+  case_status: string;
+  reason: string;
+}) {
+  return request<{ incident_id: string; case_status: string }>(`/incidents/${incidentId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export interface CaseWorkspaceOwner {
+  user_id: string;
+  email?: string | null;
+}
+
+export interface CaseWorkspaceCompletenessSection {
+  name: string;
+  earned: number;
+  possible: number;
+  percent: number;
+  status: string;
+  missing_items: string[];
+}
+
+export interface CaseWorkspaceCompleteness {
+  percent: number;
+  status: string;
+  missing_items: string[];
+  sections: CaseWorkspaceCompletenessSection[];
+}
+
+export interface CaseWorkspaceEvidenceSummary {
+  total: number;
+  captured: number;
+  pending: number;
+  unavailable: number;
+}
+
+export interface CaseWorkspaceTaskItem {
+  task_id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_at_utc?: string | null;
+  assigned_to_user_id?: string | null;
+  created_at_utc?: string | null;
+}
+
+export interface CaseWorkspaceNoteItem {
+  note_id: string;
+  body: string;
+  note_type: "standard" | "tagged" | "decision";
+  tags: string[];
+  created_by_user_id?: string | null;
+  created_at_utc: string;
+  edited_at_utc?: string | null;
+}
+
+export interface CaseWorkspaceActivityItem {
+  source: "event" | "audit";
+  type: string;
+  occurred_at_utc: string;
+  actor_type: string;
+  actor_id: string;
+  detail: Record<string, unknown>;
+}
+
+export interface CaseWorkspaceResponse {
+  incident_id: string;
+  owner?: CaseWorkspaceOwner | null;
+  case_status: string;
+  readiness_state: string;
+  completeness: CaseWorkspaceCompleteness;
+  blockers: Array<Record<string, unknown>>;
+  evidence_summary: CaseWorkspaceEvidenceSummary;
+  missing_items: string[];
+  open_tasks: CaseWorkspaceTaskItem[];
+  recent_notes: CaseWorkspaceNoteItem[];
+  activity: CaseWorkspaceActivityItem[];
+}
+
+export interface IncidentTaskItem {
+  task_id: string;
+  incident_id: string;
+  title: string;
+  description?: string | null;
+  task_type: "review" | "evidence" | "follow_up" | "export" | "other";
+  status: "open" | "completed" | "cancelled";
+  priority: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string | null;
+  assigned_to_user_id?: string | null;
+  assigned_at_utc?: string | null;
+  assigned_by_user_id?: string | null;
+  created_by_user_id?: string | null;
+  created_at_utc?: string | null;
+  completed_at_utc?: string | null;
+  canceled_at_utc?: string | null;
+  canceled_reason?: string | null;
+  overdue: boolean;
+}
+
+export interface IncidentTaskListResponse {
+  items: IncidentTaskItem[];
+}
+
+export interface IncidentNoteItem {
+  note_id: string;
+  incident_id: string;
+  body: string;
+  note_type: "standard" | "tagged" | "decision";
+  tags: string[];
+  created_by_user_id?: string | null;
+  created_at_utc: string;
+  edited: boolean;
+  edited_by_user_id?: string | null;
+  edited_at_utc?: string | null;
+  updated_at_utc: string;
+  is_deleted: boolean;
+  deleted_by_user_id?: string | null;
+  deleted_at_utc?: string | null;
+}
+
+export interface IncidentNotesResponse {
+  items: IncidentNoteItem[];
+}
+
+export function getIncidentWorkspace(incidentId: string) {
+  return request<CaseWorkspaceResponse>(`/incidents/${incidentId}/workspace`);
+}
+
+export function listIncidentNotes(incidentId: string, params?: { includeDeleted?: boolean }) {
+  const suffix = params?.includeDeleted ? "?include_deleted=true" : "";
+  return request<IncidentNotesResponse>(`/incidents/${incidentId}/notes${suffix}`);
+}
+
+export function createIncidentNote(incidentId: string, data: {
+  body: string;
+  note_type?: "standard" | "tagged" | "decision";
+  tags?: string[];
+}) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function patchIncidentNote(incidentId: string, data: {
+  note_id: string;
+  body?: string;
+  note_type?: "standard" | "tagged" | "decision";
+  tags?: string[];
+}) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteIncidentNote(incidentId: string, data: { note_id: string }) {
+  return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
+    method: "DELETE",
+    body: JSON.stringify(data),
+  });
+}
+
+export function listIncidentTasks(incidentId: string) {
+  return request<IncidentTaskListResponse>(`/incidents/${incidentId}/tasks`);
+}
+
+export function createIncidentTask(incidentId: string, data: {
+  title: string;
+  description?: string;
+  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
+  priority?: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string;
+  assigned_to_user_id?: string;
+}) {
+  return request<IncidentTaskItem>(`/incidents/${incidentId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function patchTask(taskId: string, data: {
+  title?: string;
+  description?: string;
+  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
+  priority?: "low" | "medium" | "high" | "urgent";
+  due_at_utc?: string;
+  assigned_to_user_id?: string;
+  status?: "open" | "completed" | "cancelled";
+}) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function completeTask(taskId: string) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}/complete`, {
+    method: "POST",
+  });
+}
+
+export function cancelTask(taskId: string, data?: { reason?: string }) {
+  return request<IncidentTaskItem>(`/tasks/${taskId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(data ?? {}),
+  });
 }
 
 export interface OpsIncidentItem {
@@ -611,4 +1226,86 @@ export function searchOpsAudit(params?: {
   if (params?.limit) query.set("limit", String(params.limit));
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return request<AuditSearchResponseItem[]>(`/admin/ops/audit-search${suffix}`);
+}
+
+export interface IntegrationConnectionHealth {
+  integration_id: string;
+  provider: string;
+  domain: string | null;
+  status: "pending" | "active" | "inactive" | "error";
+  healthy: boolean;
+  reason: string | null;
+  last_synced_at_utc: string | null;
+  updated_at_utc: string | null;
+}
+
+export interface IntegrationOperationDiagnostics {
+  operation_id: string;
+  org_id: string | null;
+  incident_id: string | null;
+  connection_id: string | null;
+  provider: string;
+  domain: string | null;
+  operation_type: string;
+  status: string;
+  correlation_id: string | null;
+  external_reference: string | null;
+  external_reference_id: string | null;
+  payload_json: Record<string, unknown>;
+  result_json: Record<string, unknown>;
+  error_message: string | null;
+  error_code: string | null;
+  error_category: string | null;
+  error_provider_key: string | null;
+  error_retryable: boolean | null;
+  error_user_facing_message: string | null;
+  error_operator_message: string | null;
+  requested_at_utc: string | null;
+  started_at_utc: string | null;
+  completed_at_utc: string | null;
+  updated_at_utc: string | null;
+}
+
+export interface ProviderWebhookEvent {
+  webhook_event_id: string;
+  provider: string;
+  domain: string | null;
+  status: string;
+  received_at_utc: string;
+  correlation_id: string | null;
+  processing_latency_ms: number | null;
+  retry_count: number | null;
+  normalized_error_code: string | null;
+}
+
+export function getIntegrationConnections() {
+  return request<IntegrationConnectionHealth[]>("/org/integrations");
+}
+
+export function getIntegrationOperations(params?: {
+  provider?: string;
+  status?: string;
+  incident_id?: string;
+  limit?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params?.provider) query.set("provider", params.provider);
+  if (params?.status) query.set("status", params.status);
+  if (params?.incident_id) query.set("incident_id", params.incident_id);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<IntegrationOperationDiagnostics[]>(`/integration-operations${suffix}`);
+}
+
+export function getWebhookDiagnostics(params?: {
+  provider?: string;
+  status?: string;
+  limit?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params?.provider) query.set("provider", params.provider);
+  if (params?.status) query.set("status", params.status);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<ProviderWebhookEvent[]>(`/admin/ops/webhook-events${suffix}`);
 }

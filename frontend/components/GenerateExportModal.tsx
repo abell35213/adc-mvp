@@ -16,6 +16,9 @@ interface GenerateExportModalProps {
   onSubmit: (payload: { exportType: ExportType; options: ExportOptions }) => Promise<void>;
   disabled?: boolean;
   warningCount?: number;
+  preflightPendingCount?: number;
+  preflightUnavailableCount?: number;
+  preflightWarnings?: string[];
 }
 
 const EXPORT_TYPE_OPTIONS: Array<{ value: ExportType; label: string; description: string }> = [
@@ -59,6 +62,9 @@ export default function GenerateExportModal({
   onSubmit,
   disabled = false,
   warningCount = 0,
+  preflightPendingCount = 0,
+  preflightUnavailableCount = 0,
+  preflightWarnings = [],
 }: GenerateExportModalProps) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [exportType, setExportType] = useState<ExportType>("court_defense");
@@ -106,7 +112,7 @@ export default function GenerateExportModal({
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Generate export</h3>
             <p className="text-sm text-gray-500">
-              {step === "configure" ? "Choose export settings." : "Review included sections and warnings."}
+              {step === "configure" ? "Choose export settings." : "Review included sections and preflight warnings."}
             </p>
           </div>
           <button onClick={handleClose} className="text-sm text-gray-500 hover:underline">
@@ -187,12 +193,17 @@ export default function GenerateExportModal({
               </ul>
             </div>
             <div className="rounded border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-medium text-amber-900">Non-blocking warnings</p>
+              <p className="text-sm font-medium text-amber-900">Preflight visibility</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">
+                <li>{preflightPendingCount} evidence item(s) are still pending upstream retrieval.</li>
+                <li>{preflightUnavailableCount} evidence item(s) are unavailable/partial and will be flagged in packet rationale.</li>
                 {NON_BLOCKING_WARNINGS.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
                 {warningCount > 0 && <li>{warningCount} warning(s) detected on recent export attempts.</li>}
+                {preflightWarnings.slice(0, 5).map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
               </ul>
             </div>
           </div>

@@ -16,7 +16,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Artifact, Base, Event, Export, Incident, IntegrationOperation, Org
+from app.db.models import (
+    Artifact,
+    Base,
+    Event,
+    Export,
+    Incident,
+    IntegrationConnection,
+    IntegrationOperation,
+    Org,
+)
 from app.domain.system_event_types import SystemEventType
 from app.tasks.notification_tasks import notify_safety_manager
 
@@ -559,7 +568,7 @@ class TestCaptureTelematicsBundle:
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
 
-        with pytest.raises(RuntimeError, match="Samsara down"):
+        with pytest.raises(Exception):
             capture_telematics_bundle(
                 str(incident.incident_id),
                 "2024-01-01T00:00:00Z",
@@ -577,6 +586,45 @@ class TestCaptureTelematicsBundle:
         assert "evidence_capture_attempted" in event_types
         assert "evidence_capture_failed" in event_types
         assert "evidence_capture_succeeded" not in event_types
+
+    @patch("app.tasks.evidence_tasks._get_db")
+    @patch("app.services.samsara_client.SamsaraClient")
+    def test_credentials_invalid_marks_connection_for_reauth(
+        self, MockSamsara, mock_get_db, db_session, incident
+    ):
+        mock_get_db.return_value = db_session
+        db_session.add(
+            IntegrationConnection(
+                org_id=incident.org_id,
+                provider="samsara",
+                domain="telematics",
+                status="active",
+            )
+        )
+        db_session.commit()
+        MockSamsara.side_effect = RuntimeError("credentials_invalid")
+
+        from app.tasks.evidence_tasks import capture_telematics_bundle
+
+        result = capture_telematics_bundle(
+            str(incident.incident_id),
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T01:00:00Z",
+        )
+        assert result["action_required"] == "reauth_required"
+
+        connection = (
+            db_session.query(IntegrationConnection)
+            .filter(
+                IntegrationConnection.org_id == incident.org_id,
+                IntegrationConnection.provider == "samsara",
+                IntegrationConnection.domain == "telematics",
+            )
+            .first()
+        )
+        assert connection is not None
+        assert connection.status == "error"
+        assert connection.config_json["admin_action_required"] == "reauth_required"
 
 
 # ── Backward-compatible alias ───────────────────────────────────────

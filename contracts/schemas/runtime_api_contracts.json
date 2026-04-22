@@ -770,6 +770,33 @@
           "default": null,
           "title": "Adc Vehicle Id"
         },
+        "blockers": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "completeness_missing_items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Completeness Missing Items",
+          "type": "array"
+        },
+        "completeness_percent": {
+          "default": 0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Completeness Percent",
+          "type": "integer"
+        },
+        "completeness_status": {
+          "default": "incomplete",
+          "title": "Completeness Status",
+          "type": "string"
+        },
         "created_at_utc": {
           "anyOf": [
             {
@@ -808,6 +835,11 @@
           },
           "title": "Messaging Reliability",
           "type": "object"
+        },
+        "readiness_state": {
+          "default": "not_ready",
+          "title": "Readiness State",
+          "type": "string"
         },
         "samsara_vehicle_id": {
           "anyOf": [
@@ -897,6 +929,25 @@
           "default": null,
           "title": "Adc Vehicle Id"
         },
+        "blocker_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Blocker Counts",
+          "type": "object"
+        },
+        "completeness_percent": {
+          "default": 0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Completeness Percent",
+          "type": "integer"
+        },
+        "completeness_status": {
+          "default": "incomplete",
+          "title": "Completeness Status",
+          "type": "string"
+        },
         "created_at_utc": {
           "anyOf": [
             {
@@ -925,6 +976,11 @@
         "incident_id": {
           "format": "uuid",
           "title": "Incident Id",
+          "type": "string"
+        },
+        "readiness_state": {
+          "default": "not_ready",
+          "title": "Readiness State",
           "type": "string"
         },
         "samsara_vehicle_id": {
@@ -1032,12 +1088,34 @@
             "enum": [
               "incident:read",
               "incident:write",
+              "incident:close",
+              "incident:reopen",
+              "incident:escalate",
               "export:read",
               "export:write",
               "driver_protocol:read",
               "driver_protocol:write",
               "vehicle_qr:read",
-              "vehicle_qr:write"
+              "vehicle_qr:write",
+              "org_settings:read",
+              "org_settings:write",
+              "user_management:read",
+              "user_management:write",
+              "imports:read",
+              "imports:write",
+              "integrations:read",
+              "integrations:write",
+              "onboarding:read",
+              "onboarding:write",
+              "test_runs:read",
+              "test_runs:write",
+              "readiness:view",
+              "demo:manage",
+              "entitlements:manage",
+              "trust_docs:publish",
+              "deployment_scope:manage",
+              "reporting:basic_read",
+              "reporting:premium_read"
             ],
             "type": "string"
           },
@@ -1063,7 +1141,10 @@
           "enum": [
             "system_admin",
             "org_admin",
-            "safety_manager"
+            "safety_manager",
+            "read_only",
+            "support_admin",
+            "support_agent"
           ],
           "title": "Role",
           "type": "string"
@@ -1124,7 +1205,10 @@
           "enum": [
             "system_admin",
             "org_admin",
-            "safety_manager"
+            "safety_manager",
+            "read_only",
+            "support_admin",
+            "support_agent"
           ],
           "title": "Role",
           "type": "string"

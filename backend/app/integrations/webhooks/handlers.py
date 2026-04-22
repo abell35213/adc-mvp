@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.metrics import MetricNames, increment
 from app.db.repo.message_operations import (
     get_message_operation_by_provider_message_id,
     update_message_operation_status,
@@ -16,6 +17,7 @@ from app.db.repo.provider_webhook_events import (
     get_provider_webhook_event_by_idempotency_key,
     update_provider_webhook_event,
 )
+from app.observability.redaction import redact_payload_for_storage, redact_raw_payload
 
 
 @dataclass
@@ -44,6 +46,9 @@ def process_twilio_status_callback(
     signature_valid: bool,
     signature_error: str | None,
 ) -> WebhookResult:
+    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
+    sanitized_payload = redact_payload_for_storage(payload)
+    sanitized_raw_payload = redact_raw_payload(raw_payload)
     message_sid = payload.get("MessageSid")
     idempotency_key = build_idempotency_key(
         provider="twilio",
@@ -89,11 +94,12 @@ def process_twilio_status_callback(
             idempotency_key=idempotency_key,
             signature_valid=signature_valid,
             processing_outcome="duplicate",
-            raw_payload=raw_payload,
-            payload_json=payload,
+            raw_payload=sanitized_raw_payload,
+            payload_json=sanitized_payload,
             error_message="duplicate_webhook",
             error_details_json={"duplicate_of": str(existing.webhook_event_id)},
         )
+        increment("webhook.twilio.duplicate")
         return WebhookResult(status_code=200, body={"status": "duplicate"})
 
     event = create_provider_webhook_event(
@@ -106,8 +112,8 @@ def process_twilio_status_callback(
         external_reference=message_sid,
         idempotency_key=idempotency_key,
         signature_valid=signature_valid,
-        raw_payload=raw_payload,
-        payload_json=payload,
+        raw_payload=sanitized_raw_payload,
+        payload_json=sanitized_payload,
     )
 
     message_status = (payload.get("MessageStatus") or "").strip().lower()
@@ -120,6 +126,7 @@ def process_twilio_status_callback(
         )
 
     if operation is None:
+        increment("webhook.twilio.orphaned")
         update_provider_webhook_event(
             db,
             event,
@@ -139,6 +146,7 @@ def process_twilio_status_callback(
     }
     mapped = status_map.get(message_status)
     if mapped is None:
+        increment("webhook.twilio.unsupported_status")
         update_provider_webhook_event(
             db,
             event,
@@ -154,8 +162,12 @@ def process_twilio_status_callback(
         operation,
         to_status=mapped,
         normalized_error_code=f"TWILIO_{error_code}" if error_code else None,
-        details_json=payload,
+        details_json=sanitized_payload,
     )
+    if mapped in {"failed", "undelivered"}:
+        increment(MetricNames.OTP_DELIVERY_FAILURE)
+    if mapped == "delivered":
+        increment(MetricNames.OTP_DELIVERY_SUCCESS)
     update_provider_webhook_event(
         db,
         event,
@@ -174,6 +186,9 @@ def persist_twilio_voice_callback(
     signature_valid: bool,
     signature_error: str | None,
 ) -> WebhookResult:
+    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
+    sanitized_payload = redact_payload_for_storage(payload)
+    sanitized_raw_payload = redact_raw_payload(raw_payload)
     idempotency_key = build_idempotency_key(
         provider="twilio",
         event_type="voice_callback",
@@ -193,11 +208,13 @@ def persist_twilio_voice_callback(
         idempotency_key=idempotency_key,
         signature_valid=signature_valid,
         processing_outcome=outcome,
-        raw_payload=raw_payload,
-        payload_json=payload,
+        raw_payload=sanitized_raw_payload,
+        payload_json=sanitized_payload,
         error_message=None if signature_valid else "twilio_signature_validation_failed",
         error_details_json={} if signature_valid else {"reason": signature_error},
     )
     if signature_valid:
         return WebhookResult(status_code=200, body={"status": "ok"})
+    increment(MetricNames.WEBHOOK_SIGNATURE_FAILURES)
+    increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
     return WebhookResult(status_code=403, body={"detail": "Invalid Twilio signature"})

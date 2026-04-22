@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -15,10 +16,16 @@ from app.api.schemas import (
     ExportSummary,
     IncidentDetailResponse,
     IncidentListItem,
+    IncidentOwnerPatchRequest,
+    IncidentOwnerPatchResponse,
+    IncidentStatusPatchRequest,
+    IncidentStatusPatchResponse,
 )
+from app.audit.emitter import emit_audit_event
 from app.core.deps import get_current_user
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
+from app.case_ops.service import build_case_snapshot, validate_case_status_transition
 from app.db.models import User
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
@@ -29,22 +36,68 @@ from app.db.session import get_db
 from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
 from app.tasks.export_tasks import build_export
-from app.services.idempotency_service import optional_idempotency_key, find_event_by_idempotency
+from app.services.idempotency_service import (
+    optional_idempotency_key,
+    find_event_by_idempotency,
+)
 from app.services.incident_evidence_orchestrator import IncidentEvidenceOrchestrator
 from app.services.dashcam_reason_codes import dashcam_reason_message
 from app.services.rate_limit_service import enforce_rate_limit
+from app.services.incident_ownership_service import patch_incident_owner
 from app.core.config import settings
 from app.security.authn import build_user_auth_context
 from app.security.authz import (
     can_create_incident,
+    can_modify_incident,
     can_request_export,
     can_view_incident,
     require_policy,
 )
+from app.security.permissions import Capability, has_capability
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _required_transition_capability(
+    from_status: str, to_status: str
+) -> Capability | None:
+    if to_status == "closed":
+        return Capability.INCIDENT_CLOSE
+    if from_status == "closed" and to_status == "in_review":
+        return Capability.INCIDENT_REOPEN
+    if to_status == "escalated":
+        return Capability.INCIDENT_ESCALATE
+    return None
+
+
+def _is_privileged_status_target(to_status: str) -> bool:
+    return to_status == "closed"
+
+
+def _has_privileged_status_permission(role: str | None) -> bool:
+    return role in {"org_admin", "system_admin"}
+
+
+def _event_context_payload(
+    *,
+    actor_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID | None,
+    reason: str | None,
+    previous: dict[str, str | None],
+    new: dict[str, str | None],
+) -> dict[str, object]:
+    return {
+        "actor": {"type": "user", "id": str(actor_id)},
+        "incident_id": str(incident_id),
+        "org_id": str(org_id) if org_id else None,
+        "reason": reason,
+        "previous": previous,
+        "new": new,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/", response_model=list[IncidentListItem])
@@ -62,6 +115,12 @@ def list_incidents_endpoint(
     for inc in incidents:
         artifacts = get_artifacts_by_incident(db, inc.incident_id)
         captured = sum(1 for a in artifacts if a.status == "captured")
+        snapshot = build_case_snapshot(
+            incident=inc,
+            artifacts=artifacts,
+            events=[],
+            exports=[],
+        )
         result.append(
             IncidentListItem(
                 incident_id=inc.incident_id,
@@ -75,6 +134,14 @@ def list_incidents_endpoint(
                 else None,
                 evidence_captured=captured,
                 evidence_total=len(artifacts),
+                completeness_percent=snapshot.completeness.percent,
+                completeness_status=snapshot.completeness.status,
+                readiness_state=snapshot.readiness.state,
+                blocker_counts={
+                    "critical": snapshot.blockers.critical_count,
+                    "important": snapshot.blockers.important_count,
+                    "optional": snapshot.blockers.optional_count,
+                },
             )
         )
     return result
@@ -134,7 +201,9 @@ def create_incident_endpoint(
         window_start = body.window_start
         window_end = body.window_end
         request_correlation_id = (
-            request.headers.get("x-correlation-id") or get_request_id() or str(uuid.uuid4())
+            request.headers.get("x-correlation-id")
+            or get_request_id()
+            or str(uuid.uuid4())
         )
         logger.info(
             "Queueing orchestrated evidence capture",
@@ -179,6 +248,12 @@ def get_incident_endpoint(
     artifacts = get_artifacts_by_incident(db, incident_id)
     exports = get_exports_by_incident(db, incident_id)
     events = get_events_by_incident(db, incident_id)
+    snapshot = build_case_snapshot(
+        incident=incident,
+        artifacts=artifacts,
+        events=events,
+        exports=exports,
+    )
 
     return IncidentDetailResponse(
         incident_id=incident.incident_id,
@@ -233,9 +308,15 @@ def get_incident_endpoint(
                 completed_at_utc=e.completed_at_utc.isoformat()
                 if e.completed_at_utc
                 else None,
-                expires_at_utc=e.expires_at_utc.isoformat() if e.expires_at_utc else None,
-                created_at_utc=e.created_at_utc.isoformat() if e.created_at_utc else None,
-                updated_at_utc=e.updated_at_utc.isoformat() if e.updated_at_utc else None,
+                expires_at_utc=e.expires_at_utc.isoformat()
+                if e.expires_at_utc
+                else None,
+                created_at_utc=e.created_at_utc.isoformat()
+                if e.created_at_utc
+                else None,
+                updated_at_utc=e.updated_at_utc.isoformat()
+                if e.updated_at_utc
+                else None,
             )
             for e in exports
         ],
@@ -255,6 +336,220 @@ def get_incident_endpoint(
         )
         if incident.org_id
         else {},
+        completeness_percent=snapshot.completeness.percent,
+        completeness_status=snapshot.completeness.status,
+        readiness_state=snapshot.readiness.state,
+        completeness_missing_items=snapshot.completeness.missing_items,
+        blockers=[
+            {
+                "code": blocker.code,
+                "message": blocker.message,
+                "severity": blocker.severity,
+                "category": blocker.missing_item.category,
+                "resolvableBy": blocker.missing_item.resolvableBy,
+                "actionHint": blocker.missing_item.actionHint,
+                "blocksReadiness": blocker.blocks_readiness,
+            }
+            for blocker in snapshot.blockers.items
+        ],
+    )
+
+
+@router.patch("/{incident_id}/status", response_model=IncidentStatusPatchResponse)
+def patch_incident_status(
+    incident_id: uuid.UUID,
+    body: IncidentStatusPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_modify_incident(context, incident))
+
+    transition_capability = _required_transition_capability(
+        str(incident.case_status), body.case_status
+    )
+    if _is_privileged_status_target(body.case_status) and not _has_privileged_status_permission(
+        current_user.role
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions for privileged status transition.",
+        )
+    if transition_capability is not None and not has_capability(
+        current_user.role, transition_capability
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Transition requires capability '{transition_capability.value}'.",
+        )
+
+    transition_validation = validate_case_status_transition(
+        from_status=str(incident.case_status),
+        to_status=body.case_status,
+        allow_privileged=transition_capability is not None,
+    )
+    if not transition_validation.allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=transition_validation.reason or "Invalid case status transition",
+        )
+
+    from_case_status = str(incident.case_status)
+    incident.case_status = body.case_status
+    transition_payload = {
+        "from_case_status": from_case_status,
+        "to_case_status": body.case_status,
+        "transition_reason": body.reason,
+        "privileged_transition": transition_capability is not None,
+    }
+    detailed_payload = _event_context_payload(
+        actor_id=current_user.id,
+        incident_id=incident_id,
+        org_id=incident.org_id,
+        reason=body.reason,
+        previous={"case_status": from_case_status},
+        new={"case_status": body.case_status},
+    )
+    db.flush()
+    create_event(
+        db,
+        incident_id=incident_id,
+        event_type=SystemEventType.INCIDENT_UPDATED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=transition_payload,
+    )
+    create_event(
+        db,
+        incident_id=incident_id,
+        event_type=SystemEventType.INCIDENT_STATUS_CHANGED,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=detailed_payload,
+    )
+    if body.case_status == "escalated":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_ESCALATED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
+    if body.case_status == "closed":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_CLOSED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
+    if from_case_status == "closed" and body.case_status != "closed":
+        create_event(
+            db,
+            incident_id=incident_id,
+            event_type=SystemEventType.INCIDENT_STATUS_REOPENED,
+            actor_type="user",
+            actor_id=str(current_user.id),
+            payload=detailed_payload,
+        )
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action="incident.case_status.patch",
+        event_type="incident_case_status_updated",
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata=transition_payload,
+    )
+    db.commit()
+
+    return IncidentStatusPatchResponse(
+        incident_id=incident.incident_id,
+        case_status=incident.case_status,
+        transition_reason=body.reason,
+    )
+
+
+@router.patch("/{incident_id}/owner", response_model=IncidentOwnerPatchResponse)
+def patch_incident_owner_endpoint(
+    incident_id: uuid.UUID,
+    body: IncidentOwnerPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_modify_incident(context, incident))
+
+    previous_owner_user_id = incident.owner_user_id
+    incident = patch_incident_owner(
+        db=db,
+        incident=incident,
+        org_ids=org_ids,
+        actor_user_id=current_user.id,
+        operation=body.operation,
+        owner_user_id=body.owner_user_id,
+    )
+    event_payload = _event_context_payload(
+        actor_id=current_user.id,
+        incident_id=incident.incident_id,
+        org_id=incident.org_id,
+        reason=body.operation,
+        previous={
+            "owner_user_id": (
+                str(previous_owner_user_id) if previous_owner_user_id else None
+            )
+        },
+        new={"owner_user_id": str(incident.owner_user_id) if incident.owner_user_id else None},
+    )
+    if body.operation == "assign":
+        event_type = SystemEventType.INCIDENT_OWNER_ASSIGNED
+        audit_event_type = "incident_owner_assigned"
+    elif body.operation == "reassign":
+        event_type = SystemEventType.INCIDENT_OWNER_REASSIGNED
+        audit_event_type = "incident_owner_reassigned"
+    else:
+        event_type = SystemEventType.INCIDENT_OWNER_CLEARED
+        audit_event_type = "incident_owner_cleared"
+    create_event(
+        db,
+        incident_id=incident.incident_id,
+        event_type=event_type,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        payload=event_payload,
+    )
+    emit_audit_event(
+        db,
+        org_id=incident.org_id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+        action=f"incident.owner.{body.operation}",
+        event_type=audit_event_type,
+        outcome="success",
+        incident_id=incident.incident_id,
+        metadata=event_payload,
+    )
+    db.commit()
+
+    return IncidentOwnerPatchResponse(
+        incident_id=incident.incident_id,
+        owner_user_id=incident.owner_user_id,
+        assigned_at=incident.owner_assigned_at_utc,
+        assigned_by=incident.owner_assigned_by_user_id,
+        team_queue=incident.team_queue,
+        last_activity_at_utc=incident.last_activity_at_utc,
     )
 
 
@@ -311,6 +606,50 @@ def request_export_endpoint(
                         progress_stage=row.progress_stage,
                     )
 
+    artifacts = get_artifacts_by_incident(db, incident_id)
+    events = get_events_by_incident(db, incident_id)
+    prior_exports = get_exports_by_incident(db, incident_id)
+    snapshot = build_case_snapshot(
+        incident=incident,
+        artifacts=artifacts,
+        events=events,
+        exports=prior_exports,
+    )
+    readiness_reasons = [
+        {
+            "code": blocker.code,
+            "message": blocker.message,
+            "severity": blocker.severity,
+            "blocks_readiness": blocker.blocks_readiness,
+        }
+        for blocker in snapshot.blockers.items
+    ]
+    readiness_snapshot = {
+        "state": snapshot.readiness.state,
+        "completeness_percent": snapshot.completeness.percent,
+        "completeness_status": snapshot.completeness.status,
+        "blocking_codes": snapshot.readiness.blocking_codes,
+        "reasons": readiness_reasons,
+        "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if snapshot.readiness.state == "not_ready":
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Case is not ready for export.",
+                "readiness_state": snapshot.readiness.state,
+                "reasons": readiness_reasons,
+            },
+        )
+    readiness_warning = None
+    if snapshot.readiness.state == "conditionally_ready":
+        readiness_warning = {
+            "code": "conditional_export_readiness",
+            "message": "Case is conditionally ready for export. Exporting may omit or flag unresolved evidence.",
+            "blocking_codes": snapshot.readiness.blocking_codes,
+        }
+
     export = create_export(
         db,
         incident_id=incident_id,
@@ -319,6 +658,10 @@ def request_export_endpoint(
         export_type="court_defense",
         profile_id=get_default_packet_profile("court_defense").profile_id,
         requested_by_user_id=current_user.id,
+        options_json={
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
+        },
         progress_stage="request_accepted",
     )
 
@@ -333,6 +676,8 @@ def request_export_endpoint(
             "incident_id": str(incident_id),
             "export_type": "court_defense",
             "status": "requested",
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
             "actor": {"type": "user", "id": str(current_user.id)},
         },
     )
@@ -356,4 +701,8 @@ def request_export_endpoint(
         },
     )
 
-    return CreateExportResponse(export_id=export.export_id, status=export.status, progress_stage=export.progress_stage)
+    return CreateExportResponse(
+        export_id=export.export_id,
+        status=export.status,
+        progress_stage=export.progress_stage,
+    )

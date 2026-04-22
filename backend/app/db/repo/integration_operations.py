@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import IntegrationOperation
 from app.integrations.errors import NormalizedIntegrationError
+from app.observability.redaction import redact_payload_for_storage
 
 
 def create_integration_operation(
@@ -35,7 +36,7 @@ def create_integration_operation(
         correlation_id=correlation_id,
         external_reference=external_reference,
         external_reference_id=external_reference_id or external_reference,
-        payload_json=payload_json or {},
+        payload_json=redact_payload_for_storage(payload_json),
         error_code=normalized_payload["code"] if normalized_payload else None,
         error_category=normalized_payload["category"] if normalized_payload else None,
         error_provider_key=(
@@ -85,9 +86,10 @@ def list_integration_operations(
     external_reference: str | None = None,
     external_reference_id: str | None = None,
 ):
+    if org_id is None:
+        raise ValueError("org_id is required for integration operation queries")
     query = db.query(IntegrationOperation)
-    if org_id is not None:
-        query = query.filter(IntegrationOperation.org_id == org_id)
+    query = query.filter(IntegrationOperation.org_id == org_id)
     if incident_id is not None:
         query = query.filter(IntegrationOperation.incident_id == incident_id)
     if status is not None:

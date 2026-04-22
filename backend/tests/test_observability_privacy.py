@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.observability.detection import AuditActivityDetector
 from app.observability.logging import JsonFormatter
+from app.observability.redaction import redact_payload_for_storage, redact_raw_payload
 
 
 def _format_log(message: str, **extra) -> dict:
@@ -109,3 +110,26 @@ def test_detection_rules_cover_expected_suspicious_behaviors():
         now=now,
     )
     assert any(a.rule == "cross_org_access_attempt" for a in cross_org_alerts)
+
+
+def test_raw_payload_redaction_masks_auth_and_otp():
+    payload = "Authorization=Bearer abc123&otp_code=123456&note=driver%20said%20ok"
+    redacted = redact_raw_payload(payload)
+    assert "abc123" not in redacted
+    assert "123456" not in redacted
+    assert "driver%20said%20ok" not in redacted
+    assert "%5BREDACTED%5D" in redacted
+    assert "%5BREDACTED_OTP%5D" in redacted
+
+
+def test_payload_storage_redaction_masks_nested_tokens():
+    redacted = redact_payload_for_storage(
+        {
+            "Authorization": "Bearer token-value",
+            "otp_code": "777888",
+            "nested": {"api_key": "secret-key"},
+        }
+    )
+    assert redacted["Authorization"] == "[REDACTED]"
+    assert redacted["otp_code"] == "[REDACTED_OTP]"
+    assert redacted["nested"]["api_key"] == "[REDACTED]"

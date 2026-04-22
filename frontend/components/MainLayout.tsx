@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { hasRoleCapability } from "@/lib/permissions";
 
 interface MainLayoutProps {
   title?: string;
@@ -92,19 +93,23 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
   }
 
   const defaultLanding = getDefaultLandingForRole(user.role);
+  const canViewOnboarding = hasRoleCapability(user.role, "readiness:view");
+  const canManageQr = hasRoleCapability(user.role, "vehicle_qr:write");
+  const canManageExports = hasRoleCapability(user.role, "onboarding:write");
 
   const navGroups: NavGroup[] = [
     {
       area: "Operations",
       items: [
         { href: "/dashboard", label: "Dashboard" },
+        { href: "/onboarding", label: "Onboarding", hidden: !canViewOnboarding },
         { href: "/incidents", label: "Incidents", activePrefixes: ["/incidents"] },
         { href: "/timeline", label: "Timeline" },
       ],
     },
     {
       area: "Evidence",
-      items: [{ href: "/vehicles", label: "Vehicles", hidden: user.role !== "admin" }],
+      items: [{ href: "/vehicles", label: "Vehicles", hidden: !canManageQr }],
     },
     {
       area: "Exports",
@@ -117,13 +122,19 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
           href: "/admin/driver-protocol",
           label: "Driver Protocol",
           activePrefixes: ["/admin/driver-protocol"],
-          hidden: user.role !== "admin",
+          hidden: !hasRoleCapability(user.role, "onboarding:write"),
         },
         {
           href: "/admin/vehicles",
           label: "Admin Vehicles",
           activePrefixes: ["/admin/vehicles"],
-          hidden: user.role !== "admin",
+          hidden: !canManageQr,
+        },
+        {
+          href: "/admin/plan-features",
+          label: "Plan & Features",
+          activePrefixes: ["/admin/plan-features"],
+          hidden: !hasRoleCapability(user.role, "user_management:write"),
         },
       ],
     },
@@ -151,7 +162,7 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
       className:
         "rounded border border-emerald-200 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950",
     },
-  ];
+  ].filter((action) => (action.label === "Request Export" ? canManageExports : true));
 
   const breadcrumbs = pathname
     .split("/")

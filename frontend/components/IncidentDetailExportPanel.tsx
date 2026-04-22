@@ -7,6 +7,7 @@ import {
   getExport,
   getExportStatus,
   retryExport,
+  type ArtifactSummary,
   type ExportProgressStage,
   type ExportStatus,
   type ExportSummary,
@@ -15,10 +16,15 @@ import {
 } from "@/lib/api";
 import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 import GenerateExportModal from "@/components/GenerateExportModal";
+import EvidenceStatusPanel, {
+  type EvidenceStatusItem,
+} from "@/components/integrations/EvidenceStatusPanel";
+import type { EvidenceIntegrationStatus } from "@/components/integrations/EvidenceStatusBadge";
 
 interface IncidentDetailExportPanelProps {
   incidentId: string;
   exports: ExportSummary[];
+  artifacts: ArtifactSummary[];
   onExportsChanged: () => Promise<void>;
 }
 
@@ -38,9 +44,25 @@ function formatBytes(value?: number | null): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function toEvidenceStatus(status: unknown): EvidenceIntegrationStatus {
+  const value = String(status ?? "").toLowerCase();
+  if (value === "requested" || value === "queued" || value === "in_progress" || value === "available" || value === "partial" || value === "unavailable" || value === "failed") {
+    return value;
+  }
+  return "requested";
+}
+
+function formatWindow(start?: string | null, end?: string | null): string | null {
+  if (!start && !end) return null;
+  const startLabel = start ? new Date(start).toLocaleString() : "—";
+  const endLabel = end ? new Date(end).toLocaleString() : "—";
+  return `${startLabel} → ${endLabel}`;
+}
+
 export default function IncidentDetailExportPanel({
   incidentId,
   exports,
+  artifacts,
   onExportsChanged,
 }: IncidentDetailExportPanelProps) {
   const [showModal, setShowModal] = useState(false);
@@ -52,6 +74,7 @@ export default function IncidentDetailExportPanel({
   const [readyExport, setReadyExport] = useState<ExportSummary | null>(null);
 
   const recentExports = exports.slice(0, 5);
+  const latestExport = recentExports[0];
   const latestFailedExportId =
     activeExportId && (status === "failed" || status === "expired")
       ? activeExportId
@@ -64,6 +87,56 @@ export default function IncidentDetailExportPanel({
       }, 0),
     [recentExports]
   );
+  const latestReadinessSnapshot = latestExport?.options_json?.readiness_snapshot as
+    | {
+        state?: string;
+        reasons?: Array<{ message?: string; code?: string }>;
+      }
+    | undefined;
+  const latestReadinessWarning = latestExport?.options_json?.readiness_warning as
+    | { message?: string }
+    | undefined;
+
+  const integrationStatusItems = useMemo<EvidenceStatusItem[]>(() => {
+    const source = latestExport?.options_json?.evidence_statuses;
+    if (Array.isArray(source)) {
+      return source.map((raw, idx) => {
+        const item = (raw ?? {}) as Record<string, unknown>;
+        return {
+          key: String(item.id ?? `${idx}-${item.evidence_type ?? "evidence"}`),
+          evidenceType: String(item.evidence_type ?? item.type ?? "Unknown evidence"),
+          status: toEvidenceStatus(item.status),
+          requestedWindow: formatWindow(
+            typeof item.requested_window_start === "string" ? item.requested_window_start : null,
+            typeof item.requested_window_end === "string" ? item.requested_window_end : null
+          ),
+          operationUrl: typeof item.operation_link === "string" ? item.operation_link : null,
+          artifactUrl: typeof item.artifact_link === "string" ? item.artifact_link : null,
+          missingReason: typeof item.missing_reason === "string" ? item.missing_reason : null,
+          retryAvailable: Boolean(item.retry_available),
+        };
+      });
+    }
+
+    return artifacts.map((artifact) => ({
+      key: artifact.artifact_id,
+      evidenceType: artifact.artifact_type,
+      status:
+        artifact.status === "captured"
+          ? "available"
+          : artifact.status === "unavailable"
+            ? "unavailable"
+            : "queued",
+      requestedWindow: null,
+      operationUrl: null,
+      artifactUrl: null,
+      missingReason: artifact.unavailable_reason,
+      retryAvailable: artifact.status === "unavailable",
+    }));
+  }, [artifacts, latestExport]);
+
+  const preflightPending = integrationStatusItems.filter((item) => item.status === "requested" || item.status === "queued" || item.status === "in_progress");
+  const preflightUnavailable = integrationStatusItems.filter((item) => item.status === "unavailable" || item.status === "failed" || item.status === "partial");
 
   useEffect(() => {
     if (!activeExportId || !status || (status !== "queued" && status !== "processing" && status !== "requested")) {
@@ -157,6 +230,18 @@ export default function IncidentDetailExportPanel({
 
   return (
     <div className="space-y-4">
+      <div className="rounded border border-gray-200 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Integration evidence preflight</p>
+        <p className="mb-3 text-xs text-gray-500">
+          Review evidence availability, missing reasons, and retryability before packet generation.
+        </p>
+        <EvidenceStatusPanel
+          items={integrationStatusItems}
+          onRetry={(item) => item.retryAvailable && latestFailedExportId && handleRetry(latestFailedExportId)}
+          retrying={submitting}
+        />
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">Recent exports and generation status.</p>
         <button
@@ -166,6 +251,22 @@ export default function IncidentDetailExportPanel({
           New export
         </button>
       </div>
+
+      {latestReadinessSnapshot && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">
+            Readiness at request time: {(latestReadinessSnapshot.state ?? "unknown").replaceAll("_", " ")}
+          </p>
+          {latestReadinessWarning?.message && <p className="text-xs">{latestReadinessWarning.message}</p>}
+          {Array.isArray(latestReadinessSnapshot.reasons) && latestReadinessSnapshot.reasons.length > 0 && (
+            <ul className="mt-1 list-disc pl-5 text-xs">
+              {latestReadinessSnapshot.reasons.slice(0, 3).map((reason, index) => (
+                <li key={`${reason.code ?? "reason"}-${index}`}>{reason.message ?? reason.code ?? "Readiness reason unavailable"}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {isProcessing && (
         <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
@@ -250,6 +351,9 @@ export default function IncidentDetailExportPanel({
         onSubmit={startExport}
         disabled={submitting}
         warningCount={recentWarnings}
+        preflightPendingCount={preflightPending.length}
+        preflightUnavailableCount={preflightUnavailable.length}
+        preflightWarnings={preflightUnavailable.map((item) => `${item.evidenceType}: ${item.missingReason ?? item.status}`)}
       />
     </div>
   );

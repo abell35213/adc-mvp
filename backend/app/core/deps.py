@@ -161,6 +161,18 @@ def require_capabilities(*required_capabilities: Capability | str) -> Callable[[
     return _require_capabilities
 
 
+
+
+require_workspace_view_permission = require_capabilities(Capability.INCIDENT_READ)
+require_owner_assignment_permission = require_capabilities(Capability.INCIDENT_WRITE)
+require_case_status_change_permission = require_capabilities(Capability.INCIDENT_WRITE)
+require_note_operations_permission = require_capabilities(Capability.INCIDENT_WRITE)
+require_task_operations_permission = require_capabilities(Capability.INCIDENT_WRITE)
+require_escalate_permission = require_capabilities(Capability.INCIDENT_ESCALATE)
+require_close_permission = require_capabilities(Capability.INCIDENT_CLOSE)
+require_reopen_permission = require_capabilities(Capability.INCIDENT_REOPEN)
+require_ready_for_export_permission = require_capabilities(Capability.EXPORT_WRITE)
+
 def get_current_user_org_ids(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

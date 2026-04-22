@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.metrics import MetricNames, increment, timed
+from app.core.metrics import MetricNames, timed
 from app.db.session import get_db
 from app.integrations.webhooks.handlers import (
     persist_twilio_voice_callback,
@@ -31,7 +31,6 @@ VOICE_MESSAGE = (
 
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request, db: Session = Depends(get_db)):
-    increment(MetricNames.TWILIO_WEBHOOK_ATTEMPTS)
     with timed(MetricNames.TWILIO_WEBHOOK_ATTEMPTS):
         raw_body = await request.body()
         params = parse_form_encoded_body(raw_body)
@@ -49,7 +48,6 @@ async def twilio_voice_webhook(request: Request, db: Session = Depends(get_db)):
             signature_error=signature_error,
         )
         if result.status_code != 200:
-            increment(MetricNames.TWILIO_WEBHOOK_FAILURES)
             logger.warning("Twilio webhook signature validation failed")
             return Response(status_code=result.status_code, content=result.body["detail"])
 
