@@ -31,10 +31,13 @@ export default function IncidentStartLoadingScreen({ navigation }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const isMountedRef = useRef(true);
+  const currentInitiationAbortRef = useRef<AbortController | null>(null);
 
   useEffect(
     () => () => {
       isMountedRef.current = false;
+      currentInitiationAbortRef.current?.abort();
+      currentInitiationAbortRef.current = null;
     },
     [],
   );
@@ -78,16 +81,6 @@ export default function IncidentStartLoadingScreen({ navigation }: Props) {
       );
     });
   }, []);
-
-  const withTimeout = useCallback(
-    async <T,>(work: Promise<T>, timeoutMs: number) => {
-      const timeoutPromise = new Promise<T>((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out.')), timeoutMs);
-      });
-      return await Promise.race([work, timeoutPromise]);
-    },
-    [],
-  );
 
   const attemptAmbiguousRecovery = useCallback(async () => {
     try {
@@ -135,23 +128,35 @@ export default function IncidentStartLoadingScreen({ navigation }: Props) {
 
     try {
       const locationPromise = collectDeviceLocation();
+      currentInitiationAbortRef.current?.abort();
+      const initiateController = new AbortController();
+      currentInitiationAbortRef.current = initiateController;
+      const timeoutId = setTimeout(() => initiateController.abort(), INITIATE_TIMEOUT_MS);
+
       setActiveStageIndex(1);
       setActiveStageIndex(2);
 
-      await withTimeout(
-        initiateDriverIncident({
-          ...vehicleStrategyPayload,
-          device,
-          device_location: await locationPromise,
-        }),
-        INITIATE_TIMEOUT_MS,
-      );
+      try {
+        await initiateDriverIncident(
+          {
+            ...vehicleStrategyPayload,
+            device,
+            device_location: await locationPromise,
+          },
+          initiateController.signal,
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      currentInitiationAbortRef.current = null;
 
       setActiveStageIndex(3);
       continueToInstructions();
     } catch (error) {
+      currentInitiationAbortRef.current = null;
       const ambiguousFailure =
         isNetworkFailure(error) ||
+        (error instanceof Error && error.name === 'AbortError') ||
         (error instanceof Error && /timed out/i.test(error.message));
       const duplicateFailure = isDuplicateFailure(error);
 
@@ -189,7 +194,6 @@ export default function IncidentStartLoadingScreen({ navigation }: Props) {
     collectDeviceLocation,
     continueToInstructions,
     vehicleStrategyPayload,
-    withTimeout,
   ]);
 
   useEffect(() => {

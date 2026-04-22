@@ -143,12 +143,16 @@ export const resolveQr = (qrToken: string) =>
     true,
   );
 
-export const initiateDriverIncident = (payload: DriverIncidentInitiateRequest) =>
+export const initiateDriverIncident = (
+  payload: DriverIncidentInitiateRequest,
+  signal?: AbortSignal,
+) =>
   request<DriverIncidentInitiateResponse>(
     '/driver/incidents/initiate',
     {
       method: 'POST',
       body: JSON.stringify(payload),
+      signal,
     },
     true,
   );
