@@ -35,6 +35,7 @@ from app.db.repo.exports import (
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.incidents import get_incident
+from app.case_ops.service import build_case_snapshot
 from app.domain.system_event_types import SystemEventType
 from app.core.config import settings
 from app.tasks.export_tasks import build_export
@@ -133,6 +134,50 @@ def create_export_endpoint(
                     created_at_utc=prior.created_at_utc,
                 )
 
+    artifacts = get_artifacts_by_incident(db, body.incident_id)
+    events = get_events_by_incident(db, body.incident_id)
+    prior_exports = get_exports_by_incident(db, body.incident_id)
+    snapshot = build_case_snapshot(
+        incident=incident,
+        artifacts=artifacts,
+        events=events,
+        exports=prior_exports,
+    )
+    readiness_reasons = [
+        {
+            "code": blocker.code,
+            "message": blocker.message,
+            "severity": blocker.severity,
+            "blocks_readiness": blocker.blocks_readiness,
+        }
+        for blocker in snapshot.blockers.items
+    ]
+    readiness_snapshot = {
+        "state": snapshot.readiness.state,
+        "completeness_percent": snapshot.completeness.percent,
+        "completeness_status": snapshot.completeness.status,
+        "blocking_codes": snapshot.readiness.blocking_codes,
+        "reasons": readiness_reasons,
+        "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if snapshot.readiness.state == "not_ready":
+        increment(MetricNames.EXPORT_REQUEST_FAILURES)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Case is not ready for export.",
+                "readiness_state": snapshot.readiness.state,
+                "reasons": readiness_reasons,
+            },
+        )
+    readiness_warning = None
+    if snapshot.readiness.state == "conditionally_ready":
+        readiness_warning = {
+            "code": "conditional_export_readiness",
+            "message": "Case is conditionally ready for export. Exporting may omit or flag unresolved evidence.",
+            "blocking_codes": snapshot.readiness.blocking_codes,
+        }
+
     export = create_export(
         db,
         incident_id=body.incident_id,
@@ -141,7 +186,11 @@ def create_export_endpoint(
         export_type=body.export_type,
         profile_id=str(body.options_json.get("profile_id") or get_default_packet_profile(body.export_type).profile_id),
         requested_by_user_id=current_user.id,
-        options_json=body.options_json,
+        options_json={
+            **(body.options_json or {}),
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
+        },
         progress_stage="request_accepted",
     )
 
@@ -156,6 +205,8 @@ def create_export_endpoint(
             "incident_id": str(body.incident_id),
             "export_type": body.export_type,
             "status": "requested",
+            "readiness_snapshot": readiness_snapshot,
+            "readiness_warning": readiness_warning,
             "actor": {"type": "user", "id": str(current_user.id)},
             "idempotency_key_hash": idempotency.hashed_key if idempotency else None,
         },

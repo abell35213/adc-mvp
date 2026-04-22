@@ -73,3 +73,70 @@ def test_sync_incident_case_status_after_export_moves_ready_for_export_to_export
     assert status_event.event_type == "incident_status_changed"
     assert status_event.payload["from_case_status"] == "ready_for_export"
     assert status_event.payload["to_case_status"] == "exported"
+
+
+def test_sync_incident_case_status_after_export_does_not_override_newer_status():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+    worker_session = Session()
+    updater_session = Session()
+
+    org = Org(name="Test Org")
+    worker_session.add(org)
+    worker_session.commit()
+    worker_session.refresh(org)
+
+    incident = Incident(
+        org_id=org.id,
+        case_status="ready_for_export",
+        readiness_state="ready_for_export",
+    )
+    worker_session.add(incident)
+    worker_session.commit()
+    worker_session.refresh(incident)
+
+    stale_incident = worker_session.get(Incident, incident.incident_id)
+    fresh_incident = updater_session.get(Incident, incident.incident_id)
+    fresh_incident.case_status = "closed"
+    fresh_incident.readiness_state = "closed"
+    updater_session.commit()
+
+    ctx = ExportRuntimeContext(
+        db=worker_session,
+        incident_uuid=incident.incident_id,
+        export_uuid=uuid.uuid4(),
+        incident_id=str(incident.incident_id),
+        export_id=str(uuid.uuid4()),
+        workflow_key="workflow",
+        org_id=str(org.id),
+        settings=SimpleNamespace(S3_BUCKET="bucket"),
+        system_event_type=SimpleNamespace(INCIDENT_STATUS_CHANGED="incident_status_changed"),
+        s3_key_builder=None,
+        s3=None,
+        export_row=SimpleNamespace(export_type="court_defense", options_json={}),
+        incident_row=stale_incident,
+        warnings=[],
+        missing_items=[],
+        artifacts=[],
+        events=[],
+        exportable_artifacts=[],
+        inventory_csv_bytes=b"",
+        coc_csv_bytes=b"",
+        appendix_csv_bytes=b"",
+        readme_content="",
+        zip_bytes=b"",
+        zip_key=None,
+    )
+
+    _sync_incident_case_status_after_export(ctx)
+    worker_session.commit()
+
+    persisted = updater_session.get(Incident, incident.incident_id)
+    assert persisted.case_status == "closed"
+    assert persisted.readiness_state == "closed"
+    assert updater_session.query(Event).filter(Event.incident_id == incident.incident_id).count() == 0

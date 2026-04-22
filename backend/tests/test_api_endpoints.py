@@ -900,11 +900,17 @@ class TestListIncidents:
 
 class TestRequestExport:
     @patch("app.api.routes_exports.build_export")
+    @patch("app.api.routes_exports.build_case_snapshot")
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_request_export_returns_201(
-        self, mock_begin_capture, mock_gen, client, auth_headers
+        self, mock_begin_capture, mock_snapshot, mock_gen, client, auth_headers
     ):
         mock_gen.delay = MagicMock()
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="ready_for_export", blocking_codes=[]),
+            completeness=SimpleNamespace(percent=100, status="complete"),
+            blockers=SimpleNamespace(items=[]),
+        )
 
         create_resp = client.post(
             "/incidents/",
@@ -932,11 +938,17 @@ class TestRequestExport:
         assert data["created_at_utc"] is not None
 
     @patch("app.api.routes_exports.build_export")
+    @patch("app.api.routes_exports.build_case_snapshot")
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_request_export_enqueues_task(
-        self, mock_begin_capture, mock_gen, client, auth_headers
+        self, mock_begin_capture, mock_snapshot, mock_gen, client, auth_headers
     ):
         mock_gen.delay = MagicMock()
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="ready_for_export", blocking_codes=[]),
+            completeness=SimpleNamespace(percent=100, status="complete"),
+            blockers=SimpleNamespace(items=[]),
+        )
 
         create_resp = client.post(
             "/incidents/",
@@ -961,6 +973,93 @@ class TestRequestExport:
             export_id,
             {"attempt_number": 1, "trigger": "api"},
         )
+
+    @patch("app.api.routes_exports.build_export")
+    @patch("app.api.routes_exports.build_case_snapshot")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_request_export_blocks_not_ready(
+        self, mock_begin_capture, mock_snapshot, mock_gen, client, auth_headers
+    ):
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="not_ready", blocking_codes=["evidence_capture_incomplete"]),
+            completeness=SimpleNamespace(percent=40, status="incomplete"),
+            blockers=SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        code="evidence_capture_incomplete",
+                        message="Evidence capture incomplete.",
+                        severity="critical",
+                        blocks_readiness=True,
+                    )
+                ]
+            ),
+        )
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["incident_id"]
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": incident_id, "export_type": "court_defense"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        payload = resp.json()["detail"]
+        assert payload["readiness_state"] == "not_ready"
+        assert payload["reasons"][0]["code"] == "evidence_capture_incomplete"
+        mock_gen.delay.assert_not_called()
+
+    @patch("app.api.routes_exports.build_export")
+    @patch("app.api.routes_exports.build_case_snapshot")
+    @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+    def test_request_export_persists_readiness_snapshot(
+        self, mock_begin_capture, mock_snapshot, mock_gen, client, db_session, auth_headers
+    ):
+        mock_gen.delay = MagicMock()
+        mock_snapshot.return_value = SimpleNamespace(
+            readiness=SimpleNamespace(state="conditionally_ready", blocking_codes=["driver_statement_missing"]),
+            completeness=SimpleNamespace(percent=88, status="mostly_complete"),
+            blockers=SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        code="driver_statement_missing",
+                        message="Driver statement still pending.",
+                        severity="important",
+                        blocks_readiness=False,
+                    )
+                ]
+            ),
+        )
+        create_resp = client.post(
+            "/incidents/",
+            json={
+                "severity": "minor",
+                "adc_vehicle_id": "v1",
+                "samsara_vehicle_id": "s1",
+                "adc_driver_id": "d1",
+            },
+            headers=auth_headers,
+        )
+        incident_id = create_resp.json()["incident_id"]
+        resp = client.post(
+            "/exports/",
+            json={"incident_id": incident_id, "export_type": "court_defense"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        export = db_session.query(Export).filter(Export.incident_id == uuid.UUID(incident_id)).one()
+        readiness_snapshot = export.options_json.get("readiness_snapshot")
+        readiness_warning = export.options_json.get("readiness_warning")
+        assert readiness_snapshot["state"] == "conditionally_ready"
+        assert readiness_snapshot["blocking_codes"] == ["driver_statement_missing"]
+        assert readiness_warning["code"] == "conditional_export_readiness"
 
     def test_request_export_incident_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())

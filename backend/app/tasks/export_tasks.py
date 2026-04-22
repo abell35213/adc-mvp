@@ -368,12 +368,16 @@ def _upload_and_finalize(ctx: ExportRuntimeContext):
 def _sync_incident_case_status_after_export(ctx: ExportRuntimeContext):
     from app.db.repo.events import create_event
 
-    incident_row = ctx.incident_row
+    incident_model = type(ctx.incident_row) if ctx.incident_row is not None else None
+    if incident_model is None:
+        return
+    incident_row = ctx.db.get(incident_model, ctx.incident_uuid, populate_existing=True)
     if incident_row is None:
         return
     if str(incident_row.case_status) != "ready_for_export":
         return
 
+    ctx.incident_row = incident_row
     incident_row.case_status = "exported"
     incident_row.readiness_state = "exported"
     db_now = datetime.now(timezone.utc)
