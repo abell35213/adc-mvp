@@ -282,6 +282,11 @@ class DriverIncidentStatusResponse(BaseModel):
     last_evidence_update_utc: Optional[datetime] = None
 
 
+class DriverSubmitIncidentReportResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: IncidentStatus
+
+
 # ── Admin vehicles / QR ────────────────────────────────────────────
 
 
