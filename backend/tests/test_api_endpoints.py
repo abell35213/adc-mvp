@@ -21,6 +21,7 @@ from app.db.models import (
     IntegrationConnection,
     IntegrationOperation,
     EvidenceRequest,
+    ProviderWebhookEvent,
 )
 from app.db.session import get_db
 from app.core.security import hash_password, create_access_token
@@ -338,6 +339,43 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert summary_resp.status_code == 200
         assert summary_resp.json()["retryable_failures"] == 1
+
+    def test_ops_webhook_events_list(self, client, db_session, test_org, auth_headers):
+        admin_user = User(
+            email="ops-admin@example.com",
+            password_hash=hash_password("testpass"),
+            role="admin",
+        )
+        db_session.add(admin_user)
+        db_session.commit()
+        db_session.refresh(admin_user)
+        db_session.add(UserOrg(user_id=admin_user.id, org_id=test_org.id))
+        db_session.commit()
+        admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(admin_user.id), 'role': admin_user.role})}"
+        }
+
+        webhook_event = ProviderWebhookEvent(
+            org_id=test_org.id,
+            provider="twilio",
+            domain="voice",
+            event_type="status_callback",
+            status="failed",
+            raw_payload="{}",
+            payload_json={},
+            error_details_json={},
+            error_message="provider_timeout",
+        )
+        db_session.add(webhook_event)
+        db_session.commit()
+
+        response = client.get("/admin/ops/webhook-events", headers=admin_headers)
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["provider"] == "twilio"
+        assert body[0]["status"] == "failed"
+        assert body[0]["normalized_error_code"] == "provider_timeout"
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(

@@ -27,6 +27,7 @@ from app.api.schemas import (
     OpsFailedExportItem,
     OpsFailedNotificationItem,
     OpsIncidentItem,
+    ProviderWebhookEventDiagnosticsResponse,
     QrPayloadResponse,
     RotateQrResponse,
 )
@@ -51,6 +52,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.db.repo.message_operations import get_messaging_reliability_summary
+from app.db.repo.provider_webhook_events import list_provider_webhook_events
 from app.domain.system_event_types import SystemEventType
 from app.db.repo.job_execution_meta import (
     list_ops_jobs_with_db,
@@ -827,6 +829,45 @@ def ops_messaging_reliability(
     return MessagingReliabilityResponse(
         **get_messaging_reliability_summary(db, org_id=org_id, incident_id=incident_id)
     )
+
+
+@router.get("/ops/webhook-events", response_model=list[ProviderWebhookEventDiagnosticsResponse])
+def list_ops_webhook_events(
+    status: str | None = None,
+    provider: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=_can_access_ops_views(context),
+        actor_id=admin.id,
+        org_id=context.org_ids[0] if context.org_ids else None,
+        action="admin.ops.webhook_events.list",
+        metadata={"required_roles": sorted(OPS_ALLOWED_ROLES)},
+    )
+    rows = list_provider_webhook_events(
+        db,
+        org_id=context.org_ids[0],
+        status=status,
+        provider=provider,
+    )[: max(1, min(limit, 1000))]
+    return [
+        ProviderWebhookEventDiagnosticsResponse(
+            webhook_event_id=row.webhook_event_id,
+            provider=row.provider,
+            domain=row.domain,
+            status=row.status,
+            received_at_utc=row.received_at_utc,
+            correlation_id=row.correlation_id,
+            processing_latency_ms=None,
+            retry_count=None,
+            normalized_error_code=row.error_message,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/ops/audit-search", response_model=list[AuditSearchResponseItem])

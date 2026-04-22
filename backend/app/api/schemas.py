@@ -839,6 +839,18 @@ class IntegrationOperationDiagnosticsResponse(BaseModel):
     updated_at_utc: datetime | None = None
 
 
+class ProviderWebhookEventDiagnosticsResponse(BaseModel):
+    webhook_event_id: uuid.UUID
+    provider: str
+    domain: str | None = None
+    status: str
+    received_at_utc: datetime
+    correlation_id: str | None = None
+    processing_latency_ms: int | None = None
+    retry_count: int | None = None
+    normalized_error_code: str | None = None
+
+
 class EvidenceRequestSummary(BaseModel):
     evidence_request_id: uuid.UUID
     operation_id: uuid.UUID | None = None
