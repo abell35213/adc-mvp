@@ -283,7 +283,7 @@ export async function clearUploadedItemsForIncident(incidentId: string): Promise
 export function getProcessableQueueItems(now = new Date()): UploadQueueItem[] {
   const nowMs = now.getTime();
   return queueState.items.filter((item) => {
-    if (item.status === 'uploaded') {
+    if (item.status !== 'pending' && item.status !== 'uploading') {
       return false;
     }
 
