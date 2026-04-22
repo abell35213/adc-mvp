@@ -105,7 +105,7 @@ def get_org_settings(
 def patch_org_settings(
     payload: OrgSettingsUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
     org = db.query(Org).filter(Org.id == _first_org_id(context)).first()
@@ -151,7 +151,7 @@ def get_org_onboarding_status(
 def mark_org_onboarding_step(
     payload: OrgOnboardingStepUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     context = build_user_auth_context(db, current_user)
     valid_steps = {item.key for item in STEP_DEFINITIONS}

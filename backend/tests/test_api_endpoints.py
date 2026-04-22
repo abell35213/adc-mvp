@@ -83,6 +83,22 @@ def auth_headers(test_user):
 
 
 @pytest.fixture()
+def org_admin_headers(db_session, test_org):
+    org_admin = User(
+        email="org-admin@example.com",
+        password_hash=hash_password("testpass"),
+        role="org_admin",
+    )
+    db_session.add(org_admin)
+    db_session.commit()
+    db_session.refresh(org_admin)
+    db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+    db_session.commit()
+    token = create_access_token({"sub": str(org_admin.id), "role": org_admin.role})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
 def no_org_user(db_session):
     user = User(
         email="no-org@example.com",
@@ -357,14 +373,32 @@ class TestIncidentExportReadiness:
 
 
 class TestIntegrationDiagnosticsRoutes:
-    def test_org_settings_read_and_patch(self, client, db_session, test_org, auth_headers):
+    def test_org_settings_patch_requires_admin_role(self, client, auth_headers):
+        update = client.patch(
+            "/org/settings",
+            headers=auth_headers,
+            json={"display_name": "Unauthorized Rename"},
+        )
+        assert update.status_code == 403
+
+    def test_mark_step_requires_admin_role(self, client, auth_headers):
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={"step_key": "org_settings", "completed": True, "source": "dashboard"},
+        )
+        assert mark.status_code == 403
+
+    def test_org_settings_read_and_patch(
+        self, client, db_session, test_org, auth_headers, org_admin_headers
+    ):
         read = client.get("/org/settings", headers=auth_headers)
         assert read.status_code == 200
         assert read.json()["display_name"] == "Test Org"
 
         update = client.patch(
             "/org/settings",
-            headers=auth_headers,
+            headers=org_admin_headers,
             json={
                 "legal_name": "Test Org LLC",
                 "display_name": "Test Org Display",
@@ -384,13 +418,13 @@ class TestIntegrationDiagnosticsRoutes:
         assert payload["implementation_contact"]["email"] == "impl@test.org"
         assert payload["logo_url"] == "https://cdn.example.com/logo.png"
 
-    def test_onboarding_status_and_mark_step(self, client, auth_headers):
+    def test_onboarding_status_and_mark_step(self, client, auth_headers, org_admin_headers):
         status_before = client.get("/org/onboarding/status", headers=auth_headers)
         assert status_before.status_code == 200
 
         mark = client.post(
             "/org/onboarding/mark-step",
-            headers=auth_headers,
+            headers=org_admin_headers,
             json={"step_key": "org_settings", "completed": True, "source": "dashboard"},
         )
         assert mark.status_code == 200
@@ -402,7 +436,7 @@ class TestIntegrationDiagnosticsRoutes:
         assert org_settings_step["metadata"]["completed_by_user_id"]
 
     def test_org_settings_completion_rule_updates_onboarding_status(
-        self, client, auth_headers
+        self, client, auth_headers, org_admin_headers
     ):
         initial = client.get("/org/onboarding/status", headers=auth_headers)
         assert initial.status_code == 200
@@ -413,7 +447,7 @@ class TestIntegrationDiagnosticsRoutes:
 
         updated = client.patch(
             "/org/settings",
-            headers=auth_headers,
+            headers=org_admin_headers,
             json={
                 "legal_name": "Acme Transport LLC",
                 "display_name": "Acme Transport",
