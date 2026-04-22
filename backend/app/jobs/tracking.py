@@ -38,7 +38,6 @@ def record_task_queued(
 
 
 def record_task_started(*, task_name: str, task_id: str, max_retries: int) -> None:
-    increment(MetricNames.RETRY_SCHEDULER_STUCK_IN_PROGRESS)
     upsert_job_execution_meta(
         task_id=task_id,
         task_name=task_name,

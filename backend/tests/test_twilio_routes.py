@@ -8,9 +8,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.routes_twilio import VOICE_MESSAGE, _build_twilio_signature
 from app.core.config import settings
+from app.core.metrics import MetricNames
 from app.db.models import Base, MessageOperation, Org, ProviderWebhookEvent
 from app.db.repo.message_operations import create_message_operation
 from app.db.session import get_db
+from app.integrations.webhooks import handlers
 from app.main import app
 
 
@@ -162,3 +164,65 @@ def test_twilio_status_callback_idempotency(monkeypatch, client, db_session):
     assert events[0].status == "processed"
     assert events[1].status == "ignored"
     assert events[1].processing_outcome == "duplicate"
+
+
+def test_twilio_status_callback_otp_metrics_only_for_otp_operations(
+    monkeypatch, client, db_session
+):
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "secret")
+    org = Org(name="Test Org")
+    db_session.add(org)
+    db_session.commit()
+
+    create_message_operation(
+        db_session,
+        org_id=org.id,
+        provider="twilio",
+        domain="messaging",
+        purpose="safety_manager_sms_notification",
+        to_e164="+15551234567",
+        status="sent",
+        provider_message_id="SM_NON_OTP",
+    )
+    create_message_operation(
+        db_session,
+        org_id=org.id,
+        provider="twilio",
+        domain="auth",
+        purpose="otp_request",
+        to_e164="+15557654321",
+        status="sent",
+        provider_message_id="SM_OTP",
+    )
+
+    emitted_metrics: list[str] = []
+
+    def _capture(metric_name: str) -> None:
+        emitted_metrics.append(metric_name)
+
+    monkeypatch.setattr(handlers, "increment", _capture)
+
+    non_otp_params = {"MessageSid": "SM_NON_OTP", "MessageStatus": "failed"}
+    non_otp_sig = _build_twilio_signature(
+        "secret", f"{client.base_url}/twilio/status", non_otp_params
+    )
+    otp_params = {"MessageSid": "SM_OTP", "MessageStatus": "delivered"}
+    otp_sig = _build_twilio_signature(
+        "secret", f"{client.base_url}/twilio/status", otp_params
+    )
+
+    non_otp_response = client.post(
+        "/twilio/status",
+        data=non_otp_params,
+        headers={"X-Twilio-Signature": non_otp_sig},
+    )
+    otp_response = client.post(
+        "/twilio/status",
+        data=otp_params,
+        headers={"X-Twilio-Signature": otp_sig},
+    )
+
+    assert non_otp_response.status_code == 200
+    assert otp_response.status_code == 200
+    assert MetricNames.OTP_DELIVERY_FAILURE not in emitted_metrics
+    assert emitted_metrics.count(MetricNames.OTP_DELIVERY_SUCCESS) == 1

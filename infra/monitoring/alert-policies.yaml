@@ -220,7 +220,7 @@ alert_policies:
     section_ref: "7.4"
     severity: critical
     condition: "stuck in-progress jobs > 25 for 15m"
-    expression: "max(job_execution_stuck_total{service='adc-worker',environment='prod'}) > 25"
+    expression: "max(retry_scheduler_stuck_in_progress_total{service='adc-worker',environment='prod'}) > 25"
     for: 15m
     routing:
       pager: primary

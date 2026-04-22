@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.core.metrics import MetricNames, increment
 from app.db.models import JobExecutionMeta
 from app.db.session import SessionLocal
 
@@ -167,8 +168,10 @@ def list_ops_jobs_with_db(
             if heartbeat.tzinfo is None:
                 heartbeat = heartbeat.replace(tzinfo=timezone.utc)
             if heartbeat < stale_threshold:
-                row.status = "stuck"
-                db.flush()
+                if row.status != "stuck":
+                    row.status = "stuck"
+                    increment(MetricNames.RETRY_SCHEDULER_STUCK_IN_PROGRESS)
+                    db.flush()
     return (
         db.query(JobExecutionMeta)
         .filter(JobExecutionMeta.status.in_(statuses | {"stuck"}))

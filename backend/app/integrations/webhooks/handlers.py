@@ -155,9 +155,10 @@ def process_twilio_status_callback(
         normalized_error_code=f"TWILIO_{error_code}" if error_code else None,
         details_json=payload,
     )
-    if mapped in {"failed", "undelivered"}:
+    is_otp_operation = operation.purpose in {"otp_request", "otp_verify"} or operation.domain == "auth"
+    if is_otp_operation and mapped in {"failed", "undelivered"}:
         increment(MetricNames.OTP_DELIVERY_FAILURE)
-    if mapped == "delivered":
+    if is_otp_operation and mapped == "delivered":
         increment(MetricNames.OTP_DELIVERY_SUCCESS)
     update_provider_webhook_event(
         db,
