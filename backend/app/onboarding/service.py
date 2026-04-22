@@ -89,7 +89,10 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
 
     vehicles_total = (
         db.query(func.count(distinct(DriverVehicleAssignment.adc_vehicle_id)))
-        .filter(DriverVehicleAssignment.org_id == org_id)
+        .filter(
+            DriverVehicleAssignment.org_id == org_id,
+            DriverVehicleAssignment.unassigned_at_utc.is_(None),
+        )
         .scalar()
         or 0
     )
@@ -102,7 +105,10 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
 
     instruction_set = (
         db.query(DriverInstructionSet)
-        .filter(DriverInstructionSet.org_id == org_id)
+        .filter(
+            DriverInstructionSet.org_id == org_id,
+            DriverInstructionSet.scope == org.instruction_source,
+        )
         .order_by(DriverInstructionSet.created_at_utc.desc())
         .first()
     )
