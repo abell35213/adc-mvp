@@ -242,6 +242,7 @@ def run_vehicle_import_job(
         db.refresh(job)
         return job
     except Exception as exc:
+        db.rollback()
         job.status = "failed"
         job.error_message = str(exc)
         job.completed_at_utc = datetime.now(timezone.utc)
