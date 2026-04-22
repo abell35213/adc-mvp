@@ -162,3 +162,57 @@ def test_twilio_status_callback_idempotency(monkeypatch, client, db_session):
     assert events[0].status == "processed"
     assert events[1].status == "ignored"
     assert events[1].processing_outcome == "duplicate"
+
+
+def test_twilio_status_callback_invalid_signature_is_not_short_circuited_by_duplicate(
+    monkeypatch, client, db_session
+):
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "secret")
+    org = Org(name="Test Org")
+    db_session.add(org)
+    db_session.commit()
+
+    create_message_operation(
+        db_session,
+        org_id=org.id,
+        provider="twilio",
+        domain="messaging",
+        purpose="safety_manager_sms_notification",
+        to_e164="+15551234567",
+        status="sent",
+        provider_message_id="SM123",
+    )
+
+    params = {"MessageSid": "SM123", "MessageStatus": "delivered"}
+    url = f"{client.base_url}/twilio/status"
+    valid_signature = _build_twilio_signature("secret", url, params)
+
+    response_valid = client.post(
+        "/twilio/status",
+        data=params,
+        headers={"X-Twilio-Signature": valid_signature},
+    )
+    response_invalid = client.post(
+        "/twilio/status",
+        data=params,
+        headers={"X-Twilio-Signature": "invalid-signature"},
+    )
+
+    assert response_valid.status_code == 200
+    assert response_invalid.status_code == 403
+    assert "Invalid Twilio signature" in response_invalid.text
+
+    events = (
+        db_session.query(ProviderWebhookEvent)
+        .filter(ProviderWebhookEvent.event_type == "status_callback")
+        .order_by(
+            ProviderWebhookEvent.received_at_utc.asc(),
+            ProviderWebhookEvent.webhook_event_id.asc(),
+        )
+        .all()
+    )
+    assert len(events) == 2
+    assert {event.status for event in events} == {"processed", "failed"}
+    failed_events = [event for event in events if event.status == "failed"]
+    assert len(failed_events) == 1
+    assert failed_events[0].processing_outcome == "invalid_signature"
