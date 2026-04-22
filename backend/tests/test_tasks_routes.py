@@ -221,3 +221,33 @@ def test_task_patch_rejects_invalid_status_transition(
         headers=_auth_headers(user),
     )
     assert response.status_code == 409
+
+
+@pytest.mark.parametrize("legacy_status", ["in_progress", "blocked"])
+def test_task_list_maps_legacy_non_terminal_statuses_to_open(
+    client: TestClient,
+    db_session,
+    incident: Incident,
+    user: User,
+    legacy_status: str,
+):
+    task = CaseTask(
+        org_id=incident.org_id,
+        incident_id=incident.incident_id,
+        title="Legacy status task",
+        status=legacy_status,
+        priority="low",
+        due_at_utc=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = client.get(
+        f"/incidents/{incident.incident_id}/tasks",
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["status"] == "open"
+    assert payload["items"][0]["overdue"] is True

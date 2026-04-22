@@ -314,9 +314,12 @@ def _apply_status(
 
 
 def _api_status(status: str | None) -> str:
-    if status == "canceled":
+    normalized_status = str(status or "open")
+    if normalized_status in {"completed", "cancelled"}:
+        return normalized_status
+    if normalized_status == "canceled":
         return "cancelled"
-    return str(status or "open")
+    return "open"
 
 
 def _to_task_item(task: CaseTask, *, now_utc: datetime) -> IncidentTaskItem:
