@@ -168,9 +168,7 @@ def run_driver_import_job(
             "inactive_count": 0,
         }
 
-        existing_by_phone = {
-            row.phone_e164: row for row in db.query(Driver).all() if row.phone_e164
-        }
+        existing_by_phone: dict[str, Driver] = {}
         assigned_driver_ids = {
             str(row.driver_id)
             for row in db.query(DriverVehicleAssignment)
@@ -258,6 +256,16 @@ def run_driver_import_job(
                     "is_active": row_active,
                 }
             )
+
+        staged_phones = {str(staged["phone_e164"]) for staged in staged_rows}
+        if staged_phones:
+            existing_by_phone = {
+                row.phone_e164: row
+                for row in db.query(Driver)
+                .filter(Driver.phone_e164.in_(staged_phones))
+                .all()
+                if row.phone_e164
+            }
 
         for staged in staged_rows:
             phone_e164 = str(staged["phone_e164"])
