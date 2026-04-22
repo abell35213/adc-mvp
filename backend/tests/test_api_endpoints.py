@@ -2647,6 +2647,60 @@ class TestDriverImportJobs:
         )
         assert resp.status_code == 404
 
+    def test_driver_import_handles_phone_owned_by_other_org(
+        self, client, db_session, test_org, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        db_session.add(
+            Driver(
+                org_id=other_org.id,
+                phone_e164="+15559990000",
+                display_name="Other Org Driver",
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        csv_content = "firstName,lastName,mobile,status\nCross,Org,5559990000,active\n"
+        create_resp = client.post(
+            "/org/drivers/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"phone": "mobile"},
+                "inactive_mobile_phones": [],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(
+            f"/org/drivers/import-jobs/{job_id}", headers=auth_headers
+        )
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_imported"] == 0
+        assert payload["records_updated"] == 0
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 1
+        assert payload["summary"]["duplicate_warning_count"] == 1
+        assert payload["summary"]["needs_review_count"] == 1
+        assert any(
+            "already exists in another organization" in row
+            for row in payload["outcomes"]["errored"]
+        )
+
+        org_drivers = (
+            db_session.query(Driver).filter(Driver.org_id == test_org.id).count()
+        )
+        assert org_drivers == 0
+
 
 class TestOrgMappingsReadiness:
     def test_org_mapping_summary_counts_readiness_and_confidence(
