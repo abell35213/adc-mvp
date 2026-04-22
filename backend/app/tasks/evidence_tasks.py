@@ -1145,6 +1145,7 @@ def capture_telematics_bundle(
                 message=f"Telematics capture task failed: {exc}",
             )
         if retry_class == "non_retryable_intervention_required":
+            admin_action = _admin_action_for_reason(reason_code)
             if "org_id" in locals():
                 mark_connection_intervention_required(
                     db,
@@ -1152,18 +1153,13 @@ def capture_telematics_bundle(
                     provider="samsara",
                     domain="telematics",
                     reason_code=reason_code,
-                    admin_action=_admin_action_for_reason(reason_code),
+                    admin_action=admin_action,
                     message=normalized_error.user_facing_message,
                 )
             increment(MetricNames.CELERY_TASK_FAILURES)
-            return {
-                "incident_id": incident_id,
-                "type": "telematics",
-                "status": "failed",
-                "reason_code": reason_code,
-                "action_required": _admin_action_for_reason(reason_code),
-                "idempotency_key": workflow_key,
-            }
+            raise RuntimeError(
+                f"Telematics capture requires admin intervention: {reason_code} ({admin_action})"
+            ) from exc
         policy = get_policy_for_capability("telematics")
         if self.request.retries < policy.max_retries:
             delay = compute_retry_delay_seconds(

@@ -73,6 +73,7 @@ celery_app.conf.update(
     },
     task_annotations={
         "app.tasks.evidence_tasks.capture_dashcam": {
+            "autoretry_for": (Exception,),
             "max_retries": dashcam_retry_policy.max_retries,
             "retry_backoff": dashcam_retry_policy.base_delay_seconds,
             "retry_backoff_max": dashcam_retry_policy.backoff_cap_seconds,

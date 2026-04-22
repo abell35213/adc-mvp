@@ -136,6 +136,9 @@ class TestCeleryAppConfig:
         from app.tasks.celery_app import celery_app
 
         annotations = celery_app.conf.task_annotations
+        assert annotations["app.tasks.evidence_tasks.capture_dashcam"]["autoretry_for"] == (
+            Exception,
+        )
         assert annotations["app.tasks.evidence_tasks.capture_dashcam"]["retry_backoff"]
         assert annotations["app.tasks.export_tasks.build_export"]["retry_jitter"]
 
@@ -606,12 +609,12 @@ class TestCaptureTelematicsBundle:
 
         from app.tasks.evidence_tasks import capture_telematics_bundle
 
-        result = capture_telematics_bundle(
-            str(incident.incident_id),
-            "2024-01-01T00:00:00Z",
-            "2024-01-01T01:00:00Z",
-        )
-        assert result["action_required"] == "reauth_required"
+        with pytest.raises(RuntimeError, match="requires admin intervention"):
+            capture_telematics_bundle(
+                str(incident.incident_id),
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            )
 
         connection = (
             db_session.query(IntegrationConnection)
