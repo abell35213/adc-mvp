@@ -1,7 +1,7 @@
 """add driver import jobs table
 
-Revision ID: 0021
-Revises: 0020
+Revision ID: 0026_add_driver_import_jobs_table
+Revises: 0025_add_org_content_and_readiness_tables
 Create Date: 2026-04-22
 
 """
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0021"
-down_revision: Union[str, None] = "0020"
+revision: str = "0026"
+down_revision: Union[str, None] = "0025"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
