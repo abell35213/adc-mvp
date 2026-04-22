@@ -58,19 +58,24 @@ def process_twilio_status_callback(
     )
 
     if not signature_valid:
-        create_provider_webhook_event(
+        event = create_provider_webhook_event(
             db,
             org_id=None,
             provider="twilio",
             domain="messaging",
             event_type="status_callback",
-            status="failed",
+            status="received",
             external_reference=message_sid,
             idempotency_key=idempotency_key,
             signature_valid=False,
-            processing_outcome="invalid_signature",
             raw_payload=raw_payload,
             payload_json=payload,
+        )
+        update_provider_webhook_event(
+            db,
+            event,
+            status="failed",
+            processing_outcome="invalid_signature",
             error_message="twilio_signature_validation_failed",
             error_details_json={"reason": signature_error or "invalid_signature"},
         )
