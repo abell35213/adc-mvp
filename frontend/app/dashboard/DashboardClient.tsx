@@ -15,7 +15,6 @@ import {
   getIncidentAlerts,
   getIncidentQueue,
   getIncidentSummaryMetrics,
-  getMyOpenTasks,
   getOverdueTasks,
   patchIncidentOwner,
   patchIncidentStatus,
@@ -54,7 +53,6 @@ export default function DashboardClient() {
   const [metrics, setMetrics] = useState<CaseOpsSummaryMetrics | null>(null);
   const [alerts, setAlerts] = useState<CaseOpsAlerts | null>(null);
   const [overdueTasks, setOverdueTasks] = useState<CaseTaskWidgetItem[]>([]);
-  const [myOpenTasks, setMyOpenTasks] = useState<CaseTaskWidgetItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [queueError, setQueueError] = useState("");
@@ -88,13 +86,11 @@ export default function DashboardClient() {
       getIncidentSummaryMetrics(),
       getIncidentAlerts(),
       getOverdueTasks({ limit: 20 }),
-      getMyOpenTasks({ limit: 20 }),
     ])
-      .then(([summary, alertPayload, overdue, mine]) => {
+      .then(([summary, alertPayload, overdue]) => {
         setMetrics(summary);
         setAlerts(alertPayload);
         setOverdueTasks(overdue.items);
-        setMyOpenTasks(mine.items);
         setOverviewError("");
       })
       .catch((err) =>
@@ -200,7 +196,7 @@ export default function DashboardClient() {
           <AlertsPanel alerts={alerts} loading={overviewLoading} error={overviewError} />
           <ExportReadyList items={exportReady} loading={queueLoading} />
           <OverdueFollowUpList
-            items={overdueTasks.length > 0 ? overdueTasks : myOpenTasks.filter((task) => task.status !== "completed")}
+            items={overdueTasks}
             loading={overviewLoading}
             error={overviewError}
           />
