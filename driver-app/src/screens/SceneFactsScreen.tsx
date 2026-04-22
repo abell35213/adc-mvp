@@ -70,9 +70,9 @@ function buildSceneFactsPayload(draft: SceneFactsDraft): DriverSceneFactsPayload
             longitude,
           }
         : null,
-    injuries_reported: Boolean(draft.injuriesReported),
-    police_called: Boolean(draft.policeCalled),
-    vehicle_drivable: Boolean(draft.vehicleDrivable),
+    injuries_reported: draft.injuriesReported,
+    police_called: draft.policeCalled,
+    vehicle_drivable: draft.vehicleDrivable,
     short_description: draft.shortDescription.trim(),
   };
 }
@@ -170,15 +170,18 @@ export default function SceneFactsScreen({ navigation }: Props) {
 
   useEffect(() => {
     const initializeDraft = async () => {
+      let nextIncidentId: string | null = null;
+
       try {
-        const [activeIncident, storedRaw] = await Promise.all([
-          getDriverActiveIncident(),
-          SecureStore.getItemAsync(STORAGE_KEY),
-        ]);
-
-        const nextIncidentId = activeIncident?.incident_id ?? null;
+        const activeIncident = await getDriverActiveIncident();
+        nextIncidentId = activeIncident?.incident_id ?? null;
         setIncidentId(nextIncidentId);
+      } catch {
+        // Offline or server unavailable; proceed with locally saved draft if present.
+      }
 
+      try {
+        const storedRaw = await SecureStore.getItemAsync(STORAGE_KEY);
         if (!storedRaw) {
           return;
         }

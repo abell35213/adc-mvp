@@ -96,9 +96,9 @@ export type DriverSceneFactsPayload = {
     latitude: number;
     longitude: number;
   } | null;
-  injuries_reported: boolean;
-  police_called: boolean;
-  vehicle_drivable: boolean;
+  injuries_reported: boolean | null;
+  police_called: boolean | null;
+  vehicle_drivable: boolean | null;
   short_description: string;
 };
 
