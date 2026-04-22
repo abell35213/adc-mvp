@@ -1,4 +1,12 @@
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { INITIAL_PROTOCOL_CONTEXT } from '../types/protocol';
 import { transitionProtocol } from '../store/protocolStore';
@@ -42,10 +50,14 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
     useState<DriverProtocolState>('authenticated');
   const [protocolContext, setProtocolContext] =
     useState<ProtocolContext>(INITIAL_PROTOCOL_CONTEXT);
-
-
+  const hasCompletedRoutesHydrated = useRef(false);
 
   useEffect(() => {
+    if (!hasCompletedRoutesHydrated.current) {
+      hasCompletedRoutesHydrated.current = true;
+      return;
+    }
+
     void persistProtocolResumeState(null, completedRoutes);
   }, [completedRoutes]);
 
@@ -66,8 +78,8 @@ export function ProtocolFlowProvider({ children }: { children: ReactNode }) {
         setCompletedRoutes(new Set(routes));
         setWorkflowState('authenticated');
         setProtocolContext((previous) => ({
-          ...previous,
           ...INITIAL_PROTOCOL_CONTEXT,
+          ...previous,
           isAuthenticated: true,
         }));
       },
