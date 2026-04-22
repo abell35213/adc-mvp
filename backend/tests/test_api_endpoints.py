@@ -525,6 +525,27 @@ class TestIntegrationDiagnosticsRoutes:
             headers=admin_headers,
             json={"role": "org_admin"},
         )
+        assert patch_role.status_code == 403
+
+        system_admin = User(
+            email="system-admin@example.com",
+            password_hash=hash_password("password123"),
+            role="system_admin",
+        )
+        db_session.add(system_admin)
+        db_session.commit()
+        db_session.refresh(system_admin)
+        db_session.add(UserOrg(user_id=system_admin.id, org_id=test_org.id))
+        db_session.commit()
+        system_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(system_admin.id), 'role': 'system_admin'})}"
+        }
+
+        patch_role = client.patch(
+            f"/org/users/{test_user.id}/role",
+            headers=system_admin_headers,
+            json={"role": "org_admin"},
+        )
         assert patch_role.status_code == 200
         updated_user = next(
             item for item in patch_role.json()["users"] if item["user_id"] == str(test_user.id)
