@@ -17,3 +17,12 @@ def test_read_only_capabilities_are_read_only():
     assert Capability.EXPORT_READ in capabilities
     assert Capability.INCIDENT_WRITE not in capabilities
     assert Capability.EXPORT_WRITE not in capabilities
+
+
+def test_safety_manager_does_not_get_privileged_status_transition_capabilities():
+    capabilities = get_user_capabilities("safety_manager")
+    assert Capability.INCIDENT_READ in capabilities
+    assert Capability.INCIDENT_WRITE in capabilities
+    assert Capability.INCIDENT_CLOSE not in capabilities
+    assert Capability.INCIDENT_REOPEN not in capabilities
+    assert Capability.INCIDENT_ESCALATE not in capabilities
