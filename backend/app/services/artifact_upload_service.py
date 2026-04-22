@@ -26,6 +26,7 @@ ALLOWED_ARTIFACT_CONTENT_TYPES = {
     "driver_document": {"application/pdf", "image/jpeg", "image/png"},
     "driver_video": {"video/mp4"},
 }
+DRIVER_ARTIFACT_TYPES = set(ALLOWED_ARTIFACT_CONTENT_TYPES.keys())
 
 
 def _validate_incident_driver_ownership(
@@ -101,14 +102,15 @@ def issue_driver_artifact_upload_url(
         artifact_type=normalized_artifact_type,
         status="pending",
     )
+    db.add(artifact)
+    db.flush()
+
     ext = _file_extension(file_name)
     artifact.s3_bucket = settings.S3_ARTIFACTS_BUCKET
     artifact.s3_key = (
         f"org/{incident.org_id}/incidents/{incident.incident_id}/"
         f"driver/{normalized_artifact_type}/{artifact.artifact_id}.{ext}"
     )
-
-    db.add(artifact)
     db.commit()
     db.refresh(artifact)
 
@@ -142,6 +144,8 @@ def complete_driver_artifact_upload(
         .filter(
             Artifact.artifact_id == artifact_id,
             Artifact.incident_id == incident_id,
+            Artifact.artifact_type.in_(DRIVER_ARTIFACT_TYPES),
+            Artifact.status == "pending",
         )
         .first()
     )
