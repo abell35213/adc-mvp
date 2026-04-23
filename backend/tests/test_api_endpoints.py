@@ -21,8 +21,16 @@ from app.db.models import (
     Org,
     UserOrg,
     IntegrationConnection,
+    IntegrationValidationResult,
     IntegrationOperation,
     EvidenceRequest,
+    Driver,
+    DriverInstructionSet,
+    DriverInstructionStep,
+    DriverVehicleAssignment,
+    ExternalMapping,
+    VehicleQrToken,
+    OrgVehicleRegistry,
 )
 from app.db.session import get_db
 from app.core.security import hash_password, create_access_token
@@ -301,7 +309,9 @@ class TestIncidentExportReadiness:
         )
         incident_id = create_resp.json()["incident_id"]
         mock_snapshot.return_value = SimpleNamespace(
-            readiness=SimpleNamespace(state="not_ready", blocking_codes=["evidence_capture_incomplete"]),
+            readiness=SimpleNamespace(
+                state="not_ready", blocking_codes=["evidence_capture_incomplete"]
+            ),
             completeness=SimpleNamespace(percent=45, status="incomplete"),
             blockers=SimpleNamespace(
                 items=[
@@ -346,7 +356,9 @@ class TestIncidentExportReadiness:
         )
         incident_id = create_resp.json()["incident_id"]
         mock_snapshot.return_value = SimpleNamespace(
-            readiness=SimpleNamespace(state="conditionally_ready", blocking_codes=["driver_statement_missing"]),
+            readiness=SimpleNamespace(
+                state="conditionally_ready", blocking_codes=["driver_statement_missing"]
+            ),
             completeness=SimpleNamespace(percent=88, status="mostly_complete"),
             blockers=SimpleNamespace(
                 items=[
@@ -405,7 +417,10 @@ class TestIntegrationDiagnosticsRoutes:
                 "timezone": "America/Chicago",
                 "region": "US",
                 "contacts": [{"name": "Safety Lead", "email": "safety@test.org"}],
-                "implementation_contact": {"name": "Impl Lead", "email": "impl@test.org"},
+                "implementation_contact": {
+                    "name": "Impl Lead",
+                    "email": "impl@test.org",
+                },
                 "logo_url": "https://cdn.example.com/logo.png",
             },
         )
@@ -417,6 +432,15 @@ class TestIntegrationDiagnosticsRoutes:
         assert payload["contacts"][0]["email"] == "safety@test.org"
         assert payload["implementation_contact"]["email"] == "impl@test.org"
         assert payload["logo_url"] == "https://cdn.example.com/logo.png"
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "org_settings_updated")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.action == "org.settings.update"
+        assert audit.metadata_json["entity"]["type"] == "org_settings"
 
     def test_onboarding_status_and_mark_step(self, client, auth_headers, org_admin_headers):
         status_before = client.get("/org/onboarding/status", headers=auth_headers)
@@ -434,6 +458,157 @@ class TestIntegrationDiagnosticsRoutes:
         assert org_settings_step["status"] == "completed"
         assert org_settings_step["metadata"]["completion_source"] == "dashboard"
         assert org_settings_step["metadata"]["completed_by_user_id"]
+
+    def test_org_test_runs_crud_and_complete_step(
+        self, client, db_session, test_org, auth_headers
+    ):
+        incident = Incident(org_id=test_org.id, status="open")
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        created = client.post(
+            "/org/test-runs",
+            headers=auth_headers,
+            json={"incident_id": str(incident.incident_id), "findings": ["kicked off"]},
+        )
+        assert created.status_code == 201
+        run_id = created.json()["run_id"]
+        assert created.json()["status"] == "in_progress"
+
+        listed = client.get("/org/test-runs", headers=auth_headers)
+        assert listed.status_code == 200
+        assert len(listed.json()["runs"]) == 1
+        assert listed.json()["runs"][0]["run_id"] == run_id
+
+        completed_step = client.post(
+            f"/org/test-runs/{run_id}/complete-step",
+            headers=auth_headers,
+            json={
+                "step_key": "export-check",
+                "status": "completed",
+                "result": {"status": "ok", "artifacts": 1},
+            },
+        )
+        assert completed_step.status_code == 200
+        assert completed_step.json()["status"] == "completed"
+        assert completed_step.json()["step_results"][0]["step_key"] == "export-check"
+
+        detail = client.get(f"/org/test-runs/{run_id}", headers=auth_headers)
+        assert detail.status_code == 200
+        assert detail.json()["run_id"] == run_id
+
+        refreshed = (
+            db_session.query(Incident)
+            .filter_by(incident_id=incident.incident_id)
+            .first()
+        )
+        assert refreshed is not None
+        assert refreshed.is_test_incident is True
+        audit_types = {
+            row.event_type
+            for row in db_session.query(AuditEvent).filter(
+                AuditEvent.event_type.in_(
+                    ["onboarding_test_run_created", "onboarding_test_run_step_completed"]
+                )
+            )
+        }
+        assert "onboarding_test_run_created" in audit_types
+        assert "onboarding_test_run_step_completed" in audit_types
+
+    def test_org_test_run_detail_is_org_isolated(
+        self, client, db_session, test_org, test_user
+    ):
+        incident = Incident(org_id=test_org.id, status="open")
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        owner_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': test_user.role})}"
+        }
+        created = client.post(
+            "/org/test-runs",
+            headers=owner_headers,
+            json={"incident_id": str(incident.incident_id), "findings": ["org-a-run"]},
+        )
+        assert created.status_code == 201
+        run_id = created.json()["run_id"]
+
+        foreign_org = Org(name="Foreign Test Run Org")
+        foreign_user = User(
+            email="foreign-test-run@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add_all([foreign_org, foreign_user])
+        db_session.commit()
+        db_session.refresh(foreign_org)
+        db_session.refresh(foreign_user)
+        db_session.add(UserOrg(user_id=foreign_user.id, org_id=foreign_org.id))
+        db_session.commit()
+        foreign_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(foreign_user.id), 'role': foreign_user.role})}"
+        }
+
+        denied_detail = client.get(f"/org/test-runs/{run_id}", headers=foreign_headers)
+        denied_list = client.get("/org/test-runs", headers=foreign_headers)
+        assert denied_detail.status_code == 404
+        assert denied_list.status_code == 200
+        assert denied_list.json()["runs"] == []
+
+    def test_export_check_action_endpoint(
+        self, client, db_session, test_org, auth_headers
+    ):
+        success = client.post("/org/onboarding/export-check", headers=auth_headers)
+        assert success.status_code == 200
+        step = next(
+            item for item in success.json()["steps"] if item["key"] == "export_validation"
+        )
+        assert step["status"] == "completed"
+        latest = success.json()["latest_export_validation"]
+        assert latest["status"] == "completed"
+        assert latest["checks"]["required_sections_present"] is True
+        assert latest["checks"]["branding_correct"] is True
+        assert latest["checks"]["warnings_behavior_ok"] is True
+        assert latest["checks"]["file_download_success"] is True
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "onboarding_export_validation_run")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.metadata_json["checks"]["required_sections_present"] is True
+
+    def test_export_validation_cannot_be_marked_complete_manually(
+        self, client, auth_headers
+    ):
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={
+                "step_key": "export_validation",
+                "completed": True,
+                "source": "dashboard",
+            },
+        )
+        assert mark.status_code == 409
+        assert mark.json()["detail"]["code"] == "export_validation_requires_test_export"
+
+    def test_users_roles_step_gate_requires_org_admin_and_safety_capable(
+        self, client, auth_headers
+    ):
+        mark = client.post(
+            "/org/onboarding/mark-step",
+            headers=auth_headers,
+            json={"step_key": "users_roles", "completed": True, "source": "dashboard"},
+        )
+        assert mark.status_code == 409
+        detail = mark.json()["detail"]
+        assert detail["code"] == "users_roles_prerequisites_not_met"
+        assert "no org admin assigned" in detail["violations"]
+        assert "no safety manager assigned" not in detail["violations"]
 
     def test_org_settings_completion_rule_updates_onboarding_status(
         self, client, auth_headers, org_admin_headers
@@ -466,6 +641,45 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert refreshed_step["status"] == "completed"
 
+    def test_onboarding_protocol_setup_step_contract(
+        self, client, db_session, test_org, auth_headers
+    ):
+        initial = client.get(
+            "/org/onboarding/protocol-setup-step", headers=auth_headers
+        )
+        assert initial.status_code == 200
+        payload = initial.json()
+        assert payload["instruction_set_selected"] is False
+        assert payload["safety_contact_configured"] is False
+        assert payload["required_media_prompts_defaulted"] is False
+        assert payload["export_profile_defaulted"] is True
+        assert len(payload["export_profiles_available"]) >= 1
+
+        test_org.safety_manager_phone = "+15551234567"
+        test_org.instruction_source = "default"
+        db_session.add(test_org)
+        db_session.flush()
+        instruction_set = DriverInstructionSet(org_id=test_org.id, scope="default")
+        db_session.add(instruction_set)
+        db_session.flush()
+        db_session.add(
+            DriverInstructionStep(
+                instruction_set_id=instruction_set.instruction_set_id,
+                step_order=1,
+                title="Document the scene",
+                body="Capture photos and videos when safe.",
+                enabled=True,
+            )
+        )
+        db_session.commit()
+
+        refreshed = client.get("/org/onboarding/status", headers=auth_headers)
+        assert refreshed.status_code == 200
+        driver_protocol_step = next(
+            item for item in refreshed.json()["steps"] if item["key"] == "driver_protocol"
+        )
+        assert driver_protocol_step["status"] == "completed"
+
     def test_org_integrations_and_details(
         self, client, db_session, test_org, auth_headers
     ):
@@ -489,6 +703,166 @@ class TestIntegrationDiagnosticsRoutes:
         )
         assert detail_resp.status_code == 200
         assert detail_resp.json()["provider"] == "samsara"
+
+    def test_org_integration_provider_selection_and_credentials_upsert(
+        self, client, db_session, test_user, test_org
+    ):
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': 'org_admin'})}"
+        }
+
+        create_resp = client.post(
+            "/org/integrations",
+            headers=headers,
+            json={
+                "provider": "twilio",
+                "domain": "messaging",
+                "status": "active",
+                "credentials_ref": "vault://twilio-primary",
+                "config_json": {"accountSid": "AC123"},
+            },
+        )
+        assert create_resp.status_code == 200
+
+        update_resp = client.post(
+            "/org/integrations",
+            headers=headers,
+            json={
+                "provider": "twilio",
+                "domain": "messaging",
+                "status": "active",
+                "credentials_ref": "vault://twilio-updated",
+                "config_json": {"accountSid": "AC999"},
+            },
+        )
+        assert update_resp.status_code == 200
+
+        rows = (
+            db_session.query(IntegrationConnection)
+            .filter(
+                IntegrationConnection.org_id == test_org.id,
+                IntegrationConnection.provider == "twilio",
+                IntegrationConnection.domain == "messaging",
+            )
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].credentials_ref == "vault://twilio-updated"
+        assert rows[0].config_json["accountSid"] == "AC999"
+
+    def test_org_users_list_invite_patch_role_resend_deactivate(
+        self, client, db_session, test_org, test_user
+    ):
+        org_admin = User(
+            email="org-admin@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add(org_admin)
+        db_session.commit()
+        db_session.refresh(org_admin)
+        db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+        db_session.commit()
+
+        admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(org_admin.id), 'role': 'org_admin'})}"
+        }
+
+        list_resp = client.get("/org/users", headers=admin_headers)
+        assert list_resp.status_code == 200
+        payload = list_resp.json()
+        assert len(payload["users"]) == 2
+        assert payload["role_counts"]["org_admin"] == 1
+        assert payload["role_counts"]["safety_manager"] == 1
+        assert payload["violations"] == []
+
+        invite_resp = client.post(
+            "/org/users/invite",
+            headers=admin_headers,
+            json={"email": "invitee@example.com", "role": "safety_manager"},
+        )
+        assert invite_resp.status_code == 201
+        invite_payload = invite_resp.json()
+        assert invite_payload["invite"]["status"] == "pending"
+        invite_id = invite_payload["invite"]["invite_id"]
+
+        resend_resp = client.post(
+            f"/org/users/invite/{invite_id}/resend",
+            headers=admin_headers,
+        )
+        assert resend_resp.status_code == 200
+        assert resend_resp.json()["invite"]["status"] == "pending"
+
+        deactivate_resp = client.post(
+            f"/org/users/invite/{invite_id}/deactivate",
+            headers=admin_headers,
+        )
+        assert deactivate_resp.status_code == 200
+        assert deactivate_resp.json()["invite"]["status"] == "deactivated"
+
+        patch_role = client.patch(
+            f"/org/users/{test_user.id}/role",
+            headers=admin_headers,
+            json={"role": "org_admin"},
+        )
+        assert patch_role.status_code == 200
+
+        system_admin = User(
+            email="system-admin@example.com",
+            password_hash=hash_password("password123"),
+            role="system_admin",
+        )
+        db_session.add(system_admin)
+        db_session.commit()
+        db_session.refresh(system_admin)
+        db_session.add(UserOrg(user_id=system_admin.id, org_id=test_org.id))
+        db_session.commit()
+        system_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(system_admin.id), 'role': 'system_admin'})}"
+        }
+
+        patch_role = client.patch(
+            f"/org/users/{test_user.id}/role",
+            headers=system_admin_headers,
+            json={"role": "org_admin"},
+        )
+        assert patch_role.status_code == 200
+        updated_user = next(
+            item
+            for item in patch_role.json()["users"]
+            if item["user_id"] == str(test_user.id)
+        )
+        assert updated_user["role"] == "org_admin"
+        emitted = {
+            row.event_type
+            for row in db_session.query(AuditEvent).filter(
+                AuditEvent.event_type.in_(
+                    [
+                        "org_user_invite_created",
+                        "org_user_invite_resent",
+                        "org_user_invite_deactivated",
+                        "org_user_role_changed",
+                    ]
+                )
+            )
+        }
+        assert emitted == {
+            "org_user_invite_created",
+            "org_user_invite_resent",
+            "org_user_invite_deactivated",
+            "org_user_role_changed",
+        }
+
+    def test_org_user_admin_permissions_enforced(self, client, auth_headers):
+        invite_resp = client.post(
+            "/org/users/invite",
+            headers=auth_headers,
+            json={"email": "invitee@example.com", "role": "safety_manager"},
+        )
+        assert invite_resp.status_code == 403
 
     def test_integration_operations_and_evidence_summary(
         self, client, db_session, test_org, test_user, auth_headers
@@ -601,6 +975,111 @@ class TestIntegrationDiagnosticsRoutes:
             headers=org_admin_headers,
         )
         assert allowed.status_code == 200
+        payload = allowed.json()
+        assert "credentialStatus" in payload
+        assert "capabilityStatus" in payload
+        assert "mappingStatus" in payload
+        assert "messages" in payload
+        assert "timestamp" in payload
+
+    def test_integration_validation_results_endpoint_and_partial_support(
+        self, client, db_session, test_org, test_user
+    ):
+        test_user.role = "org_admin"
+        db_session.add(test_user)
+        db_session.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(test_user.id), 'role': 'org_admin'})}"
+        }
+
+        telematics = IntegrationConnection(
+            org_id=test_org.id,
+            provider="samsara",
+            domain="telematics",
+            status="active",
+            credentials_ref="vault://samsara",
+        )
+        db_session.add(telematics)
+        db_session.commit()
+        db_session.refresh(telematics)
+
+        validate_resp = client.post(
+            f"/org/integrations/{telematics.connection_id}/validate", headers=headers
+        )
+        assert validate_resp.status_code == 200
+        payload = validate_resp.json()
+        assert payload["credentialStatus"] == "pass"
+        assert payload["capabilityStatus"] == "partial_support"
+        assert payload["mappingStatus"] == "fail"
+        assert payload["valid"] is False
+        assert len(payload["messages"]) > 0
+
+        list_resp = client.get(
+            "/org/integrations/validation-results",
+            headers=headers,
+        )
+        assert list_resp.status_code == 200
+        listed = list_resp.json()
+        assert len(listed) == 1
+        assert listed[0]["integration_id"] == str(telematics.connection_id)
+        assert listed[0]["capabilityStatus"] == "partial_support"
+
+        stored = db_session.query(IntegrationValidationResult).all()
+        assert len(stored) == 1
+        audit = (
+            db_session.query(AuditEvent)
+            .filter(AuditEvent.event_type == "integration_validation_completed")
+            .order_by(AuditEvent.occurred_at_utc.desc())
+            .first()
+        )
+        assert audit is not None
+        assert audit.metadata_json["entity"]["type"] == "integration_connection"
+
+    def test_internal_audit_events_for_system_admin(
+        self, client, db_session, test_org, test_user
+    ):
+        org_admin = User(
+            email="org-admin-audit@example.com",
+            password_hash=hash_password("password123"),
+            role="org_admin",
+        )
+        db_session.add(org_admin)
+        db_session.commit()
+        db_session.refresh(org_admin)
+        db_session.add(UserOrg(user_id=org_admin.id, org_id=test_org.id))
+        db_session.commit()
+        org_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(org_admin.id), 'role': 'org_admin'})}"
+        }
+        client.patch(
+            "/org/settings",
+            headers=org_admin_headers,
+            json={"display_name": "Audit Filter Org"},
+        )
+
+        denied = client.get("/internal/audit/events", headers=org_admin_headers)
+        assert denied.status_code == 403
+
+        system_admin = User(
+            email="system-admin-audit@example.com",
+            password_hash=hash_password("password123"),
+            role="system_admin",
+        )
+        db_session.add(system_admin)
+        db_session.commit()
+        db_session.refresh(system_admin)
+        db_session.add(UserOrg(user_id=system_admin.id, org_id=test_org.id))
+        db_session.commit()
+        system_admin_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(system_admin.id), 'role': 'system_admin'})}"
+        }
+        allowed = client.get(
+            f"/internal/audit/events?org_id={test_org.id}&entity_type=org_settings",
+            headers=system_admin_headers,
+        )
+        assert allowed.status_code == 200
+        assert len(allowed.json()) >= 1
+        assert allowed.json()[0]["metadata"]["entity"]["type"] == "org_settings"
 
     @patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
     def test_get_incident_returns_created_at(
@@ -1002,6 +1481,20 @@ class TestListIncidents:
         assert inc["evidence_captured"] == 1
         assert inc["evidence_total"] == 2
         assert "created_at_utc" in inc
+
+    def test_list_incidents_excludes_test_incidents_by_default(
+        self, client, db_session, test_org, auth_headers
+    ):
+        operational = Incident(org_id=test_org.id, status="open", is_test_incident=False)
+        test_run = Incident(org_id=test_org.id, status="open", is_test_incident=True)
+        db_session.add_all([operational, test_run])
+        db_session.commit()
+
+        resp = client.get("/incidents/", headers=auth_headers)
+        assert resp.status_code == 200
+        incident_ids = {item["incident_id"] for item in resp.json()}
+        assert str(operational.incident_id) in incident_ids
+        assert str(test_run.incident_id) not in incident_ids
 
 
 # ── POST /exports ────────────────────────────────────────────────────
@@ -2018,6 +2511,517 @@ class TestListExports:
         assert data[0]["incident_id"] == str(visible_incident.incident_id)
         assert data[0]["status"] == "processing"
         assert "created_at_utc" in data[0]
+
+
+class TestVehicleImportJobs:
+    def test_create_vehicle_import_job_and_read_results(
+        self, client, db_session, test_org, auth_headers
+    ):
+        db_session.add(
+            VehicleQrToken(
+                qr_token="qr-token-1",
+                org_id=test_org.id,
+                adc_vehicle_id="UNIT-001",
+                status="active",
+            )
+        )
+        db_session.add(
+            ExternalMapping(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                internal_entity_type="vehicle",
+                internal_entity_id="unit-001",
+                external_reference="provider-veh-1",
+                status="active",
+            )
+        )
+        db_session.commit()
+
+        csv_content = (
+            "unitNumber,vin,providerVehicleId,status\n"
+            "UNIT-001,1HGBH41JXMN109186,provider-veh-1,active\n"
+            "UNIT-002,1HGBH41JXMN109186,provider-veh-2,inactive\n"
+            "UNIT-002,2HGBH41JXMN109187,provider-veh-3,active\n"
+            ",2HGBH41JXMN109188,provider-veh-4,active\n"
+        )
+
+        create_resp = client.post(
+            "/org/vehicles/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"unit_number": "unitNumber"},
+                "inactive_unit_numbers": ["UNIT-002"],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(
+            f"/org/vehicles/import-jobs/{job_id}", headers=auth_headers
+        )
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_total"] == 2
+        assert payload["records_processed"] == 2
+        assert payload["records_imported"] == 2
+        assert payload["records_updated"] == 0
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 2
+        assert payload["summary"]["missing_qr_count"] == 1
+        assert payload["summary"]["missing_provider_mapping_count"] == 1
+        assert payload["summary"]["duplicate_like_count"] == 2
+        assert payload["summary"]["inactive_count"] == 1
+        assert any("VIN" in warning for warning in payload["warnings"])
+        assert any(
+            "duplicate unitNumber" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "unitNumber is required" in row for row in payload["outcomes"]["errored"]
+        )
+
+        vehicles = (
+            db_session.query(OrgVehicleRegistry)
+            .filter(OrgVehicleRegistry.org_id == test_org.id)
+            .all()
+        )
+        assert len(vehicles) == 2
+        unit_two = next(item for item in vehicles if item.unit_number == "UNIT-002")
+        assert unit_two.is_active is False
+
+    def test_get_vehicle_import_job_not_found(self, client, auth_headers):
+        resp = client.get(
+            f"/org/vehicles/import-jobs/{uuid.uuid4()}", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+
+class TestDriverImportJobs:
+    def test_create_driver_import_job_and_read_results(
+        self, client, db_session, test_org, auth_headers
+    ):
+        existing = Driver(
+            org_id=test_org.id,
+            phone_e164="+15550001111",
+            display_name="Existing Driver",
+            is_active=True,
+        )
+        db_session.add(existing)
+        db_session.commit()
+        db_session.refresh(existing)
+        db_session.add(
+            DriverVehicleAssignment(
+                org_id=test_org.id,
+                driver_id=existing.driver_id,
+                adc_vehicle_id="UNIT-001",
+                source="manual",
+            )
+        )
+        db_session.add(
+            ExternalMapping(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                internal_entity_type="driver",
+                internal_entity_id=str(existing.driver_id),
+                external_reference="provider-driver-1",
+                status="active",
+            )
+        )
+        db_session.commit()
+
+        csv_content = (
+            "firstName,lastName,mobile,status\n"
+            "Alice,Example,(555) 000-1111,active\n"
+            "Bob,Builder,invalid-phone,active\n"
+            "Chris,Driver,5550002222,inactive\n"
+            "Dana,Dupe,5550002222,active\n"
+            ",NoFirst,5550003333,active\n"
+            "NoLast,,5550004444,active\n"
+        )
+
+        create_resp = client.post(
+            "/org/drivers/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"phone": "mobile"},
+                "inactive_mobile_phones": ["5550002222"],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(
+            f"/org/drivers/import-jobs/{job_id}", headers=auth_headers
+        )
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_total"] == 2
+        assert payload["records_processed"] == 2
+        assert payload["records_imported"] == 1
+        assert payload["records_updated"] == 1
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 4
+        assert payload["summary"]["invalid_phone_count"] == 1
+        assert payload["summary"]["duplicate_warning_count"] == 1
+        assert payload["summary"]["missing_assignment_count"] == 1
+        assert payload["summary"]["missing_external_mapping_count"] == 1
+        assert payload["summary"]["needs_review_count"] == 3
+        assert payload["summary"]["inactive_count"] == 1
+        assert len(payload["outcomes"]["invalid_phone"]) == 1
+        assert len(payload["outcomes"]["duplicate_warning"]) == 1
+        assert len(payload["outcomes"]["missing_assignment_or_mapping"]) == 1
+        assert len(payload["outcomes"]["needs_review"]) == 3
+        assert any(
+            "firstName is required" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "lastName is required" in row for row in payload["outcomes"]["errored"]
+        )
+        assert any(
+            "missing assignment, external_mapping" in row for row in payload["warnings"]
+        )
+
+        drivers = db_session.query(Driver).filter(Driver.org_id == test_org.id).all()
+        assert len(drivers) == 2
+        imported = next(row for row in drivers if row.phone_e164 == "+15550002222")
+        assert imported.display_name == "Chris Driver"
+        assert imported.is_active is False
+
+    def test_get_driver_import_job_not_found(self, client, auth_headers):
+        resp = client.get(
+            f"/org/drivers/import-jobs/{uuid.uuid4()}", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+    def test_driver_import_handles_phone_owned_by_other_org(
+        self, client, db_session, test_org, auth_headers
+    ):
+        other_org = Org(name="Other Org")
+        db_session.add(other_org)
+        db_session.commit()
+        db_session.refresh(other_org)
+
+        db_session.add(
+            Driver(
+                org_id=other_org.id,
+                phone_e164="+15559990000",
+                display_name="Other Org Driver",
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        csv_content = "firstName,lastName,mobile,status\nCross,Org,5559990000,active\n"
+        create_resp = client.post(
+            "/org/drivers/import",
+            headers=auth_headers,
+            json={
+                "provider": "samsara",
+                "csv_content": csv_content,
+                "header_mapping": {"phone": "mobile"},
+                "inactive_mobile_phones": [],
+            },
+        )
+        assert create_resp.status_code == 202
+        job_id = create_resp.json()["job_id"]
+
+        read_resp = client.get(
+            f"/org/drivers/import-jobs/{job_id}", headers=auth_headers
+        )
+        assert read_resp.status_code == 200
+        payload = read_resp.json()
+        assert payload["status"] == "failed"
+        assert payload["records_imported"] == 0
+        assert payload["records_updated"] == 0
+        assert payload["records_skipped"] == 1
+        assert payload["records_errored"] == 1
+        assert payload["summary"]["duplicate_warning_count"] == 1
+        assert payload["summary"]["needs_review_count"] == 1
+        assert any(
+            "already exists in another organization" in row
+            for row in payload["outcomes"]["errored"]
+        )
+
+        org_drivers = (
+            db_session.query(Driver).filter(Driver.org_id == test_org.id).count()
+        )
+        assert org_drivers == 0
+
+
+class TestOrgMappingsReadiness:
+    def test_org_mapping_summary_counts_readiness_and_confidence(
+        self, client, db_session, test_org, auth_headers
+    ):
+        driver_one = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110001",
+            display_name="Driver One",
+            is_active=True,
+        )
+        driver_two = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110002",
+            display_name="Driver Two",
+            is_active=True,
+        )
+        driver_three = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551110003",
+            display_name="Driver Three",
+            is_active=True,
+        )
+        db_session.add_all([driver_one, driver_two, driver_three])
+        db_session.commit()
+        db_session.refresh(driver_one)
+        db_session.refresh(driver_two)
+        db_session.refresh(driver_three)
+
+        db_session.add_all(
+            [
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-001",
+                    is_active=True,
+                    qr_deployment_status="distributed",
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-002",
+                    is_active=True,
+                    qr_deployment_status="distributed",
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-003",
+                    is_active=True,
+                    qr_deployment_status="confirmed",
+                ),
+            ]
+        )
+        db_session.add_all(
+            [
+                VehicleQrToken(
+                    qr_token="qr-u1",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-001",
+                    status="active",
+                ),
+                VehicleQrToken(
+                    qr_token="qr-u2",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-002",
+                    status="active",
+                ),
+                VehicleQrToken(
+                    qr_token="qr-u3",
+                    org_id=test_org.id,
+                    adc_vehicle_id="UNIT-003",
+                    status="active",
+                ),
+            ]
+        )
+        db_session.add_all(
+            [
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_one.driver_id),
+                    external_reference="drv-1",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_two.driver_id),
+                    external_reference="drv-2",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="driver",
+                    internal_entity_id=str(driver_three.driver_id),
+                    external_reference="drv-3",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-001",
+                    external_reference="veh-1",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-002",
+                    external_reference="veh-2",
+                    status="active",
+                ),
+                ExternalMapping(
+                    org_id=test_org.id,
+                    provider="samsara",
+                    domain="fleet",
+                    internal_entity_type="vehicle",
+                    internal_entity_id="UNIT-003",
+                    external_reference="veh-3",
+                    status="active",
+                ),
+            ]
+        )
+        db_session.add(
+            DriverVehicleAssignment(
+                org_id=test_org.id,
+                driver_id=driver_one.driver_id,
+                adc_vehicle_id="UNIT-001",
+                source="manual",
+            )
+        )
+        db_session.add(
+            IntegrationConnection(
+                org_id=test_org.id,
+                provider="samsara",
+                domain="fleet",
+                status="active",
+                credentials_ref="vault://samsara",
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/org/mappings/summary", headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["drivers"] == {"total": 3, "mapped": 3, "unmapped": 0}
+        assert payload["vehicles"] == {"total": 3, "mapped": 3, "unmapped": 0}
+        assert payload["assignment_confidence"]["level"] == "low"
+        assert payload["assignment_confidence"]["score"] == pytest.approx(
+            1 / 3, rel=1e-3
+        )
+        assert payload["stale_warnings"]["placeholder_supported"] is True
+        assert payload["pilot_readiness"] == {
+            "enough_mapped_drivers_for_pilot": True,
+            "enough_mapped_vehicles_for_pilot": True,
+            "enough_qr_generated_for_required_vehicles": True,
+            "enough_qr_distributed_for_required_vehicles": True,
+            "no_blocking_integration_credentials": True,
+            "pilot_scope_ready": True,
+        }
+
+    def test_org_mapping_issues_return_panel_aligned_codes_and_actions(
+        self, client, db_session, test_org, auth_headers
+    ):
+        driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15551119999",
+            display_name="Needs Mapping",
+            is_active=True,
+        )
+        db_session.add(driver)
+        db_session.add(
+            OrgVehicleRegistry(
+                org_id=test_org.id,
+                unit_number="UNIT-404",
+                is_active=True,
+            )
+        )
+        db_session.add(
+            IntegrationConnection(
+                org_id=test_org.id,
+                provider="motive",
+                domain="fleet",
+                status="error",
+                credentials_ref=None,
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/org/mappings/issues", headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.json()
+        codes = {item["code"] for item in payload["issues"]}
+        assert "MAPPED_DRIVERS_REQUIRED" in codes
+        assert "MAPPED_VEHICLES_REQUIRED" in codes
+        assert "ASSIGNMENT_CONFIDENCE_LOW" in codes
+        assert "BLOCKING_INTEGRATION_CREDENTIALS" in codes
+        assert "VEHICLE_QR_GENERATION_REQUIRED" in codes
+        assert "VEHICLE_QR_DISTRIBUTION_REQUIRED" in codes
+        actions = {item["blocker_panel_action"] for item in payload["issues"]}
+        assert "open_driver_mappings" in actions
+        assert "open_vehicle_mappings" in actions
+        assert "review_driver_assignments" in actions
+        assert "fix_integration_credentials" in actions
+
+
+class TestVehicleQrDeploymentEndpoints:
+    def test_generate_bulk_rotate_printable_and_stats(
+        self, client, db_session, test_org, auth_headers
+    ):
+        db_session.add_all(
+            [
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-A",
+                    is_active=True,
+                ),
+                OrgVehicleRegistry(
+                    org_id=test_org.id,
+                    unit_number="UNIT-B",
+                    is_active=True,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        one = client.post("/org/vehicles/UNIT-A/generate-qr", headers=auth_headers)
+        assert one.status_code == 200
+        first_token = one.json()["qr_token"]
+        assert one.json()["deployment_status"] == "generated"
+
+        bulk = client.post(
+            "/org/vehicles/bulk-generate-qr",
+            headers=auth_headers,
+            json={"vehicle_ids": ["UNIT-A", "UNIT-B", "UNKNOWN"]},
+        )
+        assert bulk.status_code == 200
+        payload = bulk.json()
+        assert payload["generated_count"] == 2
+        assert payload["skipped_count"] == 1
+        assert "UNKNOWN" in payload["skipped_vehicle_ids"]
+
+        rotated = client.post("/org/vehicles/UNIT-A/rotate-qr", headers=auth_headers)
+        assert rotated.status_code == 200
+        assert rotated.json()["qr_token"] != first_token
+
+        printable = client.get(
+            "/org/vehicles/UNIT-A/qr/printable",
+            headers=auth_headers,
+        )
+        assert printable.status_code == 200
+        assert printable.headers["content-type"].startswith("application/pdf")
+
+        stats = client.get("/org/onboarding/qr-stats", headers=auth_headers)
+        assert stats.status_code == 200
+        stats_payload = stats.json()
+        assert stats_payload["required_vehicle_count"] == 2
+        assert stats_payload["generated_count"] == 2
+        assert stats_payload["distributed_count"] == 1
+        assert "required_vehicles_not_distributed" in stats_payload["coverage_blockers"]
 
 
 # ── Health check ────────────────────────────────────────────────────

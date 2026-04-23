@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import MainLayout from "@/components/MainLayout";
+import DocumentationCenter from "@/components/commercial/DocumentationCenter";
 import { listIncidents, type Incident } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 
@@ -201,6 +202,29 @@ export default function IncidentsPage() {
           </table>
         </div>
       )}
+
+      <div className="mt-4">
+        <DocumentationCenter
+          title="Incident workflow help"
+          docs={[
+            {
+              title: "Onboarding readiness",
+              href: "/onboarding",
+              description: "Use launch checklist status to identify unresolved setup blockers.",
+            },
+            {
+              title: "Export handoff",
+              href: "/exports",
+              description: "Review package completeness and legal download audit before sharing.",
+            },
+            {
+              title: "Trust center",
+              href: "/trust",
+              description: "Reference security and compliance controls used for evidence handling.",
+            },
+          ]}
+        />
+      </div>
     </MainLayout>
   );
 }

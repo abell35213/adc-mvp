@@ -50,9 +50,25 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
     if signals.org_admin_count == 0:
         blockers.append(
             ClassifiedBlocker(
-                code="org_admin_missing",
-                title="Organization admin missing",
-                detail="At least one org_admin account is required to administer launch settings.",
+                code="no_org_admin_assigned",
+                title="No org admin assigned",
+                detail=(
+                    "Assign at least one org_admin user to unlock onboarding roles readiness "
+                    f"(current org_admin_count={signals.org_admin_count})."
+                ),
+                severity="critical",
+                blocking_step_key="users_roles",
+            )
+        )
+    if signals.safety_capable_user_count == 0:
+        blockers.append(
+            ClassifiedBlocker(
+                code="no_safety_manager_assigned",
+                title="No safety manager assigned",
+                detail=(
+                    "Assign at least one safety-capable user to support safety workflows "
+                    f"(current safety_capable_user_count={signals.safety_capable_user_count})."
+                ),
                 severity="critical",
                 blocking_step_key="users_roles",
             )
@@ -103,24 +119,44 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
 
     if (
         signals.vehicles_total > 0
-        and signals.qr_codes_activated < signals.vehicles_total
+        and signals.qr_codes_distributed < signals.vehicles_total
     ):
         blockers.append(
             ClassifiedBlocker(
                 code="vehicle_qr_incomplete",
                 title="Vehicle QR rollout incomplete",
-                detail="Generate and activate QR tokens for all active vehicles.",
+                detail="Generate and distribute QR tokens for all required active vehicles.",
                 severity="important",
                 blocking_step_key="vehicle_qr",
             )
         )
 
-    if not signals.protocol_configured:
+    if not signals.protocol_instruction_set_active:
         blockers.append(
             ClassifiedBlocker(
-                code="driver_protocol_missing",
-                title="Driver protocol not configured",
-                detail="Enable driver acknowledgement workflow and publish instruction steps.",
+                code="driver_protocol_instruction_set_missing",
+                title="Driver instruction set missing",
+                detail="Select an active instruction set with at least one enabled instruction step.",
+                severity="critical",
+                blocking_step_key="driver_protocol",
+            )
+        )
+    if not signals.safety_contact_configured:
+        blockers.append(
+            ClassifiedBlocker(
+                code="driver_protocol_safety_contact_missing",
+                title="Safety contact not configured",
+                detail="Configure a safety contact phone number for the protocol escalation workflow.",
+                severity="critical",
+                blocking_step_key="driver_protocol",
+            )
+        )
+    if not signals.export_profiles_available:
+        blockers.append(
+            ClassifiedBlocker(
+                code="driver_protocol_export_profile_missing",
+                title="No export profile available",
+                detail="At least one export profile must be available before protocol setup can complete.",
                 severity="critical",
                 blocking_step_key="driver_protocol",
             )
@@ -133,7 +169,7 @@ def classify_blockers(*, signals: OnboardingSignals) -> list[ClassifiedBlocker]:
                 title="Test run not completed",
                 detail="Complete a successful test incident run before go-live.",
                 severity="critical",
-                blocking_step_key="test_run",
+                blocking_step_key="testIncidentCompleted",
             )
         )
 
