@@ -77,14 +77,22 @@ export default function NarrativeScreen({ navigation }: Props) {
   useEffect(() => {
     const initializeDraft = async () => {
       try {
-        const [activeIncident, storedRaw] = await Promise.all([
+        const [activeIncidentResult, storedDraftResult] = await Promise.allSettled([
           getDriverActiveIncident(),
           AsyncStorage.getItem(STORAGE_KEY),
         ]);
 
-        const nextIncidentId = activeIncident?.incident_id ?? null;
+        const nextIncidentId =
+          activeIncidentResult.status === 'fulfilled'
+            ? activeIncidentResult.value?.incident_id ?? null
+            : null;
         setIncidentId(nextIncidentId);
 
+        if (storedDraftResult.status !== 'fulfilled') {
+          return;
+        }
+
+        const storedRaw = storedDraftResult.value;
         if (!storedRaw) {
           return;
         }
