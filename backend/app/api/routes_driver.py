@@ -15,6 +15,7 @@ from app.api.schemas import (
     DriverIncidentInitiateRequest,
     DriverIncidentInitiateResponse,
     DriverIncidentStatusResponse,
+    DriverSubmitIncidentReportResponse,
     DriverInstructionAckRequest,
     DriverInstructionAckResponse,
     DriverTimelineEventWriteRequest,
@@ -659,4 +660,41 @@ def driver_incident_status(
         protocol_started_at_utc=summary["protocol_started_at_utc"],
         evidence_requested_at_utc=summary["evidence_requested_at_utc"],
         last_evidence_update_utc=summary["last_evidence_update_utc"],
+    )
+
+
+@router.post(
+    "/incidents/{incident_id}/submit-driver-report",
+    response_model=DriverSubmitIncidentReportResponse,
+)
+def submit_driver_incident_report(
+    incident_id: uuid.UUID,
+    driver: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    """Finalize a driver incident report."""
+    incident = get_incident(db, incident_id, org_ids=[driver.org_id])
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    if incident.status != "closed":
+        incident.status = "closed"
+        submission_event = Event(
+            org_id=driver.org_id,
+            incident_id=incident.incident_id,
+            event_type=SystemEventType.INCIDENT_UPDATED.value,
+            actor_type="driver_app",
+            actor_id=str(driver.driver_id),
+            payload={
+                "status": "closed",
+                "source": "driver_submit_incident_report",
+            },
+        )
+        db.add(submission_event)
+        db.commit()
+        db.refresh(incident)
+
+    return DriverSubmitIncidentReportResponse(
+        incident_id=incident.incident_id,
+        status=incident.status,
     )
