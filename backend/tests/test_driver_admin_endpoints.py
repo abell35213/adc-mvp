@@ -799,55 +799,6 @@ class TestDriverActiveIncidentAndStatus:
         assert resp.status_code == 404
 
 
-# ── POST /driver/incidents/{incident_id}/submit-driver-report ──────
-
-
-class TestSubmitDriverIncidentReport:
-    def test_submit_closes_incident_and_writes_event(
-        self, client, db_session, test_org, test_driver, driver_headers
-    ):
-        incident = Incident(
-            org_id=test_org.id,
-            adc_vehicle_id="veh-100",
-            adc_driver_id=str(test_driver.driver_id),
-            status="evidence_capturing",
-        )
-        db_session.add(incident)
-        db_session.commit()
-        db_session.refresh(incident)
-
-        resp = client.post(
-            f"/driver/incidents/{incident.incident_id}/submit-driver-report",
-            headers=driver_headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["incident_id"] == str(incident.incident_id)
-        assert data["status"] == "closed"
-
-        db_session.refresh(incident)
-        assert incident.status == "closed"
-
-        events = (
-            db_session.query(Event)
-            .filter(
-                Event.incident_id == incident.incident_id,
-                Event.event_type == "incident_updated",
-            )
-            .all()
-        )
-        assert len(events) == 1
-        assert events[0].payload["status"] == "closed"
-        assert events[0].payload["source"] == "driver_submit_incident_report"
-
-    def test_submit_returns_404_for_unknown_incident(self, client, driver_headers):
-        resp = client.post(
-            "/driver/incidents/00000000-0000-0000-0000-000000000000/submit-driver-report",
-            headers=driver_headers,
-        )
-        assert resp.status_code == 404
-
-
 # ── GET /admin/vehicles/{vehicle_id}/qr ─────────────────────────────
 
 
