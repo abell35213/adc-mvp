@@ -90,7 +90,13 @@ export function emitTimelineAndAnalyticsEvent(
     payload?: Record<string, unknown>;
   },
 ): void {
-  console.info('[driver-protocol-event]', eventName);
+  // Event names alone are non-PII, but only log them in dev builds to keep
+  // production logs (which may be aggregated by a third-party crash reporter)
+  // free of any signal that could leak driver activity.
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.info('[driver-protocol-event]', eventName);
+  }
   void (async () => {
     try {
       const resolvedIncidentId = await resolveIncidentCorrelationId(options?.incidentId);
@@ -111,14 +117,23 @@ export function emitTimelineAndAnalyticsEvent(
     } catch {
       // Non-blocking telemetry write.
     }
-  })();
+  })().catch(() => {
+    // Defense-in-depth: the inner try/catch should always handle errors, but if
+    // the runtime ever rejects the IIFE itself we don't want an unhandled
+    // promise rejection to crash the JS engine in release builds.
+  });
 }
 
 export function emitUploadAnalyticsEvent(
   eventName: DriverUploadAnalyticsEventName,
   payload: Record<string, unknown>,
 ): void {
-  console.info('[driver-upload-analytics-event]', eventName, payload);
+  // ``payload`` may include incident IDs and other identifiers — do not log
+  // outside of dev builds.
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.info('[driver-upload-analytics-event]', eventName, payload);
+  }
 }
 
 export function emitProtocolAnalyticsEvent(
@@ -136,9 +151,14 @@ export function emitProtocolAnalyticsEvent(
         incidentCorrelationId: resolvedIncidentId,
         workflowCorrelationId: options?.workflowCorrelationId,
       });
-      console.info('[driver-protocol-analytics-event]', eventName, correlatedPayload);
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.info('[driver-protocol-analytics-event]', eventName, correlatedPayload);
+      }
     } catch {
       // Non-blocking analytics emission.
     }
-  })();
+  })().catch(() => {
+    // See emitTimelineAndAnalyticsEvent — defense-in-depth against unhandled rejections.
+  });
 }

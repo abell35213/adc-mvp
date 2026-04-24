@@ -143,12 +143,32 @@ export async function resolveProtocolResumeState(
 
   if (resumeRaw) {
     try {
-      const parsed = JSON.parse(resumeRaw) as ProtocolResumePayload;
-      storedIncidentId = parsed.incidentId?.trim() ? parsed.incidentId.trim() : null;
-      storedCompletedRoutes = new Set(
-        (parsed.completedRoutes ?? []).filter(isProtocolRouteName),
-      );
+      const parsed: unknown = JSON.parse(resumeRaw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const parsedObj = parsed as { incidentId?: unknown; completedRoutes?: unknown };
+        const incidentId =
+          typeof parsedObj.incidentId === 'string' ? parsedObj.incidentId.trim() : '';
+        storedIncidentId = incidentId.length ? incidentId : null;
+        const routes = Array.isArray(parsedObj.completedRoutes)
+          ? parsedObj.completedRoutes.filter(
+              (value): value is ProtocolRouteName =>
+                typeof value === 'string' && isProtocolRouteName(value),
+            )
+          : [];
+        storedCompletedRoutes = new Set(routes);
+      } else {
+        // Non-object payload (e.g. a stray string written by an older build)
+        // → treat as corruption and reset to empty state.
+        storedIncidentId = null;
+        storedCompletedRoutes = new Set();
+      }
     } catch {
+      // Corrupted JSON — reset to empty state. Hydration must never throw or
+      // it will leave the user stuck on the protocol-resume screen forever.
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[protocolResumeStore] corrupted JSON in storage, resetting');
+      }
       storedIncidentId = null;
       storedCompletedRoutes = new Set();
     }

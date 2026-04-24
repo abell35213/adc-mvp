@@ -21,6 +21,7 @@ import {
   toUserErrorMessage,
 } from "@/lib/api";
 import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
+import { safeOpenDownloadUrl } from "@/lib/safeUrl";
 
 interface ExportFilters {
   incident: string;
@@ -145,7 +146,13 @@ export default function ExportsPage() {
   async function handleDownload(exportId: string) {
     try {
       const result = await downloadExport(exportId);
-      window.open(result.url, "_blank");
+      const opened = safeOpenDownloadUrl(result.url);
+      if (!opened) {
+        setError(
+          "The download link points to an unrecognized host and was blocked. " +
+            "Please contact support if this keeps happening.",
+        );
+      }
     } catch (err: unknown) {
       setError(toUserErrorMessage(err, "Download failed"));
     }
