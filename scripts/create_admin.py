@@ -66,16 +66,20 @@ def _read_password() -> str:
 
 
 def _print_password_too_short_error() -> None:
-    """Print the policy-violation error.
+    """Print a generic policy-violation error.
 
-    The string is phrased to avoid the literal token ``password`` next to a
-    print/log call, which CodeQL's ``py/clear-text-logging-sensitive-data``
-    heuristic flags as a possible secret leak. The env-var name is referenced
-    via a constant so users can still find what to set.
+    We deliberately do not interpolate any value into the printed message —
+    not even the policy length constant, because CodeQL's
+    ``py/clear-text-logging-sensitive-data`` heuristic taints any expression
+    that touches an identifier whose name contains "password" / "secret" /
+    "credential". The script's module docstring is the canonical reference
+    for the policy constants and the required env-var names; users hitting
+    this error should consult ``--help`` or the file header.
     """
-    env_var_name = "ADMIN_" + "PASSWORD"
     sys.stderr.write(
-        f"ERROR: {env_var_name} must be at least {MIN_PASSWORD_LENGTH} characters.\n"
+        "ERROR: the supplied admin secret does not meet the minimum length "
+        "policy. See this script's module docstring for the required "
+        "environment variables and policy constants.\n"
     )
 
 
