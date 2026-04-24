@@ -1458,11 +1458,6 @@ class DriverIncidentReportWriteResponse(BaseModel):
     submitted: bool = False
 
 
-class DriverSubmitIncidentReportResponse(BaseModel):
-    incident_id: uuid.UUID
-    status: IncidentStatus
-
-
 # ── Admin vehicles / QR ────────────────────────────────────────────
 
 
