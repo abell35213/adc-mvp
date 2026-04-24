@@ -32,37 +32,57 @@ MIN_PASSWORD_LENGTH = 12
 
 
 def _read_password() -> str:
-    """Return the admin password from env, or prompt securely if running interactively."""
-    password = os.environ.get("ADMIN_PASSWORD")
-    if password:
-        return password
-    if not sys.stdin.isatty():
-        print(
-            "ERROR: ADMIN_PASSWORD must be set when running non-interactively.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    import getpass
+    """Return the admin password from env, or prompt securely if running interactively.
 
-    password = getpass.getpass("Admin password: ")
-    confirm = getpass.getpass("Confirm password: ")
-    if password != confirm:
-        print("ERROR: passwords did not match.", file=sys.stderr)
+    The password value never leaves this function — callers receive only the
+    validated string and the function itself contains no diagnostic prints that
+    reference the password value.
+    """
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not password:
+        if not sys.stdin.isatty():
+            print(
+                "ERROR: ADMIN_PASSWORD must be set when running non-interactively.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        import getpass
+
+        password = getpass.getpass("Admin password: ")
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("ERROR: passwords did not match.", file=sys.stderr)
+            sys.exit(2)
+
+    password_len = len(password)
+    if password_len < MIN_PASSWORD_LENGTH:
+        # Hand off only the length (and the policy constant) to a helper so the
+        # diagnostic print runs in a scope where the password value itself is
+        # not reachable. This also satisfies static analyzers that perform
+        # taint tracking on the ``password`` local.
+        _print_password_too_short_error()
         sys.exit(2)
     return password
+
+
+def _print_password_too_short_error() -> None:
+    """Print the password-policy error. The password value is not in scope here."""
+    print(
+        f"ERROR: ADMIN_PASSWORD must be at least {MIN_PASSWORD_LENGTH} characters.",
+        file=sys.stderr,
+    )
 
 
 def main() -> int:
     email = os.environ.get("ADMIN_EMAIL", "admin@adc.local")
     org_name = os.environ.get("ADMIN_ORG", "ADC")
-    password = _read_password()
-
-    if len(password) < MIN_PASSWORD_LENGTH:
-        print(
-            f"ERROR: ADMIN_PASSWORD must be at least {MIN_PASSWORD_LENGTH} characters.",
-            file=sys.stderr,
-        )
-        return 2
+    try:
+        password = _read_password()
+    except SystemExit as exc:
+        # ``_read_password`` uses ``sys.exit`` for input/policy failures so the
+        # CLI exit code propagates; surface it as the function's return value
+        # for tests that invoke ``main`` directly.
+        return int(exc.code) if isinstance(exc.code, int) else 2
 
     try:
         db = SessionLocal()

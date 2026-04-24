@@ -94,9 +94,7 @@ class TestCreateAdmin:
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
         with patch.object(ca, "SessionLocal", return_value=db_session):
-            with pytest.raises(SystemExit) as exc_info:
-                ca.main()
-        assert exc_info.value.code == 2
+            assert ca.main() == 2
         captured = capsys.readouterr()
         assert "ADMIN_PASSWORD" in captured.err
 

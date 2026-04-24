@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.repo.drivers import (
     create_otp_challenge,
+    get_driver_by_id,
     get_driver_by_phone,
     get_latest_otp_challenge_by_phone,
     increment_otp_attempts,
@@ -411,7 +412,6 @@ def refresh_driver_token(body: DriverTokenRefreshRequest, db: Session = Depends(
         driver_uuid = uuid.UUID(str(payload["sub"]))
     except ValueError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
-    from app.db.repo.drivers import get_driver_by_id  # local import to avoid cycles
 
     driver = get_driver_by_id(db, driver_uuid)
     if driver is None or not driver.is_active:
