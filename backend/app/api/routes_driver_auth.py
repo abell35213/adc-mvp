@@ -386,6 +386,10 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=DriverOtpVerifyResponse)
 def refresh_driver_token(body: DriverTokenRefreshRequest, db: Session = Depends(get_db)):
+    # ``rotate_refresh_token`` resolves the access-token ``sub`` claim from the
+    # session's persisted ``subject_id`` (set at login) when ``token_subject`` is
+    # empty, so the new access token always carries the original driver UUID
+    # rather than ``""``.
     access_token, refresh_token, _session_id = rotate_refresh_token(
         db,
         refresh_token_value=body.refresh_token,
@@ -398,6 +402,20 @@ def refresh_driver_token(body: DriverTokenRefreshRequest, db: Session = Depends(
     payload = decode_access_token(access_token)
     if payload is None or not payload.get("sub"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token issuance failed")
+
+    # Defense in depth: confirm the refreshed token still resolves to an active
+    # driver in the same org as the original session. This catches the unlikely
+    # case where a driver row has been hard-deleted while a refresh token was in
+    # flight.
+    try:
+        driver_uuid = uuid.UUID(str(payload["sub"]))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
+    from app.db.repo.drivers import get_driver_by_id  # local import to avoid cycles
+
+    driver = get_driver_by_id(db, driver_uuid)
+    if driver is None or not driver.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Driver not found or inactive")
 
     return DriverOtpVerifyResponse(access_token=access_token, refresh_token=refresh_token)
 

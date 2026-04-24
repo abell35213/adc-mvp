@@ -69,7 +69,11 @@ def incident(db_session):
 
 @pytest.fixture()
 def export_row(db_session, incident):
-    exp = Export(incident_id=incident.incident_id, status="requested")
+    exp = Export(
+        incident_id=incident.incident_id,
+        org_id=incident.org_id,
+        status="requested",
+    )
     db_session.add(exp)
     db_session.commit()
     db_session.refresh(exp)

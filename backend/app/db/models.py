@@ -535,7 +535,7 @@ class Export(Base):
 
     export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
@@ -1171,6 +1171,9 @@ class SessionRecord(Base):
     org_id = Column(
         UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
     )
+    # Identifies the principal of a non-user session (e.g. a driver). For web
+    # sessions this is left NULL because ``user_id`` already carries the subject.
+    subject_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     client_type = Column(Text, nullable=False)
     device_descriptor = Column(Text, nullable=True)
     created_at = Column(
