@@ -28,8 +28,25 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: wal-archive
-              image: ghcr.io/your-org/adc-ops:latest
+              # Tag is rendered by the deploy pipeline. Avoid ":latest" so backup-job
+              # behavior cannot drift between runs.
+              image: ghcr.io/your-org/adc-ops:${ADC_OPS_IMAGE_TAG}
               imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
               command:
                 - /bin/sh
                 - -c
@@ -66,8 +83,23 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: pg-full-backup
-              image: ghcr.io/your-org/adc-ops:latest
+              image: ghcr.io/your-org/adc-ops:${ADC_OPS_IMAGE_TAG}
               imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "1Gi"
               command:
                 - /bin/sh
                 - -c

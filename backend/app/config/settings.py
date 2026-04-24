@@ -11,8 +11,20 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 INSECURE_DEFAULT_SENTINEL = "change-me-in-production"
+# Additional well-known placeholder strings published in the various .env.example
+# templates. Any of these values must be rejected outside of local dev so that an
+# operator who copies an example file verbatim cannot accidentally ship insecure
+# secrets to staging or prod.
+INSECURE_PLACEHOLDER_VALUES = frozenset(
+    {INSECURE_DEFAULT_SENTINEL, "__CHANGE_ME__", "changeme"}
+)
 LOCAL_DATABASE_DEFAULT = "postgresql://localhost/adc_mvp"
 LOCAL_REDIS_DEFAULT = "redis://localhost:6379/0"
+
+
+def _looks_like_insecure_placeholder(value: str) -> bool:
+    """True when *value* is one of the well-known placeholder strings."""
+    return value.strip() in INSECURE_PLACEHOLDER_VALUES
 
 
 class AwsSecretsManagerSettingsSource(PydanticBaseSettingsSource):
@@ -172,9 +184,9 @@ class AppSettings(BaseSettings):
         if not self.is_prod:
             return errors
 
-        if self.JWT_SECRET_KEY.strip() == INSECURE_DEFAULT_SENTINEL:
+        if _looks_like_insecure_placeholder(self.JWT_SECRET_KEY):
             errors.append("JWT_SECRET_KEY cannot use development default in prod")
-        if self.OTP_HASH_PEPPER.strip() == INSECURE_DEFAULT_SENTINEL:
+        if _looks_like_insecure_placeholder(self.OTP_HASH_PEPPER):
             errors.append("OTP_HASH_PEPPER cannot use development default in prod")
         if self.DATABASE_URL.strip() == LOCAL_DATABASE_DEFAULT:
             errors.append("DATABASE_URL cannot use development default in prod")

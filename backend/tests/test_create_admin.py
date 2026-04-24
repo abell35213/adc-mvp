@@ -15,6 +15,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.db.models import Base, User, Org, UserOrg
 
 
+# A throwaway value that satisfies the script's minimum-length check; never used outside tests.
+TEST_ADMIN_PASSWORD = "test-password-1234"
+
+
+@pytest.fixture(autouse=True)
+def _set_admin_password(monkeypatch):
+    """Ensure ADMIN_PASSWORD is always set before invoking the script.
+
+    The script intentionally refuses to run with an insecure default and requires
+    an explicit password; tests must therefore provide one explicitly.
+    """
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+
+
 @pytest.fixture()
 def db_session():
     engine = create_engine(
@@ -70,3 +84,26 @@ class TestCreateAdmin:
 
         users = db_session.query(User).all()
         assert len(users) == 1
+
+    def test_refuses_when_password_missing(self, db_session, monkeypatch, capsys):
+        """When ADMIN_PASSWORD is not set, the script must refuse non-interactive runs."""
+        from scripts import create_admin as ca
+
+        monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+        # Force non-interactive stdin so the script does not block on getpass().
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        with patch.object(ca, "SessionLocal", return_value=db_session):
+            with pytest.raises(SystemExit) as exc_info:
+                ca.main()
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "ADMIN_PASSWORD" in captured.err
+
+    def test_refuses_short_password(self, db_session, monkeypatch):
+        """ADMIN_PASSWORD shorter than the minimum length should be rejected."""
+        from scripts import create_admin as ca
+
+        monkeypatch.setenv("ADMIN_PASSWORD", "short")
+        with patch.object(ca, "SessionLocal", return_value=db_session):
+            assert ca.main() == 2
