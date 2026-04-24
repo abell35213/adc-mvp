@@ -1,0 +1,89 @@
+---
+# Default-deny ingress and egress for everything in the `adc` namespace.
+# This is the foundation that subsequent NetworkPolicies build on top of —
+# without it, NetworkPolicies are additive-allow-only and any pod with no
+# matching policy would still be reachable / allowed to call out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: adc
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow the cluster ingress controller (assumed to live in the
+# `ingress-nginx` namespace) to reach the backend pods on port 8000. Adjust
+# the `namespaceSelector` if your ingress controller lives elsewhere.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-ingress
+  namespace: adc
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: adc-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# Egress allow-list for the backend and worker pods:
+#  - DNS to kube-dns (UDP/TCP 53) so service discovery works.
+#  - HTTPS (443) to anywhere — required for Twilio, AWS Secrets Manager, S3,
+#    Samsara, and the runtime contracts.
+#  - In-namespace egress so the pods can reach Postgres (5432) and Redis
+#    (6379) regardless of whether those run in-cluster or via a sidecar.
+# Database/Redis hosted outside the cluster will still resolve through the
+# 443/DNS rules; restrict those further with a follow-up policy that pins
+# the specific egress CIDRs once they are known.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-egress
+  namespace: adc
+  labels:
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - adc-backend
+          - adc-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: adc
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+    - ports:
+        - protocol: TCP
+          port: 443
