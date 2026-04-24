@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -104,13 +104,22 @@ def _event_context_payload(
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=200,
+        description="Maximum number of incidents to return (server-side cap: 200).",
+    ),
+    offset: int = Query(
+        0, ge=0, description="Number of incidents to skip for pagination."
+    ),
 ):
     context = build_user_auth_context(db, current_user)
     org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
-    incidents = list_incidents(db, org_ids=org_ids)
+    incidents = list_incidents(db, org_ids=org_ids, skip=offset, limit=limit)
     result = []
     for inc in incidents:
         artifacts = get_artifacts_by_incident(db, inc.incident_id)

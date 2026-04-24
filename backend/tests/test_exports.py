@@ -168,3 +168,57 @@ def test_list_exports_regression_excludes_exports_from_unauthorized_org(
     assert response.status_code == 200
     rows = response.json()
     assert rows == []
+
+
+def test_list_exports_pagination_caps_and_offsets(
+    client: TestClient,
+    db_session,
+    test_org,
+    auth_headers,
+) -> None:
+    """``GET /exports/`` honors ``limit`` / ``offset`` and rejects out-of-range values.
+
+    Regression coverage for the pagination retrofit: previously the endpoint
+    returned an unbounded ``.all()`` which could DoS a large-org caller.
+    """
+    incident = Incident(org_id=test_org.id, status="open")
+    db_session.add(incident)
+    db_session.commit()
+    db_session.refresh(incident)
+
+    now = datetime.now(timezone.utc)
+    for i in range(5):
+        db_session.add(
+            Export(
+                incident_id=incident.incident_id,
+                org_id=test_org.id,
+                status="ready",
+                created_at_utc=now - timedelta(minutes=i),
+            )
+        )
+    db_session.commit()
+
+    # Default request returns all 5 (newest first).
+    resp = client.get("/exports/", headers=auth_headers)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 5
+
+    # ``limit`` caps the result set.
+    resp = client.get("/exports/?limit=2", headers=auth_headers)
+    assert resp.status_code == 200
+    page1 = resp.json()
+    assert len(page1) == 2
+
+    # ``offset`` advances the window — the second page must not overlap the first.
+    resp = client.get("/exports/?limit=2&offset=2", headers=auth_headers)
+    assert resp.status_code == 200
+    page2 = resp.json()
+    assert len(page2) == 2
+    page1_ids = {row["export_id"] for row in page1}
+    page2_ids = {row["export_id"] for row in page2}
+    assert page1_ids.isdisjoint(page2_ids)
+
+    # Out-of-range values are rejected by FastAPI's Query validation.
+    assert client.get("/exports/?limit=0", headers=auth_headers).status_code == 422
+    assert client.get("/exports/?limit=999", headers=auth_headers).status_code == 422
+    assert client.get("/exports/?offset=-1", headers=auth_headers).status_code == 422

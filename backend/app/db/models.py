@@ -79,12 +79,12 @@ class UserOrg(Base):
 
     user_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
     org_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("orgs.id"),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
         primary_key=True,
     )
 
@@ -96,13 +96,13 @@ class OrgUserInvite(Base):
 
     invite_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     email = Column(Text, nullable=False, index=True)
     role = Column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
     status = Column(Text, nullable=False, default="pending", index=True)
     invited_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference to inviter
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -123,13 +123,13 @@ class Event(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        index=True,  # soft reference
     )
     event_type = Column(Text, nullable=False, index=True)
     occurred_at_utc = Column(
@@ -155,23 +155,23 @@ class AuditEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=False, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     export_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("exports.export_id"),
+        ForeignKey("exports.export_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     artifact_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("artifacts.artifact_id"),
+        ForeignKey("artifacts.artifact_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -226,7 +226,7 @@ class Incident(Base):
 
     incident_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root; nullable for legacy only
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -256,10 +256,10 @@ class Incident(Base):
         default="new",
         server_default="new",
     )
-    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # soft assignment
     owner_assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     owner_assigned_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     team_queue = Column(Text, nullable=True)
     readiness_state = Column(Text, nullable=True)
@@ -300,11 +300,11 @@ class CaseNote(Base):
 
     note_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -317,14 +317,14 @@ class CaseNote(Base):
     )
     tags_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     edited_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     edited_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     deleted_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     deleted_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     is_deleted = Column(
@@ -364,11 +364,11 @@ class CaseTask(Base):
 
     task_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -408,23 +408,23 @@ class CaseTask(Base):
     )
     due_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     assigned_to_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft assignment
     )
     assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     assigned_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     completed_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     canceled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     canceled_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     canceled_reason = Column(Text, nullable=True)
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -449,11 +449,11 @@ class CaseReadinessOverride(Base):
 
     override_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -462,10 +462,10 @@ class CaseReadinessOverride(Base):
     completeness_status = Column(Text, nullable=True)
     reason = Column(Text, nullable=False)
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     cleared_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     cleared_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     created_at_utc = Column(
@@ -495,11 +495,11 @@ class Artifact(Base):
 
     artifact_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -535,11 +535,11 @@ class Export(Base):
 
     export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=False, index=True  # tenant root
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -556,13 +556,13 @@ class Export(Base):
         server_default="court_defense_v1",
     )
     requested_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     retry_parent_export_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("exports.export_id"),
+        ForeignKey("exports.export_id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        index=True,  # self-ref: deleting parent shouldn't cascade
     )
     options_json = Column(JSONB, nullable=False, default=dict)
     status = Column(
@@ -612,7 +612,7 @@ class IntegrationConnection(Base):
 
     connection_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     provider = Column(Text, nullable=False, index=True)
     domain = Column(Text, nullable=True, index=True)
@@ -669,19 +669,19 @@ class IntegrationOperation(Base):
 
     operation_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     connection_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("integration_connections.connection_id"),
+        ForeignKey("integration_connections.connection_id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        index=True,  # soft reference
     )
     provider = Column(Text, nullable=False, index=True)
     domain = Column(Text, nullable=True, index=True)
@@ -762,11 +762,11 @@ class IntegrationValidationResult(Base):
 
     validation_result_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     connection_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("integration_connections.connection_id"),
+        ForeignKey("integration_connections.connection_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -798,16 +798,16 @@ class IntegrationOperationStatusHistory(Base):
     history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     operation_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("integration_operations.operation_id"),
+        ForeignKey("integration_operations.operation_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -850,19 +850,19 @@ class EvidenceRequest(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     operation_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("integration_operations.operation_id"),
+        ForeignKey("integration_operations.operation_id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        index=True,  # soft reference
     )
     provider = Column(Text, nullable=False, index=True)
     domain = Column(Text, nullable=True, index=True)
@@ -934,11 +934,11 @@ class ExternalMapping(Base):
 
     mapping_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -987,11 +987,11 @@ class ProviderWebhookEvent(Base):
 
     webhook_event_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -1063,16 +1063,16 @@ class MessageOperation(Base):
     )
     operation_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("integration_operations.operation_id"),
+        ForeignKey("integration_operations.operation_id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        index=True,  # soft reference
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     incident_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("incidents.incident_id"),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -1143,7 +1143,7 @@ class MessageOperationStatusHistory(Base):
     history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     message_operation_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("message_operations.message_operation_id"),
+        ForeignKey("message_operations.message_operation_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -1166,10 +1166,10 @@ class SessionRecord(Base):
 
     session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Identifies the principal of a non-user session (e.g. a driver). For web
     # sessions this is left NULL because ``user_id`` already carries the subject.
@@ -1194,13 +1194,13 @@ class RefreshToken(Base):
     token_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("sessions.session_id"),
+        ForeignKey("sessions.session_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     parent_token_id = Column(
-        UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id", ondelete="CASCADE"), nullable=True  # self-ref: cascade revokes descendants
     )
     token_hash = Column(Text, nullable=False, unique=True, index=True)
     issued_at = Column(
@@ -1269,7 +1269,7 @@ class OrgLaunchReadinessSnapshot(Base):
 
     snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status = Column(
         Enum(
@@ -1289,7 +1289,7 @@ class OrgLaunchReadinessSnapshot(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -1312,12 +1312,12 @@ class OrgLaunchReadinessStepProgress(Base):
     step_progress_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     snapshot_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("org_launch_readiness_snapshots.snapshot_id"),
+        ForeignKey("org_launch_readiness_snapshots.snapshot_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     step_key = Column(Text, nullable=False)
     step_label = Column(Text, nullable=False)
@@ -1360,12 +1360,12 @@ class OrgLaunchReadinessBlocker(Base):
     blocker_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     snapshot_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("org_launch_readiness_snapshots.snapshot_id"),
+        ForeignKey("org_launch_readiness_snapshots.snapshot_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     code = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
@@ -1402,14 +1402,14 @@ class OrgOnboardingStepCompletion(Base):
 
     completion_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     step_key = Column(Text, nullable=False)
     is_completed = Column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     completed_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     completion_source = Column(Text, nullable=True)
@@ -1434,10 +1434,10 @@ class OrgTestIncidentRun(Base):
 
     run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     incident_id = Column(
-        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id", ondelete="CASCADE"), nullable=True, index=True
     )
     status = Column(
         Enum(
@@ -1458,7 +1458,7 @@ class OrgTestIncidentRun(Base):
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     started_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -1483,13 +1483,13 @@ class OrgExportValidationRun(Base):
 
     validation_run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     incident_id = Column(
-        UUID(as_uuid=True), ForeignKey("incidents.incident_id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("incidents.incident_id", ondelete="CASCADE"), nullable=True, index=True
     )
     export_id = Column(
-        UUID(as_uuid=True), ForeignKey("exports.export_id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("exports.export_id", ondelete="CASCADE"), nullable=True, index=True
     )
     status = Column(
         Enum(
@@ -1515,7 +1515,7 @@ class OrgExportValidationRun(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -1537,7 +1537,7 @@ class OrgPlanEntitlement(Base):
 
     entitlement_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     plan_code = Column(Text, nullable=False, default="starter", server_default="starter")
     billing_status = Column(
@@ -1575,7 +1575,7 @@ class DemoScenario(Base):
 
     scenario_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scenario_key = Column(Text, nullable=False)
     name = Column(Text, nullable=False)
@@ -1609,7 +1609,7 @@ class HelpCategory(Base):
 
     category_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     slug = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
@@ -1646,10 +1646,10 @@ class HelpArticle(Base):
 
     article_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     category_id = Column(
-        UUID(as_uuid=True), ForeignKey("help_categories.category_id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("help_categories.category_id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
     slug = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
@@ -1664,10 +1664,10 @@ class HelpArticle(Base):
     published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
     unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     created_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     updated_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -1698,7 +1698,7 @@ class TrustSection(Base):
 
     section_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     slug = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
@@ -1741,12 +1741,12 @@ class DeploymentScopeSnapshot(Base):
 
     snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scope_version = Column(Text, nullable=False)
     scope_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
     captured_by_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
     captured_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -1768,13 +1768,13 @@ class HelpArticleView(Base):
 
     view_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     article_id = Column(
-        UUID(as_uuid=True), ForeignKey("help_articles.article_id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("help_articles.article_id", ondelete="CASCADE"), nullable=False, index=True
     )
     viewer_user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
     source = Column(Text, nullable=True)
     metadata_json = Column(
@@ -1801,7 +1801,7 @@ class ExpansionReadinessSnapshot(Base):
 
     snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scope_key = Column(Text, nullable=False)
     readiness_score = Column(Integer, nullable=True)
@@ -1848,7 +1848,7 @@ class Driver(Base):
 
     driver_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     phone_e164 = Column(Text, nullable=False, unique=True, index=True)
     display_name = Column(Text, nullable=False)
@@ -1887,10 +1887,10 @@ class DriverVehicleAssignment(Base):
 
     assignment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     driver_id = Column(
-        UUID(as_uuid=True), ForeignKey("drivers.driver_id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("drivers.driver_id", ondelete="CASCADE"), nullable=False, index=True
     )
     adc_vehicle_id = Column(Text, nullable=False, index=True)
     assigned_at_utc = Column(
@@ -1910,7 +1910,7 @@ class OrgVehicleRegistry(Base):
 
     vehicle_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     unit_number = Column(Text, nullable=False)
     vin = Column(Text, nullable=True)
@@ -1963,7 +1963,7 @@ class VehicleImportJob(Base):
 
     job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     provider = Column(Text, nullable=False)
     status = Column(
@@ -2025,7 +2025,7 @@ class DriverImportJob(Base):
 
     job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     provider = Column(Text, nullable=False)
     status = Column(
@@ -2083,7 +2083,7 @@ class VehicleQrToken(Base):
 
     qr_token = Column(Text, primary_key=True)
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     adc_vehicle_id = Column(Text, nullable=False, index=True)
     status = Column(
@@ -2116,7 +2116,7 @@ class DriverInstructionSet(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     org_id = Column(
-        UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scope = Column(
         Enum("default", "company", "insurer", name="driver_instruction_scope"),
@@ -2137,7 +2137,7 @@ class DriverInstructionStep(Base):
     step_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     instruction_set_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("driver_instruction_sets.instruction_set_id"),
+        ForeignKey("driver_instruction_sets.instruction_set_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

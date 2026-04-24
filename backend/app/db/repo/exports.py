@@ -20,8 +20,18 @@ def get_exports_by_incident(db: Session, incident_id: _uuid.UUID) -> list[Export
     return db.query(Export).filter(Export.incident_id == incident_id).all()
 
 
-def list_exports_for_org_ids(db: Session, org_ids: list[_uuid.UUID]) -> list[Export]:
-    """List exports visible to the caller's organizations, newest first."""
+def list_exports_for_org_ids(
+    db: Session,
+    org_ids: list[_uuid.UUID],
+    *,
+    skip: int = 0,
+    limit: int = 50,
+) -> list[Export]:
+    """List exports visible to the caller's organizations, newest first.
+
+    ``skip`` / ``limit`` are bounds-checked at the route layer; defaults here
+    keep historical behaviour (page-size 50) for any non-route caller.
+    """
     if not org_ids:
         return []
 
@@ -35,6 +45,8 @@ def list_exports_for_org_ids(db: Session, org_ids: list[_uuid.UUID]) -> list[Exp
             )
         )
         .order_by(Export.created_at_utc.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
