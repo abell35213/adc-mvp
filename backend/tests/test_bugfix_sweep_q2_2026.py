@@ -17,7 +17,6 @@ were tightened during the bug-fix sweep:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
