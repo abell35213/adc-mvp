@@ -65,6 +65,12 @@ spec:
                       key: PG_BACKUP_BUCKET
                 - name: AWS_REGION
                   value: us-east-1
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -118,3 +124,9 @@ spec:
                       key: PG_BACKUP_BUCKET
                 - name: AWS_REGION
                   value: us-east-1
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
