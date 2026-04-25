@@ -65,7 +65,7 @@ export type RenderScreenOptions<RouteName extends AnyScreenName> = {
     React.ComponentProps<typeof NavigationContainer>['onStateChange']
   >;
   /** Provider toggles, forwarded to {@link renderWithProviders}. */
-  providerOptions?: Omit<RenderWithProvidersOptions, 'innerWrapper'>;
+  providerOptions?: RenderWithProvidersOptions;
 };
 
 export type RenderScreenResult = {
