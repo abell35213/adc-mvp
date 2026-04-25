@@ -21,7 +21,7 @@ interface NavItem {
 }
 
 interface NavGroup {
-  area: "Operations" | "Evidence" | "Exports" | "Administration";
+  area: "Operations" | "Deployment" | "Insights" | "Support" | "Admin";
   items: NavItem[];
 }
 
@@ -39,7 +39,10 @@ const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   vehicles: "Vehicles",
   timeline: "Timeline",
+  onboarding: "Onboarding",
   "driver-protocol": "Driver Protocol",
+  "plan-features": "Plan & Features",
+  ops: "Ops",
 };
 
 function getDefaultLandingForRole(role: string): string {
@@ -67,6 +70,13 @@ function toTitleCase(segment: string): string {
   return segment
     .replace(/-/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function contentWidthClass(pathname: string): string {
+  if (pathname.startsWith("/admin")) return "max-w-5xl";
+  if (pathname.startsWith("/incidents/")) return "max-w-6xl";
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/incidents")) return "max-w-7xl";
+  return "max-w-6xl";
 }
 
 export default function MainLayout({ title, children }: MainLayoutProps) {
@@ -103,21 +113,32 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
       area: "Operations",
       items: [
         { href: "/dashboard", label: "Dashboard" },
-        { href: "/onboarding", label: "Onboarding", hidden: !canViewOnboarding },
         { href: "/incidents", label: "Incidents", activePrefixes: ["/incidents"] },
         { href: "/timeline", label: "Timeline" },
+        { href: "/onboarding", label: "Onboarding", hidden: !canViewOnboarding },
       ],
     },
     {
-      area: "Evidence",
+      area: "Deployment",
       items: [{ href: "/vehicles", label: "Vehicles", hidden: !canManageQr }],
     },
     {
-      area: "Exports",
+      area: "Insights",
       items: [{ href: "/exports", label: "Exports", activePrefixes: ["/exports"] }],
     },
     {
-      area: "Administration",
+      area: "Support",
+      items: [
+        {
+          href: "/admin/ops",
+          label: "Ops Dashboard",
+          activePrefixes: ["/admin/ops"],
+          hidden: !hasRoleCapability(user.role, "vehicle_qr:read"),
+        },
+      ],
+    },
+    {
+      area: "Admin",
       items: [
         {
           href: "/admin/driver-protocol",
@@ -178,59 +199,39 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
     })
     .filter((crumb) => crumb.href !== defaultLanding);
 
+  const visibleGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.hidden) }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div className="min-h-screen bg-page text-text-primary">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-default bg-shell px-6 py-4 text-text-inverse">
-        <div>
-          <Link href={defaultLanding} className="inline-block">
-            <h1 className="text-lg font-bold text-text-inverse hover:text-accent-soft">
-              {title ?? "ADC Dashboard"}
-            </h1>
-          </Link>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-          {quickActions.map((action) => (
-            <Link
-              key={action.label}
-              href={action.href}
-              aria-label={action.ariaLabel}
-              className={action.className}
-            >
-              {action.label}
+      <div className="flex min-h-screen">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-white/10 bg-[#0b1633] text-text-inverse lg:flex">
+          <div className="border-b border-white/10 px-5 py-5">
+            <Link href={defaultLanding} className="block">
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-300/90">Tenant</p>
+              <p className="mt-1 text-sm font-semibold text-white">ADC Operations Cloud</p>
+              <p className="mt-3 text-xs text-slate-300">{user.org_ids[0] ?? "Default Organization"}</p>
             </Link>
-          ))}
-          <button
-            onClick={logout}
-            className="ml-1 text-sm text-accent-soft hover:text-text-inverse"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+          </div>
 
-      <nav className="space-y-3 border-b border-border-default bg-shell/95 px-6 py-3 text-text-inverse">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {navGroups.map((group) => {
-            const visibleItems = group.items.filter((item) => !item.hidden);
-            if (visibleItems.length === 0) return null;
-
-            return (
+          <nav className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
+            {visibleGroups.map((group) => (
               <div key={group.area}>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent-soft">
+                <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                   {group.area}
                 </p>
-                <div className="flex flex-wrap gap-2 text-sm">
-                  {visibleItems.map((item) => {
+                <div className="space-y-1">
+                  {group.items.map((item) => {
                     const isActive = routeIsActive(pathname, item.href, item.activePrefixes);
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
-                        className={`rounded-full px-3 py-1 transition ${
+                        className={`block rounded-md px-3 py-2 text-sm transition ${
                           isActive
-                            ? "bg-accent text-text-inverse"
-                            : "text-accent-soft hover:bg-surface/10"
+                            ? "bg-accent/20 text-white ring-1 ring-accent/50"
+                            : "text-slate-200 hover:bg-white/10 hover:text-white"
                         }`}
                         aria-current={isActive ? "page" : undefined}
                       >
@@ -240,35 +241,65 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
                   })}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </nav>
 
-        {breadcrumbs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 text-xs text-accent-soft">
-            <Link href={defaultLanding} className="hover:text-text-inverse">
-              Home
-            </Link>
-            {breadcrumbs.map((crumb, idx) => {
-              const last = idx === breadcrumbs.length - 1;
-              return (
-                <span key={crumb.href} className="flex items-center gap-1">
-                  <span>/</span>
-                  {last ? (
-                    <span className="font-medium text-text-inverse">{crumb.label}</span>
-                  ) : (
-                    <Link href={crumb.href} className="hover:text-text-inverse">
-                      {crumb.label}
-                    </Link>
-                  )}
-                </span>
-              );
-            })}
+          <div className="border-t border-white/10 px-4 py-4">
+            <p className="text-xs text-slate-300">{user.email}</p>
+            <p className="mt-0.5 text-xs uppercase tracking-wide text-slate-400">Role: {user.role}</p>
+            <button onClick={logout} className="mt-3 text-sm font-medium text-accent-soft hover:text-white">
+              Sign out
+            </button>
           </div>
-        )}
-      </nav>
+        </aside>
 
-      <main className="mx-auto max-w-7xl p-6">{children}</main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="border-b border-border-default bg-surface px-4 py-4 sm:px-6">
+            <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                {breadcrumbs.length > 0 && (
+                  <div className="mb-1 flex flex-wrap items-center gap-1 text-xs text-text-muted">
+                    <Link href={defaultLanding} className="hover:text-text-primary">
+                      Home
+                    </Link>
+                    {breadcrumbs.map((crumb, idx) => {
+                      const last = idx === breadcrumbs.length - 1;
+                      return (
+                        <span key={crumb.href} className="flex items-center gap-1">
+                          <span>/</span>
+                          {last ? (
+                            <span className="font-medium text-text-primary">{crumb.label}</span>
+                          ) : (
+                            <Link href={crumb.href} className="hover:text-text-primary">
+                              {crumb.label}
+                            </Link>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <h1 className="truncate text-xl font-semibold text-text-primary">{title ?? "ADC Dashboard"}</h1>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                {quickActions.map((action) => (
+                  <Link
+                    key={action.label}
+                    href={action.href}
+                    aria-label={action.ariaLabel}
+                    className={action.className}
+                  >
+                    {action.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </header>
+
+          <main className={`mx-auto w-full px-4 py-6 sm:px-6 ${contentWidthClass(pathname)}`}>{children}</main>
+        </div>
+      </div>
     </div>
   );
 }
