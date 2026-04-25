@@ -234,7 +234,7 @@ def upgrade() -> None:
                         f"{table_name}_{col}_fkey",
                         ref_table,
                         [col],
-                        [ref_table.rstrip("s") + "_id" if ref_table != "orgs" else "id"],
+                        [_infer_ref_column(ref_table)],
                         ondelete=ondelete,
                     )
     else:
