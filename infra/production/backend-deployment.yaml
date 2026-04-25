@@ -14,11 +14,39 @@ spec:
         app: adc-backend
     spec:
       serviceAccountName: adc-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: app
-          image: ghcr.io/your-org/adc-backend:latest
+          # IMAGE_TAG is rendered by the deploy pipeline. Never use ":latest" in production
+          # so that rollouts are deterministic and rollbacks are possible.
+          image: ghcr.io/your-org/adc-backend:${ADC_BACKEND_IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 8000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /health/live
@@ -69,6 +97,9 @@ spec:
                 secretKeyRef:
                   name: adc-runtime-settings
                   key: S3_EXPORTS_BUCKET
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -86,10 +117,36 @@ spec:
         app: adc-worker
     spec:
       serviceAccountName: adc-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/your-org/adc-backend:latest
+          image: ghcr.io/your-org/adc-backend:${ADC_BACKEND_IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
           command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           env:
             - name: APP_ENV
               value: prod
@@ -124,3 +181,6 @@ spec:
                 secretKeyRef:
                   name: adc-runtime-settings
                   key: S3_EXPORTS_BUCKET
+      volumes:
+        - name: tmp
+          emptyDir: {}

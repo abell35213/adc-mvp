@@ -41,10 +41,24 @@ def create_session(
     session_id = uuid.uuid4()
     refresh_family_id = uuid.uuid4()
 
+    # Persist a parsed UUID form of the subject for non-user sessions (drivers,
+    # service principals, etc.) so that ``rotate_refresh_token`` can rebuild the
+    # access-token ``sub`` claim without having to re-derive it from a request.
+    subject_uuid: uuid.UUID | None = None
+    if user_id is None and token_subject:
+        try:
+            subject_uuid = uuid.UUID(token_subject)
+        except ValueError:
+            # Non-UUID subjects (rare; today only happens in tests) are simply
+            # not persisted; the caller would have to re-supply ``token_subject``
+            # at refresh time.
+            subject_uuid = None
+
     session = SessionRecord(
         session_id=session_id,
         user_id=user_id,
         org_id=org_id,
+        subject_id=subject_uuid,
         client_type=client_type,
         device_descriptor=device_descriptor,
         created_at=now,
@@ -108,15 +122,25 @@ def rotate_refresh_token(
     now = _utcnow()
     token_hash = _hash_refresh_token(refresh_token_value)
 
+    # Lock the refresh-token row for the duration of this transaction so that two
+    # concurrent refresh requests presenting the same refresh token cannot both
+    # observe ``consumed_at is None`` and each issue a new token (refresh-token
+    # reuse). On SQLite (used by the test suite) ``with_for_update()`` is a no-op,
+    # but on Postgres this becomes a ``SELECT ... FOR UPDATE`` and serializes
+    # access to the row.
     token_row = (
         db.query(RefreshToken)
         .filter(RefreshToken.token_hash == token_hash)
+        .with_for_update()
         .first()
     )
     if token_row is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     if token_row.revoked_at is not None or token_row.consumed_at is not None:
+        # Reuse of a previously-consumed/revoked refresh token is treated as a
+        # likely token-theft signal: revoke the entire session so any sibling
+        # refresh-token chain is invalidated as well.
         revoke_session(db, token_row.session_id)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token already used")
 
@@ -143,7 +167,11 @@ def rotate_refresh_token(
     db.add(new_refresh_row)
     db.commit()
 
-    subject = token_subject or (str(session.user_id) if session.user_id else "")
+    subject = (
+        token_subject
+        or (str(session.user_id) if session.user_id else None)
+        or (str(session.subject_id) if session.subject_id else "")
+    )
     access_token = create_access_token(
         {
             "sub": subject,

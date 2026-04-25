@@ -30,8 +30,17 @@ def emit_audit_event(
     export_id: uuid.UUID | None = None,
     artifact_id: uuid.UUID | None = None,
     metadata: dict[str, Any] | None = None,
+    critical: bool = False,
 ) -> None:
-    """Append an audit event when org scope is known; swallow audit failures."""
+    """Append an audit event when org scope is known.
+
+    By default audit failures are swallowed so a flaky audit pipeline can never
+    break a customer-facing request. Pass ``critical=True`` for events whose
+    durable persistence is itself a compliance requirement (security/auth
+    decisions, role changes, export downloads, etc.); on failure the exception
+    is re-raised so the surrounding transaction aborts and the request fails
+    closed.
+    """
     if org_id is None:
         return
     try:
@@ -82,6 +91,9 @@ def emit_audit_event(
                 "metadata": metadata or {},
             }),
         )
+        if critical:
+            # Compliance-critical events must persist or the request must fail.
+            raise
 
 
 def emit_standard_audit_event(
@@ -97,6 +109,7 @@ def emit_standard_audit_event(
     metadata: dict[str, Any] | None = None,
     event_type: str | None = None,
     occurred_at_utc: datetime | None = None,
+    critical: bool = False,
 ) -> None:
     """Emit an audit event with standardized actor/org/entity/action metadata."""
     timestamp = occurred_at_utc or datetime.now(timezone.utc)
@@ -117,4 +130,5 @@ def emit_standard_audit_event(
             "timestamp": timestamp.isoformat(),
             **(metadata or {}),
         },
+        critical=critical,
     )

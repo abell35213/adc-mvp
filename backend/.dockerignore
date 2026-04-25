@@ -3,4 +3,12 @@ __pycache__
 .pytest_cache
 .venv
 .git
+.github
 tests
+docs
+screenshots
+frontend
+driver-app
+node_modules
+*.log
+.DS_Store

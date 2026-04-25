@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Fail when critical backend module trees are duplicated in both app/ and backend/app/."""
+"""Fail when critical backend module trees are duplicated in both app/ and backend/app/.
+
+Also fails when the historically-stale top-level ``migrations/`` directory or
+``alembic.ini`` file are reintroduced. The canonical Alembic tree lives at
+``backend/app/db/migrations`` and is configured via ``backend/alembic.ini``;
+keeping a duplicate at the repository root creates ambiguity about which set
+of revisions is authoritative.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +14,11 @@ from pathlib import Path
 import sys
 
 CRITICAL_PACKAGES = ("api", "db", "services", "tasks")
+STALE_MIGRATION_PATHS = (
+    "migrations",
+    "backend/migrations",
+    "alembic.ini",
+)
 
 
 def main() -> int:
@@ -34,7 +46,23 @@ def main() -> int:
         )
         return 1
 
-    print("No duplicate critical module paths found.")
+    stale_migration_violations: list[Path] = []
+    for relative in STALE_MIGRATION_PATHS:
+        candidate = repo_root / relative
+        if candidate.exists():
+            stale_migration_violations.append(candidate)
+
+    if stale_migration_violations:
+        print(
+            "Stale Alembic paths detected. The canonical migration tree is "
+            "backend/app/db/migrations and the canonical config is backend/alembic.ini.",
+            file=sys.stderr,
+        )
+        for violation in stale_migration_violations:
+            print(f" - {violation}", file=sys.stderr)
+        return 1
+
+    print("No duplicate critical module paths or stale Alembic trees found.")
     return 0
 
 

@@ -117,6 +117,7 @@ class TestForeignKeyConstraints:
         )
         export = Export(
             incident_id=incident.incident_id,
+            org_id=org.id,
             status="requested",
         )
         db.add_all([event, artifact, export])
@@ -194,6 +195,7 @@ class TestStatusEnums:
         for status in ["requested", "queued", "processing", "ready", "failed", "expired"]:
             export = Export(
                 incident_id=incident.incident_id,
+                org_id=org.id,
                 status=status,
             )
             db.add(export)
@@ -338,7 +340,7 @@ class TestDefaultValues:
         db.add_all([org, incident])
         db.commit()
 
-        export = Export(incident_id=incident.incident_id)
+        export = Export(incident_id=incident.incident_id, org_id=org.id)
         db.add(export)
         db.commit()
         assert export.status == "requested"

@@ -12,6 +12,34 @@ Engineering MUST validate generated JSON against these schemas before writing ar
   - ❌ Change field types
   - ❌ Reorder CSV columns (CSV column order is locked)
 
+### `$id` URI convention
+- Every schema file declares an `$id` of the form
+  `https://adc.example/schemas/<artifact_name>.schema.json`. The host is a
+  stable identifier, not a fetchable URL — schemas are resolved from the
+  in-repo `contracts/schemas/` directory at validation time.
+- Filenames and `$id` basenames are locked once published. To rename an
+  artifact, introduce a new schema with a new `$id` and run both in parallel
+  through the deprecation window below.
+- Bumping the major version (i.e. emitting a breaking change) requires a new
+  `$id` of the form
+  `https://adc.example/schemas/v2/<artifact_name>.schema.json` and a new
+  `schema_version` const (e.g. `"2.0"`). Validators must continue to accept
+  `v1` artifacts for at least one full deprecation cycle.
+
+### Deprecation policy
+1. **Announce** — open an RFC and tag the schema's top-level `description`
+   with `Deprecated: <date>, removal target <date+180d>`.
+2. **Dual-write** — generators emit both the old and new artifact for the
+   duration of the deprecation window so downstream consumers can switch on
+   their own schedule. Validation suites must accept both.
+3. **Switch reads** — flip frontend / driver-app / vault consumers to the
+   new schema; capture telemetry for any `schema_version` reads that still
+   match the deprecated value.
+4. **Remove** — once telemetry has been silent for at least 30 consecutive
+   days (and not before the announced removal target), delete the deprecated
+   schema and add a `forbidden_schema_versions` entry to the validator so the
+   removal is enforced server-side.
+
 ## Timestamp rules
 - All *_utc fields must be RFC3339 "date-time" in UTC (e.g., 2026-02-08T08:21:00Z).
 - ADC server time is canonical for:

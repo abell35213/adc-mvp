@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.error_responses import raise_api_error
@@ -538,13 +538,22 @@ def _build_contents_manifest(db: Session, export) -> list[dict]:
 def list_exports_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=200,
+        description="Maximum number of exports to return (server-side cap: 200).",
+    ),
+    offset: int = Query(
+        0, ge=0, description="Number of exports to skip for pagination."
+    ),
 ):
     context = build_user_auth_context(db, current_user)
     org_ids = list(context.org_ids)
     set_log_context(
         user_id=str(current_user.id), org_id=str(org_ids[0]) if org_ids else None
     )
-    exports = list_exports_for_org_ids(db, org_ids)
+    exports = list_exports_for_org_ids(db, org_ids, skip=offset, limit=limit)
     return [_serialize_export(export) for export in exports]
 
 

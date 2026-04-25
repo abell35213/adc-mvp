@@ -1,7 +1,5 @@
 import { getStoredToken } from './auth';
-
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000')
-  .replace(/\/$/, '');
+import { API_BASE_URL } from './config';
 
 type ApiError = {
   detail?: string;

@@ -1,0 +1,33 @@
+---
+# Keep at least one backend replica available during voluntary disruptions
+# (node drains, cluster upgrades). The deployment runs with `replicas: 2`
+# today, so `minAvailable: 1` permits one pod at a time to be evicted.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: adc-backend
+  namespace: adc
+  labels:
+    app.kubernetes.io/name: adc-backend
+    app.kubernetes.io/component: pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: adc-backend
+---
+# The Celery worker is also user-visible (incident exports etc. block on it),
+# so guarantee at least one worker stays up during voluntary disruptions.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: adc-worker
+  namespace: adc
+  labels:
+    app.kubernetes.io/name: adc-worker
+    app.kubernetes.io/component: pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: adc-worker

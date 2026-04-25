@@ -1898,38 +1898,6 @@ class TestDownloadExport:
         assert resp.status_code == 403
 
     @patch("app.api.routes_exports.generate_presigned_download_url")
-    def test_download_export_uses_incident_org_for_legacy_null_org_export(
-        self,
-        mock_generate_presigned_download_url,
-        client,
-        db_session,
-        auth_headers,
-        test_org,
-    ):
-        inc = Incident(status="open", org_id=test_org.id)
-        db_session.add(inc)
-        db_session.commit()
-        db_session.refresh(inc)
-
-        exp = Export(
-            incident_id=inc.incident_id,
-            org_id=None,
-            status="ready",
-            s3_bucket="legacy-bucket",
-            s3_key="exports/legacy.zip",
-        )
-        db_session.add(exp)
-        db_session.commit()
-        db_session.refresh(exp)
-
-        mock_generate_presigned_download_url.return_value = (
-            "https://signed.example.com/exports/legacy.zip"
-        )
-
-        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
-        assert resp.status_code == 200
-
-    @patch("app.api.routes_exports.generate_presigned_download_url")
     def test_download_export_missing_bucket_or_key_returns_422(
         self,
         mock_generate_presigned_download_url,
@@ -2004,28 +1972,6 @@ class TestDownloadExport:
         assert detail["code"] == "THIRD_PARTY_DEGRADED"
         assert detail["message"] == "Unable to prepare export download right now."
         assert detail.get("correlation_id")
-
-    def test_download_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
-        self, client, db_session, auth_headers
-    ):
-        inc = Incident(status="open", org_id=None)
-        db_session.add(inc)
-        db_session.commit()
-        db_session.refresh(inc)
-
-        exp = Export(
-            incident_id=inc.incident_id,
-            org_id=None,
-            status="ready",
-            s3_bucket="legacy-bucket",
-            s3_key="exports/legacy.zip",
-        )
-        db_session.add(exp)
-        db_session.commit()
-        db_session.refresh(exp)
-
-        resp = client.get(f"/exports/{exp.export_id}/download", headers=auth_headers)
-        assert resp.status_code == 403
 
     def test_download_export_expired_returns_410(
         self, client, db_session, test_org, auth_headers
@@ -2212,46 +2158,6 @@ class TestGetExport:
         resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
         assert resp.status_code == 403
 
-    def test_get_export_uses_incident_org_for_legacy_null_org_export(
-        self, client, db_session, test_org, auth_headers
-    ):
-        inc = Incident(status="open", org_id=test_org.id)
-        db_session.add(inc)
-        db_session.commit()
-        db_session.refresh(inc)
-
-        exp = Export(
-            incident_id=inc.incident_id,
-            org_id=None,
-            status="requested",
-        )
-        db_session.add(exp)
-        db_session.commit()
-        db_session.refresh(exp)
-
-        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
-        assert resp.status_code == 200
-
-    def test_get_export_forbidden_when_legacy_null_org_export_has_no_org_incident(
-        self, client, db_session, auth_headers
-    ):
-        inc = Incident(status="open", org_id=None)
-        db_session.add(inc)
-        db_session.commit()
-        db_session.refresh(inc)
-
-        exp = Export(
-            incident_id=inc.incident_id,
-            org_id=None,
-            status="requested",
-        )
-        db_session.add(exp)
-        db_session.commit()
-        db_session.refresh(exp)
-
-        resp = client.get(f"/exports/{exp.export_id}", headers=auth_headers)
-        assert resp.status_code == 403
-
 
 class TestExportStatusAndContents:
     @pytest.mark.parametrize(
@@ -2380,33 +2286,6 @@ class TestExportStatusAndContents:
         assert status_resp.status_code == 403
         assert contents_resp.status_code == 403
 
-    def test_export_status_and_contents_legacy_null_org_fallback_to_incident_org(
-        self, client, db_session, test_org, auth_headers
-    ):
-        inc = Incident(status="open", org_id=test_org.id)
-        db_session.add(inc)
-        db_session.commit()
-        db_session.refresh(inc)
-
-        exp = Export(
-            incident_id=inc.incident_id,
-            org_id=None,
-            status="processing",
-            progress_stage="assembling_documents",
-        )
-        db_session.add(exp)
-        db_session.commit()
-        db_session.refresh(exp)
-
-        status_resp = client.get(
-            f"/exports/{exp.export_id}/status", headers=auth_headers
-        )
-        contents_resp = client.get(
-            f"/exports/{exp.export_id}/contents", headers=auth_headers
-        )
-        assert status_resp.status_code == 200
-        assert contents_resp.status_code == 200
-
 
 class TestListExports:
     def test_list_exports_no_org_links_returns_empty(self, client, no_org_auth_headers):
@@ -2433,9 +2312,10 @@ class TestListExports:
         resp = client.get(f"/exports/{exp.export_id}", headers=no_org_auth_headers)
         assert resp.status_code == 403
 
-    def test_list_exports_includes_direct_and_legacy_org_scoped_rows(
+    def test_list_exports_returns_only_caller_org_scoped_rows(
         self, client, db_session, test_org, auth_headers
     ):
+        """Listing exports must return rows for the caller's org and exclude others."""
         visible_incident = Incident(status="open", org_id=test_org.id)
         other_incident = Incident(status="open", org_id=uuid.uuid4())
         db_session.add_all([visible_incident, other_incident])
@@ -2444,40 +2324,30 @@ class TestListExports:
         db_session.refresh(other_incident)
 
         now = datetime.now(timezone.utc)
-        direct_export = Export(
+        visible_export = Export(
             incident_id=visible_incident.incident_id,
             org_id=test_org.id,
             status="ready",
-            created_at_utc=now - timedelta(minutes=10),
-        )
-        legacy_visible_export = Export(
-            incident_id=visible_incident.incident_id,
-            org_id=None,
-            status="processing",
             created_at_utc=now - timedelta(minutes=5),
         )
-        legacy_hidden_export = Export(
+        hidden_export = Export(
             incident_id=other_incident.incident_id,
-            org_id=None,
+            org_id=other_incident.org_id,
             status="failed",
             created_at_utc=now,
         )
-        db_session.add_all([direct_export, legacy_visible_export, legacy_hidden_export])
+        db_session.add_all([visible_export, hidden_export])
         db_session.commit()
-        db_session.refresh(direct_export)
-        db_session.refresh(legacy_visible_export)
+        db_session.refresh(visible_export)
 
         resp = client.get("/exports/", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
 
-        assert len(data) == 2
-        assert [row["export_id"] for row in data] == [
-            str(legacy_visible_export.export_id),
-            str(direct_export.export_id),
-        ]
+        assert len(data) == 1
+        assert data[0]["export_id"] == str(visible_export.export_id)
         assert data[0]["incident_id"] == str(visible_incident.incident_id)
-        assert data[0]["status"] == "processing"
+        assert data[0]["status"] == "ready"
         assert "created_at_utc" in data[0]
 
 

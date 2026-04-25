@@ -49,20 +49,22 @@ services:
       - app
 
   db:
-    image: postgres:15
+    image: postgres:15.7-alpine
     environment:
-      POSTGRES_USER: adc
-      POSTGRES_PASSWORD: adc
-      POSTGRES_DB: adc_mvp
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in your environment / .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in your environment / .env}
+      POSTGRES_DB: ${POSTGRES_DB:-adc_mvp}
+    # Bind to loopback only so the dev DB is not reachable from other hosts on the LAN.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   redis:
-    image: redis:7
+    image: redis:7.2-alpine
+    # Bind to loopback only for the same reason as the dev DB above.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
 volumes:
   pgdata:

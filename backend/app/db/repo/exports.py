@@ -20,8 +20,18 @@ def get_exports_by_incident(db: Session, incident_id: _uuid.UUID) -> list[Export
     return db.query(Export).filter(Export.incident_id == incident_id).all()
 
 
-def list_exports_for_org_ids(db: Session, org_ids: list[_uuid.UUID]) -> list[Export]:
-    """List exports visible to the caller's organizations, newest first."""
+def list_exports_for_org_ids(
+    db: Session,
+    org_ids: list[_uuid.UUID],
+    *,
+    skip: int = 0,
+    limit: int = 50,
+) -> list[Export]:
+    """List exports visible to the caller's organizations, newest first.
+
+    ``skip`` / ``limit`` are bounds-checked at the route layer; defaults here
+    keep historical behaviour (page-size 50) for any non-route caller.
+    """
     if not org_ids:
         return []
 
@@ -35,6 +45,8 @@ def list_exports_for_org_ids(db: Session, org_ids: list[_uuid.UUID]) -> list[Exp
             )
         )
         .order_by(Export.created_at_utc.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
@@ -47,7 +59,7 @@ def get_export(db: Session, export_id: _uuid.UUID) -> Optional[Export]:
 def create_export(
     db: Session,
     incident_id: _uuid.UUID,
-    org_id: Optional[_uuid.UUID] = None,
+    org_id: _uuid.UUID,
     status: str = "requested",
     export_type: str = "court_defense",
     profile_id: str = "court_defense_v1",
@@ -58,7 +70,15 @@ def create_export(
     s3_bucket: Optional[str] = None,
     s3_key: Optional[str] = None,
 ) -> Export:
-    """Create a new export record."""
+    """Create a new export record.
+
+    ``org_id`` is required: ``exports.org_id`` is a NOT NULL column and
+    authorization checks rely on every export being scoped to a tenant.
+    """
+    if org_id is None:
+        # Fail fast at the boundary rather than letting the database constraint
+        # raise a less-helpful IntegrityError further down the call stack.
+        raise ValueError("create_export requires a non-null org_id")
     export = Export(
         org_id=org_id,
         incident_id=incident_id,

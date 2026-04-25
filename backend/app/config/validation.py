@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from app.config.settings import (
-    INSECURE_DEFAULT_SENTINEL,
     LOCAL_DATABASE_DEFAULT,
     LOCAL_REDIS_DEFAULT,
     AppSettings,
+    _looks_like_insecure_placeholder,
 )
 
 
@@ -42,9 +42,9 @@ def validate_startup_config(settings: AppSettings) -> None:
             errors.append("REDIS_URL cannot use local default outside local")
 
     if settings.is_prod:
-        if settings.JWT_SECRET_KEY.strip() == INSECURE_DEFAULT_SENTINEL:
+        if _looks_like_insecure_placeholder(settings.JWT_SECRET_KEY):
             errors.append("JWT_SECRET_KEY cannot use insecure default in prod")
-        if settings.OTP_HASH_PEPPER.strip() == INSECURE_DEFAULT_SENTINEL:
+        if _looks_like_insecure_placeholder(settings.OTP_HASH_PEPPER):
             errors.append("OTP_HASH_PEPPER cannot use insecure default in prod")
 
         if not settings.COOKIE_HTTPONLY:
