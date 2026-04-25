@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
+import { designTokens } from "@/lib/design/tokens";
 
 interface ExportFilters {
   incident: string;
@@ -169,13 +170,13 @@ export default function ExportsPage() {
   }
 
   function renderManifest(items: ExportContentsItem[]) {
-    if (items.length === 0) return <p className="text-sm text-gray-500">None</p>;
+    if (items.length === 0) return <p className="text-sm text-text-muted">None</p>;
     return (
-      <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+      <ul className="space-y-1 text-sm text-text-secondary">
         {items.map((item) => (
-          <li key={`${item.kind}-${item.path ?? item.item ?? ""}`} className="rounded border px-2 py-1 dark:border-gray-700">
+          <li key={`${item.kind}-${item.path ?? item.item ?? ""}`} className="rounded-md border border-border-subtle px-2 py-1">
             <p className="font-medium">{item.item ?? item.kind}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-text-muted">
               {item.reason ?? "—"} · {formatBytes(item.byte_size)}
             </p>
           </li>
@@ -187,8 +188,8 @@ export default function ExportsPage() {
   return (
     <MainLayout title="Exports">
       <div className="mb-4">
-        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Exports</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <h2 className="text-2xl font-semibold text-text-primary">Exports</h2>
+        <p className="text-sm text-text-secondary">
           Export history with filters, package health, and detailed audit/download visibility.
         </p>
       </div>
@@ -198,26 +199,26 @@ export default function ExportsPage() {
         requiredPlan="Enterprise"
         reason="Export package comparison and anomaly scoring are available on Enterprise plans."
       >
-        <section className="mb-4 rounded-lg border bg-white p-3 shadow dark:border-gray-700 dark:bg-gray-800">
+        <section className="mb-4 rounded-lg border border-border-default bg-surface p-3 shadow-card">
           <h3 className="font-semibold">Compliance package compare</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-sm text-text-secondary">
             Compare two exports for missing evidence artifacts and timeline drift.
           </p>
-          <button type="button" disabled className="mt-3 rounded bg-gray-300 px-3 py-1 text-sm text-gray-700">
+          <button type="button" disabled className="mt-3 rounded-md bg-surface-muted px-3 py-1 text-sm text-text-secondary">
             Compare exports
           </button>
         </section>
       </FeatureGate>
 
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border bg-white p-3 shadow dark:border-gray-700 dark:bg-gray-800 md:grid-cols-6">
+      <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-border-default bg-surface p-3 shadow-card md:grid-cols-6">
         <input
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           placeholder="Incident"
           value={filters.incident}
           onChange={(e) => updateFilter("incident", e.target.value)}
         />
         <select
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           value={filters.status}
           onChange={(e) => updateFilter("status", e.target.value as ExportFilters["status"])}
         >
@@ -228,7 +229,7 @@ export default function ExportsPage() {
           ))}
         </select>
         <select
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           value={filters.exportType}
           onChange={(e) => updateFilter("exportType", e.target.value as ExportFilters["exportType"])}
         >
@@ -239,34 +240,34 @@ export default function ExportsPage() {
           ))}
         </select>
         <input
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           placeholder="Requested by"
           value={filters.requestedBy}
           onChange={(e) => updateFilter("requestedBy", e.target.value)}
         />
         <input
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           type="date"
           value={filters.createdFrom}
           onChange={(e) => updateFilter("createdFrom", e.target.value)}
         />
         <input
-          className="rounded border px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          className={designTokens.control.input}
           type="date"
           value={filters.createdTo}
           onChange={(e) => updateFilter("createdTo", e.target.value)}
         />
       </div>
 
-      {loading && <p className="text-gray-500">Loading…</p>}
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {loading && <p className="text-text-muted">Loading…</p>}
+      {error && <p className="mb-3 text-sm text-status-critical">{error}</p>}
 
-      {!loading && filteredExports.length === 0 && <p className="text-gray-500">No exports found.</p>}
+      {!loading && filteredExports.length === 0 && <p className="text-text-muted">No exports found.</p>}
 
       {!loading && filteredExports.length > 0 && (
-        <div className="overflow-hidden rounded-lg border bg-white shadow dark:border-gray-700 dark:bg-gray-800">
+        <div className="overflow-hidden rounded-lg border border-border-default bg-surface shadow-card">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-surface-muted text-text-secondary">
               <tr>
                 <th className="px-4 py-3 font-medium">ID</th>
                 <th className="px-4 py-3 font-medium">Incident ID</th>
@@ -279,12 +280,12 @@ export default function ExportsPage() {
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y dark:divide-gray-700">
+            <tbody className="divide-y divide-border-subtle">
               {filteredExports.map((ex) => (
                 <tr key={ex.export_id}>
                   <td className="px-4 py-3 font-mono text-xs">{ex.export_id.slice(0, 8)}…</td>
                   <td className="px-4 py-3">
-                    <Link href={`/incidents/${ex.incident_id}`} className="text-blue-600 hover:underline dark:text-blue-400">
+                    <Link href={`/incidents/${ex.incident_id}`} className={designTokens.accent.text}>
                       {ex.incident_id.slice(0, 8)}…
                     </Link>
                   </td>
@@ -305,14 +306,14 @@ export default function ExportsPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => openDetail(ex.export_id)}
-                        className="rounded bg-gray-700 px-2 py-1 text-xs text-white hover:bg-gray-800"
+                        className="rounded-md border border-border-default bg-surface-muted px-2 py-1 text-xs text-text-secondary hover:bg-surface-muted/80"
                       >
                         Details
                       </button>
                       {ex.status === "ready" && (
                         <button
                           onClick={() => handleDownload(ex.export_id)}
-                          className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700"
+                          className="rounded-md bg-status-success px-2 py-1 text-xs text-text-inverse hover:bg-status-success/90"
                         >
                           Download
                         </button>
@@ -327,22 +328,22 @@ export default function ExportsPage() {
       )}
 
       {selectedExportId && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/40">
-          <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white p-4 shadow-xl dark:bg-gray-900">
+        <div className="fixed inset-0 z-40 flex justify-end bg-shell/40">
+          <aside className="h-full w-full max-w-2xl overflow-y-auto bg-surface-elevated p-4 shadow-panel">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Export Detail</h3>
               <button
-                className="rounded border px-2 py-1 text-sm dark:border-gray-700"
+                className="rounded-md border border-border-default px-2 py-1 text-sm text-text-secondary hover:bg-surface-muted"
                 onClick={() => setSelectedExportId(null)}
               >
                 Close
               </button>
             </div>
 
-            {detailLoading && <p className="text-gray-500">Loading detail…</p>}
+            {detailLoading && <p className="text-text-muted">Loading detail…</p>}
             {!detailLoading && detail && (
               <div className="space-y-4">
-                <section className="rounded border p-3 dark:border-gray-700">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="mb-2 font-medium">Metadata</h4>
                   <p>ID: {detail.export_id}</p>
                   <p>Incident: {detail.incident_id ?? "—"}</p>
@@ -352,14 +353,14 @@ export default function ExportsPage() {
                   <p>Completed: {formatDateTime(detail.completed_at_utc)}</p>
                 </section>
 
-                <section className="rounded border p-3 dark:border-gray-700">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="mb-2 font-medium">Request options</h4>
-                  <pre className="overflow-auto rounded bg-gray-100 p-2 text-xs dark:bg-gray-800">
+                  <pre className="overflow-auto rounded-md bg-surface-muted p-2 text-xs text-text-secondary">
                     {JSON.stringify(detail.options_json ?? {}, null, 2)}
                   </pre>
                 </section>
 
-                <section className="grid gap-3 rounded border p-3 dark:border-gray-700 md:grid-cols-3">
+                <section className="grid gap-3 rounded-lg border border-border-subtle p-3 md:grid-cols-3">
                   <div>
                     <h4 className="mb-2 font-medium">Included files</h4>
                     {renderManifest(included)}
@@ -374,7 +375,7 @@ export default function ExportsPage() {
                   </div>
                 </section>
 
-                <section className="rounded border p-3 dark:border-gray-700">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="mb-2 font-medium">Checksum + counts</h4>
                   <p>SHA256: {detail.package_sha256 ?? "—"}</p>
                   <p>Byte size: {formatBytes(detail.byte_size)}</p>
@@ -382,24 +383,24 @@ export default function ExportsPage() {
                   <p>Timeline events: {detail.timeline_event_count}</p>
                 </section>
 
-                <section className="rounded border p-3 dark:border-gray-700">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="mb-2 font-medium">Duration</h4>
                   <p>{formatDuration(detail.generation_duration_seconds)}</p>
                 </section>
 
-                <section className="rounded border p-3 dark:border-gray-700">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="mb-2 font-medium">Download audit history</h4>
                   {audit?.downloads.length ? (
-                    <ul className="space-y-1 text-sm">
+                    <ul className="space-y-1 text-sm text-text-secondary">
                       {audit.downloads.map((event, idx) => (
-                        <li key={`${event.occurred_at_utc}-${idx}`} className="rounded border px-2 py-1 dark:border-gray-700">
+                        <li key={`${event.occurred_at_utc}-${idx}`} className="rounded-md border border-border-subtle px-2 py-1">
                           <p>{formatDateTime(event.occurred_at_utc)}</p>
-                          <p className="text-xs text-gray-500">{event.actor_type}</p>
+                          <p className="text-xs text-text-muted">{event.actor_type}</p>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-gray-500">No download events.</p>
+                    <p className="text-sm text-text-muted">No download events.</p>
                   )}
                 </section>
               </div>

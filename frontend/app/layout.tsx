@@ -24,9 +24,9 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased bg-[#EBF2FA]">
+      <body className="bg-page text-text-primary antialiased">
         {children}
-        <div className="fixed bottom-2 right-2 rounded bg-slate-900/85 px-2 py-1 text-xs text-white" aria-label="deploy-version">
+        <div className="fixed bottom-2 right-2 rounded-md bg-shell/90 px-2 py-1 text-xs text-text-inverse" aria-label="deploy-version">
           Deploy {deployVersion}
         </div>
       </body>
