@@ -58,11 +58,21 @@ module.exports = {
     {
       displayName: 'rntl',
       preset: 'jest-expo',
-      roots: ['<rootDir>/src'],
-      testMatch: ['**/__tests__/rntl/**/*.rntl.test.tsx'],
+      // Don't restrict ``roots`` — jest-expo / Expo internals require the
+      // default ``<rootDir>`` so their own sibling modules resolve. We
+      // narrow the test surface via ``testMatch`` instead.
+      testMatch: ['<rootDir>/src/__tests__/rntl/**/*.rntl.test.tsx'],
       moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
       moduleNameMapper: sharedModuleNameMapper,
-      setupFiles: ['<rootDir>/src/__tests__/jest.setup.ts'],
+      // jest-expo's preset registers ``react-native/jest/setup.js`` and
+      // ``jest-expo/src/preset/setup.js`` in ``setupFiles``; Jest replaces
+      // (not merges) array fields when a project overrides them, so we
+      // re-list them here before adding our own jest.setup.ts.
+      setupFiles: [
+        require.resolve('react-native/jest/setup.js'),
+        require.resolve('jest-expo/src/preset/setup.js'),
+        '<rootDir>/src/__tests__/jest.setup.ts',
+      ],
       setupFilesAfterEnv: ['<rootDir>/src/__tests__/rntl/setup.ts'],
       clearMocks: true,
       collectCoverageFrom: [
