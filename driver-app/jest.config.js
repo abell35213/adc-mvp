@@ -30,6 +30,19 @@ module.exports = {
   // ``collectCoverageFrom`` overrides scope which sources each runner
   // instruments, then Jest merges the maps in the final report.
   coverageReporters: ['text-summary', 'lcov', 'html'],
+  // Repository-wide coverage floor. Values are pinned a few points
+  // below the current numbers so routine refactors don't flap CI, but
+  // large regressions (a deleted suite, a missed code path) will fail
+  // the ``test:coverage`` script and the matching CI job. Bump these
+  // up after meaningful coverage improvements.
+  coverageThreshold: {
+    global: {
+      statements: 82,
+      branches: 67,
+      functions: 73,
+      lines: 83,
+    },
+  },
   projects: [
     {
       displayName: 'unit',
