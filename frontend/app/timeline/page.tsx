@@ -4,6 +4,7 @@ import MainLayout from "@/components/MainLayout";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getIncident, listIncidents, type EventSummary } from "@/lib/api";
+import { designTokens } from "@/lib/design/tokens";
 
 const TIMELINE_POLL_MS = 10000;
 const MAX_EVENTS = 250;
@@ -112,10 +113,10 @@ export default function TimelinePage() {
     <MainLayout title="Live Timeline">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-2xl font-semibold text-text-primary">
             Live Timeline
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-text-secondary">
             Cross-incident event feed powered by existing event data. This view
             refreshes every {TIMELINE_POLL_MS / 1000}s while streaming support is
             planned next.
@@ -123,51 +124,51 @@ export default function TimelinePage() {
         </div>
         <Link
           href="/dashboard"
-          className="rounded border border-blue-600 px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700"
+          className="rounded-md border border-accent px-3 py-2 text-xs font-medium text-accent hover:bg-accent-soft"
         >
           Back to dashboard
         </Link>
       </div>
 
-      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="mb-4 text-sm text-status-critical">{error}</p> : null}
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded border bg-white p-3 text-sm shadow dark:border-gray-700 dark:bg-gray-800">
-          <p className="text-gray-500">Events loaded</p>
-          <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{events.length}</p>
+        <div className="rounded-lg border border-border-default bg-surface p-3 text-sm shadow-card">
+          <p className="text-text-muted">Events loaded</p>
+          <p className="text-xl font-bold text-accent">{events.length}</p>
         </div>
         {groupedCounts.map(([eventType, count]) => (
           <div
             key={eventType}
-            className="rounded border bg-white p-3 text-sm shadow dark:border-gray-700 dark:bg-gray-800"
+            className="rounded-lg border border-border-default bg-surface p-3 text-sm shadow-card"
           >
-            <p className="text-gray-500">{friendlyEventType(eventType)}</p>
-            <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{count}</p>
+            <p className="text-text-muted">{friendlyEventType(eventType)}</p>
+            <p className="text-xl font-bold text-accent">{count}</p>
           </div>
         ))}
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading…</p>
+        <p className="text-text-muted">Loading…</p>
       ) : events.length === 0 ? (
-        <div className="rounded border border-dashed p-8 text-center text-gray-400 dark:border-gray-700">
+        <div className="rounded-lg border border-dashed border-border-strong p-8 text-center text-text-muted">
           No incident events found yet.
         </div>
       ) : (
-        <ol className="relative border-l border-gray-200 dark:border-gray-600">
+        <ol className="relative border-l border-border-default">
           {events.map((event, index) => (
             <li key={`${event.incident_id}-${event.event_type}-${index}`} className="mb-5 ml-4">
-              <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-blue-500 dark:border-gray-800" />
-              <time className="mb-1 block text-xs text-gray-400">
+              <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-surface bg-accent" />
+              <time className="mb-1 block text-xs text-text-muted">
                 {formatTime(event.occurred_at_utc)}
               </time>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
+              <p className="text-sm font-medium text-text-primary">
                 {friendlyEventType(event.event_type)}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-text-secondary">
                 Incident{" "}
                 <Link
-                  className="text-blue-600 hover:underline dark:text-blue-400"
+                  className={designTokens.accent.text}
                   href={`/incidents/${event.incident_id}`}
                 >
                   {event.incident_id.slice(0, 8)}…

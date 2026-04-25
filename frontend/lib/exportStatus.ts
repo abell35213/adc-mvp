@@ -1,4 +1,5 @@
 import type { ExportStatus } from "@/lib/api";
+import { statusBadgeClass } from "@/lib/design/tokens";
 
 export const EXPORT_STATUS_LABELS: Record<ExportStatus, string> = {
   requested: "Requested",
@@ -14,7 +15,7 @@ export function getExportStatusLabel(status: ExportStatus): string {
 }
 
 export function getExportStatusBadgeClass(status: ExportStatus): string {
-  if (status === "ready") return "bg-green-100 text-green-800";
-  if (status === "failed" || status === "expired") return "bg-red-100 text-red-800";
-  return "bg-yellow-100 text-yellow-800";
+  if (status === "ready") return statusBadgeClass("success");
+  if (status === "failed" || status === "expired") return statusBadgeClass("critical");
+  return statusBadgeClass("warning");
 }

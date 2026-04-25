@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { hasRoleCapability } from "@/lib/permissions";
+import { designTokens } from "@/lib/design/tokens";
 
 interface MainLayoutProps {
   title?: string;
@@ -73,18 +74,18 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
   const pathname = usePathname() ?? "/";
 
   if (loading) {
-    return <div className="p-6 text-gray-500">Loading…</div>;
+    return <div className="p-6 text-text-muted">Loading…</div>;
   }
 
   if (!user) {
     return (
-      <div className="space-y-2 p-6 text-sm text-gray-500">
+      <div className="space-y-2 p-6 text-sm text-text-muted">
         <p>You must be logged in to view this page.</p>
         <div className="flex items-center gap-4">
-          <Link href="/login" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+          <Link href="/login" className={`font-medium ${designTokens.accent.text}`}>
             Sign in
           </Link>
-          <Link href="/" className="font-medium text-gray-600 hover:underline dark:text-gray-300">
+          <Link href="/" className="font-medium text-text-secondary hover:underline">
             Back to homepage
           </Link>
         </div>
@@ -146,21 +147,21 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
       label: "+ Create Incident",
       ariaLabel: "Create a new incident",
       className:
-        "rounded border border-blue-200 px-3 py-1 font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950",
+        "rounded-md border border-accent/40 bg-accent-soft/30 px-3 py-1 font-medium text-accent hover:bg-accent-soft",
     },
     {
       href: "/incidents?filter=active",
       label: "Open Active Queue",
       ariaLabel: "Open active incident queue",
       className:
-        "rounded border border-amber-200 px-3 py-1 font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950",
+        "rounded-md border border-status-warning/35 bg-status-warning-soft/60 px-3 py-1 font-medium text-status-warning hover:bg-status-warning-soft",
     },
     {
       href: "/exports?intent=request",
       label: "Request Export",
       ariaLabel: "Open export request flow",
       className:
-        "rounded border border-emerald-200 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950",
+        "rounded-md border border-status-success/35 bg-status-success-soft/60 px-3 py-1 font-medium text-status-success hover:bg-status-success-soft",
     },
   ].filter((action) => (action.label === "Request Export" ? canManageExports : true));
 
@@ -178,11 +179,11 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
     .filter((crumb) => crumb.href !== defaultLanding);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-6 py-4 dark:bg-gray-800">
+    <div className="min-h-screen bg-page text-text-primary">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-default bg-shell px-6 py-4 text-text-inverse">
         <div>
           <Link href={defaultLanding} className="inline-block">
-            <h1 className="text-lg font-bold text-gray-900 hover:text-blue-700 dark:text-white dark:hover:text-blue-300">
+            <h1 className="text-lg font-bold text-text-inverse hover:text-accent-soft">
               {title ?? "ADC Dashboard"}
             </h1>
           </Link>
@@ -201,14 +202,14 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
           ))}
           <button
             onClick={logout}
-            className="ml-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+            className="ml-1 text-sm text-accent-soft hover:text-text-inverse"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      <nav className="space-y-3 border-b bg-white px-6 py-3 dark:border-gray-700 dark:bg-gray-800">
+      <nav className="space-y-3 border-b border-border-default bg-shell/95 px-6 py-3 text-text-inverse">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {navGroups.map((group) => {
             const visibleItems = group.items.filter((item) => !item.hidden);
@@ -216,7 +217,7 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
 
             return (
               <div key={group.area}>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent-soft">
                   {group.area}
                 </p>
                 <div className="flex flex-wrap gap-2 text-sm">
@@ -228,8 +229,8 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
                         href={item.href}
                         className={`rounded-full px-3 py-1 transition ${
                           isActive
-                            ? "bg-blue-600 text-white"
-                            : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                            ? "bg-accent text-text-inverse"
+                            : "text-accent-soft hover:bg-surface/10"
                         }`}
                         aria-current={isActive ? "page" : undefined}
                       >
@@ -244,8 +245,8 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
         </div>
 
         {breadcrumbs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-            <Link href={defaultLanding} className="hover:text-gray-700 dark:hover:text-gray-200">
+          <div className="flex flex-wrap items-center gap-1 text-xs text-accent-soft">
+            <Link href={defaultLanding} className="hover:text-text-inverse">
               Home
             </Link>
             {breadcrumbs.map((crumb, idx) => {
@@ -254,9 +255,9 @@ export default function MainLayout({ title, children }: MainLayoutProps) {
                 <span key={crumb.href} className="flex items-center gap-1">
                   <span>/</span>
                   {last ? (
-                    <span className="font-medium text-gray-700 dark:text-gray-200">{crumb.label}</span>
+                    <span className="font-medium text-text-inverse">{crumb.label}</span>
                   ) : (
-                    <Link href={crumb.href} className="hover:text-gray-700 dark:hover:text-gray-200">
+                    <Link href={crumb.href} className="hover:text-text-inverse">
                       {crumb.label}
                     </Link>
                   )}

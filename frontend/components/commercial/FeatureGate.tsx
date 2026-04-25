@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { statusBadgeClass } from "@/lib/design/tokens";
 import PlanBadge from "./PlanBadge";
 
 interface FeatureGateProps {
@@ -20,14 +21,14 @@ export default function FeatureGate({
   if (mode === "hide") return null;
 
   return (
-    <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+    <div className="space-y-2 rounded-lg border border-dashed border-border-strong bg-surface-muted p-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+        <span className={`${statusBadgeClass("warning")} font-semibold`}>
           Locked
         </span>
         {requiredPlan ? <PlanBadge plan={requiredPlan} /> : null}
       </div>
-      <p className="text-sm text-gray-600 dark:text-gray-300">{reason}</p>
+      <p className="text-sm text-text-secondary">{reason}</p>
       <div
         className="pointer-events-none select-none rounded-md opacity-60"
         aria-disabled="true"
