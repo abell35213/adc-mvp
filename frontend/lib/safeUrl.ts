@@ -40,9 +40,16 @@ export function isAllowedDownloadUrl(url: string): boolean {
     return false;
   }
 
-  // Same-origin is always allowed.
+  // Same-origin is always allowed (including ``http:`` for local dev).
   if (typeof window !== "undefined" && parsed.origin === window.location.origin) {
     return true;
+  }
+
+  // For non-same-origin downloads we require ``https:`` to prevent
+  // downgrade/MITM on presigned export links (S3/CloudFront URLs are always
+  // ``https:``).
+  if (parsed.protocol !== "https:") {
+    return false;
   }
 
   const host = parsed.hostname.toLowerCase();
