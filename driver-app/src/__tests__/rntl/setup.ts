@@ -32,4 +32,23 @@ jest.mock('react-native-reanimated', () =>
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 require('react-native-gesture-handler/jestSetup');
 
+/**
+ * Snapshot serializer that scrubs non-deterministic identifiers out of
+ * native-stack render trees. React Navigation assigns each screen a
+ * random ``screenId`` (nanoid) on every render, which would otherwise
+ * make every screen-level snapshot fail on re-run.
+ *
+ * The serializer recognises any string value of the form
+ * ``"<RouteName>-<nanoid>"`` and replaces it with ``"<RouteName>-<id>"``.
+ */
+const SCREEN_ID_PATTERN = /^([A-Za-z][A-Za-z0-9_]*)-[A-Za-z0-9_-]{16,}$/;
+expect.addSnapshotSerializer({
+  test: (value: unknown): value is string =>
+    typeof value === 'string' && SCREEN_ID_PATTERN.test(value),
+  serialize: (value, _config, indentation, _depth, _refs, _printer) => {
+    const normalized = (value as string).replace(SCREEN_ID_PATTERN, '$1-<id>');
+    return `${indentation}"${normalized}"`;
+  },
+});
+
 export {};
