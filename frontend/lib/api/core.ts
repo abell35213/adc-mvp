@@ -38,16 +38,38 @@ export class ApiRequestError extends Error {
   }
 }
 
-function parseApiErrorPayload(payload: ApiErrorPayload | null | undefined) {
-  const detail = payload?.detail;
+/** Thrown when the network call itself fails (DNS, offline, CORS, etc.). */
+export class ApiNetworkError extends Error {
+  cause?: unknown;
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = "ApiNetworkError";
+    this.cause = cause;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseApiErrorPayload(payload: unknown): {
+  message?: string;
+  code?: string;
+  retryHint?: string;
+  correlationId?: string;
+} {
+  if (!isPlainObject(payload)) return {};
+  const detail = (payload as ApiErrorPayload).detail;
   if (typeof detail === "string") {
     return { message: detail };
   }
+  if (!isPlainObject(detail)) return {};
+  const d = detail as ApiErrorDetail;
   return {
-    message: detail?.message,
-    code: detail?.code,
-    retryHint: detail?.retry_hint,
-    correlationId: detail?.correlation_id,
+    message: typeof d.message === "string" ? d.message : undefined,
+    code: typeof d.code === "string" ? d.code : undefined,
+    retryHint: typeof d.retry_hint === "string" ? d.retry_hint : undefined,
+    correlationId: typeof d.correlation_id === "string" ? d.correlation_id : undefined,
   };
 }
 
@@ -73,20 +95,37 @@ export function toUserErrorMessage(error: unknown, fallback = "Request failed"):
   return `${guidance ?? error.message ?? fallback}${hint}${correlation}`.trim();
 }
 
+/**
+ * Merge `HeadersInit` (record, array, or `Headers`) into a single mutable
+ * `Headers` instance, then ensure the JSON `Content-Type` default is set.
+ */
+function mergeHeaders(init: HeadersInit | undefined): Headers {
+  const headers = new Headers(init);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
+  const headers = mergeHeaders(init?.headers);
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    credentials: init?.credentials ?? "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      credentials: init?.credentials ?? "include",
+    });
+  } catch (cause) {
+    throw new ApiNetworkError(
+      cause instanceof Error ? cause.message : "Network request failed",
+      cause
+    );
+  }
 
   if (res.status === 401) {
     const isAuthMutation = path === "/auth/login" || path === "/auth/register";
@@ -97,7 +136,7 @@ export async function request<T>(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as ApiErrorPayload;
+    const body: unknown = await res.json().catch(() => null);
     const parsed = parseApiErrorPayload(body);
     throw new ApiRequestError(parsed.message ?? res.statusText, res.status, parsed);
   }
