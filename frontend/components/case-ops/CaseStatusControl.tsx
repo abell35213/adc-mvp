@@ -1,13 +1,8 @@
 "use client";
 
-const CASE_STATUSES = [
-  "new",
-  "awaiting_evidence",
-  "in_review",
-  "ready_for_export",
-  "escalated",
-  "closed",
-] as const;
+import { useState } from "react";
+
+const CASE_STATUSES = ["new", "awaiting_evidence", "in_review", "ready_for_export", "escalated", "closed"] as const;
 
 interface CaseStatusControlProps {
   caseStatus: string;
@@ -15,17 +10,27 @@ interface CaseStatusControlProps {
 }
 
 export default function CaseStatusControl({ caseStatus, onChange }: CaseStatusControlProps) {
+  const [busy, setBusy] = useState(false);
+
   return (
-    <label className="flex flex-col gap-1 rounded-md border bg-gray-50 p-3 text-xs dark:bg-gray-900/40">
-      <span className="text-gray-500">Case status</span>
+    <label className="flex flex-col gap-1 rounded-lg border bg-white p-4 text-xs shadow-sm">
+      <span className="font-semibold uppercase tracking-wide text-gray-500">Case status</span>
       <select
-        className="rounded border px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-900"
+        className="rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900 disabled:opacity-60"
         value={caseStatus}
-        onChange={(e) => void onChange(e.target.value)}
+        disabled={busy}
+        onChange={async (e) => {
+          setBusy(true);
+          try {
+            await onChange(e.target.value);
+          } finally {
+            setBusy(false);
+          }
+        }}
       >
         {CASE_STATUSES.map((status) => (
           <option key={status} value={status}>
-            {status}
+            {status.replaceAll("_", " ")}
           </option>
         ))}
       </select>
