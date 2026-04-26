@@ -5,8 +5,55 @@ type Props = {
   onClose: () => void;
 };
 
+type SuggestedAction = {
+  label: string;
+  href: string;
+  description: string;
+};
+
+function getSuggestedActions(operation: IntegrationOperationDiagnostics): SuggestedAction[] {
+  const reason = `${operation.error_message ?? ""} ${operation.error_operator_message ?? ""} ${operation.error_code ?? ""}`.toLowerCase();
+  const suggestions: SuggestedAction[] = [];
+
+  if (reason.includes("reauth") || reason.includes("token") || reason.includes("expired")) {
+    suggestions.push({
+      label: "Reconnect provider",
+      href: "/settings/integrations",
+      description: "Reauthenticate this connection to restore evidence ingestion.",
+    });
+  }
+
+  if (operation.error_retryable || ["failed", "timed_out", "error"].includes(operation.status)) {
+    suggestions.push({
+      label: "Review retry policy",
+      href: "/admin/ops",
+      description: "Confirm retry backoff and queue handling for this provider.",
+    });
+  }
+
+  if (operation.incident_id) {
+    suggestions.push({
+      label: "Open incident workspace",
+      href: `/incidents/${operation.incident_id}`,
+      description: "Verify captured evidence and assign the next remediation owner.",
+    });
+  }
+
+  if (suggestions.length === 0) {
+    suggestions.push({
+      label: "Review integration health",
+      href: "/settings/integrations",
+      description: "Inspect provider and domain health for hidden blockers.",
+    });
+  }
+
+  return suggestions;
+}
+
 export default function IntegrationOperationDrawer({ operation, onClose }: Props) {
   if (!operation) return null;
+
+  const suggestedActions = getSuggestedActions(operation);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
@@ -31,6 +78,18 @@ export default function IntegrationOperationDrawer({ operation, onClose }: Props
         </dl>
 
         <div className="mt-4 space-y-4 text-xs">
+          <section>
+            <h3 className="font-semibold">Suggested next action</h3>
+            <div className="mt-2 space-y-2">
+              {suggestedActions.map((action) => (
+                <a key={`${action.label}-${action.href}`} href={action.href} className="block rounded border p-2 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+                  <p className="font-medium text-blue-700 dark:text-blue-300">{action.label}</p>
+                  <p className="mt-1 text-gray-600 dark:text-gray-300">{action.description}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+
           <section>
             <h3 className="font-semibold">Error details</h3>
             <p className="mt-1 rounded border bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">{operation.error_message ?? "No error message"}</p>
