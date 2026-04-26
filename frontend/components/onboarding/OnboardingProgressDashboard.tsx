@@ -74,12 +74,17 @@ export default function OnboardingProgressDashboard({
     };
   }, [validationResults]);
 
+  const protocolStep = useMemo(
+    () => readiness?.steps.find((step) => step.key === "driver_protocol"),
+    [readiness]
+  );
+
   const stepCards: StepCard[] = [
     {
       title: "Protocol setup",
       href: "/admin/driver-protocol",
       ctaLabel: "Continue setup",
-      completed: readiness?.steps.some((step) => step.status === "completed") ?? false,
+      completed: protocolStep?.status === "completed",
       summary: "Configuration defaults and policy controls are defined.",
       missingCue: "Missing cue: assign an owner and finish protocol defaults.",
     },
