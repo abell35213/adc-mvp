@@ -8,6 +8,7 @@ import type {
   IntegrationHealthStatus,
   InstructionSource,
   JsonObject,
+  UtcTimestamp,
 } from "./types";
 
 export interface DriverProtocolSettings {
@@ -91,8 +92,8 @@ export interface VehicleImportJobResponse {
   job_id: string;
   provider: string;
   status: ImportJobStatus;
-  started_at_utc?: string | null;
-  completed_at_utc?: string | null;
+  started_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
   records_total: number;
   records_processed: number;
   records_imported: number;
@@ -129,8 +130,8 @@ export interface DriverImportJobResponse {
   job_id: string;
   provider: string;
   status: ImportJobStatus;
-  started_at_utc?: string | null;
-  completed_at_utc?: string | null;
+  started_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
   records_total: number;
   records_processed: number;
   records_imported: number;
@@ -193,7 +194,7 @@ export function getDriverImportJob(jobId: string) {
 export interface OpsIncidentItem {
   incident_id: string;
   status: string;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
   adc_vehicle_id?: string | null;
   adc_driver_id?: string | null;
   reason: string;
@@ -205,7 +206,7 @@ export interface OpsFailedNotificationItem {
   retry_count: number;
   max_retries?: number | null;
   last_error?: string | null;
-  updated_at_utc?: string | null;
+  updated_at_utc?: UtcTimestamp | null;
 }
 
 export interface OpsFailedExportItem {
@@ -214,20 +215,20 @@ export interface OpsFailedExportItem {
   export_type: ExportType;
   status: ExportStatus;
   error_message?: string | null;
-  updated_at_utc?: string | null;
+  updated_at_utc?: UtcTimestamp | null;
 }
 
 export interface IntegrationHealthItem {
   integration_key: string;
   status: IntegrationHealthStatus;
   failure_count: number;
-  last_failure_at_utc?: string | null;
+  last_failure_at_utc?: UtcTimestamp | null;
   details?: string | null;
 }
 
 export interface OpsAnomalyItem {
   audit_event_id: string;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   action: string;
   event_type: string;
   outcome?: string | null;
@@ -254,7 +255,7 @@ export interface AuditSearchResponseItem {
   action: string;
   event_type: string;
   outcome?: string | null;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   metadata: JsonObject;
 }
 

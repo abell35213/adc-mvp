@@ -136,10 +136,10 @@ export type ExportProgressStage =
   | "ready_for_download";
 
 export interface DriverResponseSummary {
-  notification_sent_at_utc?: string | null;
-  acknowledged_at_utc?: string | null;
+  notification_sent_at_utc?: UtcTimestamp | null;
+  acknowledged_at_utc?: UtcTimestamp | null;
   uploads_complete?: boolean;
-  uploads_completed_at_utc?: string | null;
+  uploads_completed_at_utc?: UtcTimestamp | null;
   awaiting_driver_action?: boolean;
 }
 
@@ -155,7 +155,7 @@ export interface ArtifactSummary {
   artifact_id: string;
   artifact_type: string;
   status: string;
-  captured_at_utc?: string | null;
+  captured_at_utc?: UtcTimestamp | null;
   unavailable_reason?: string | null;
 }
 
@@ -174,12 +174,12 @@ export interface ExportSummary {
   byte_size?: number | null;
   artifact_count: number;
   timeline_event_count: number;
-  requested_at_utc?: string | null;
-  processing_started_at_utc?: string | null;
-  completed_at_utc?: string | null;
-  expires_at_utc?: string | null;
-  created_at_utc?: string | null;
-  updated_at_utc?: string | null;
+  requested_at_utc?: UtcTimestamp | null;
+  processing_started_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
+  expires_at_utc?: UtcTimestamp | null;
+  created_at_utc?: UtcTimestamp | null;
+  updated_at_utc?: UtcTimestamp | null;
   generated_by?: string | null;
   generation_duration_seconds?: number | null;
   failure_count?: number | null;
@@ -208,7 +208,7 @@ export interface ExportListItem extends ExportSummary {
 
 export interface EventSummary {
   event_type: string;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   actor_type: string;
   payload?: JsonObject | null;
 }
@@ -220,7 +220,7 @@ export interface Incident {
   adc_vehicle_id: string | null;
   samsara_vehicle_id: string | null;
   adc_driver_id: string | null;
-  created_at_utc?: string;
+  created_at_utc?: UtcTimestamp;
   evidence_captured?: number;
   evidence_total?: number;
   completeness_percent?: number;

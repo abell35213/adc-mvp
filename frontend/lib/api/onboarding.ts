@@ -8,6 +8,7 @@ import type {
   BlockerSeverity,
   InstructionSource,
   JsonObject,
+  UtcTimestamp,
 } from "./types";
 
 export interface OnboardingReadinessStep {
@@ -15,8 +16,8 @@ export interface OnboardingReadinessStep {
   label: string;
   status: OnboardingStepStatus;
   order: number;
-  completed_at_utc?: string | null;
-  updated_at_utc?: string | null;
+  completed_at_utc?: UtcTimestamp | null;
+  updated_at_utc?: UtcTimestamp | null;
 }
 
 export interface OnboardingBlocker {
@@ -34,19 +35,19 @@ export interface OnboardingImportJob {
   records_total: number;
   records_succeeded: number;
   records_failed: number;
-  completed_at_utc?: string | null;
+  completed_at_utc?: UtcTimestamp | null;
 }
 
 export interface ExportValidationRun {
   validation_run_id?: string | null;
   status: OnboardingStepStatus;
-  validated_at_utc?: string | null;
+  validated_at_utc?: UtcTimestamp | null;
   checks: Record<string, boolean>;
 }
 
 export interface OnboardingMetricsSnapshot {
-  onboarding_started_at_utc?: string | null;
-  latest_activity_at_utc?: string | null;
+  onboarding_started_at_utc?: UtcTimestamp | null;
+  latest_activity_at_utc?: UtcTimestamp | null;
   time_to_pilot_ready_hours?: number | null;
   time_to_launch_ready_hours?: number | null;
   import_success_rate: number;
@@ -78,7 +79,7 @@ export interface OrgLaunchReadiness {
   metrics?: OnboardingMetricsSnapshot | null;
   alert_conditions?: OnboardingAlertCondition[];
   reporting_hooks?: JsonObject;
-  snapshot_created_at_utc?: string | null;
+  snapshot_created_at_utc?: UtcTimestamp | null;
 }
 
 export interface VehicleQrStats {
@@ -101,7 +102,7 @@ export interface IntegrationValidationResult {
 type IntegrationValidationResultLegacyResponse = {
   integration_key?: string;
   status?: OnboardingStepStatus;
-  checked_at_utc?: string;
+  checked_at_utc?: UtcTimestamp;
   detail?: string;
   errors?: string[];
 };

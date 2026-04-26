@@ -9,6 +9,7 @@ import type {
   ExportListItem,
   EventSummary,
   JsonObject,
+  UtcTimestamp,
 } from "./types";
 
 export type ExportContentsClassification =
@@ -47,7 +48,7 @@ export interface CreateExportEnqueueResponse {
   incident_id: string;
   export_type: ExportType;
   status: ExportStatus;
-  created_at_utc: string;
+  created_at_utc: UtcTimestamp;
 }
 
 export interface RetryExportRequest {

@@ -1,7 +1,7 @@
 /* ── Integrations ──────────────────────────────────────────────── */
 
 import { request } from "./core";
-import type { IntegrationConnectionStatus, JsonObject } from "./types";
+import type { IntegrationConnectionStatus, JsonObject, UtcTimestamp } from "./types";
 
 export interface IntegrationConnectionHealth {
   integration_id: string;
@@ -10,8 +10,8 @@ export interface IntegrationConnectionHealth {
   status: IntegrationConnectionStatus;
   healthy: boolean;
   reason: string | null;
-  last_synced_at_utc: string | null;
-  updated_at_utc: string | null;
+  last_synced_at_utc: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp | null;
 }
 
 export interface IntegrationOperationDiagnostics {
@@ -35,10 +35,10 @@ export interface IntegrationOperationDiagnostics {
   error_retryable: boolean | null;
   error_user_facing_message: string | null;
   error_operator_message: string | null;
-  requested_at_utc: string | null;
-  started_at_utc: string | null;
-  completed_at_utc: string | null;
-  updated_at_utc: string | null;
+  requested_at_utc: UtcTimestamp | null;
+  started_at_utc: UtcTimestamp | null;
+  completed_at_utc: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp | null;
 }
 
 export interface ProviderWebhookEvent {
@@ -46,7 +46,7 @@ export interface ProviderWebhookEvent {
   provider: string;
   domain: string | null;
   status: string;
-  received_at_utc: string;
+  received_at_utc: UtcTimestamp;
   correlation_id: string | null;
   processing_latency_ms: number | null;
   retry_count: number | null;

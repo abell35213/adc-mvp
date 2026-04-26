@@ -16,6 +16,7 @@ import type {
   ActivitySource,
   OwnerOperation,
   JsonObject,
+  UtcTimestamp,
 } from "./types";
 
 export interface CaseOpsQueueBlockerCounts {
@@ -30,8 +31,8 @@ export interface CaseOpsQueueItem {
   case_status: CaseStatus;
   owner_user_id?: string | null;
   readiness_state: ReadinessState;
-  created_at_utc?: string | null;
-  last_activity_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
+  last_activity_at_utc?: UtcTimestamp | null;
   severity?: IncidentSeverity | null;
   adc_vehicle_id?: string | null;
   adc_driver_id?: string | null;
@@ -69,9 +70,9 @@ export interface CaseTaskWidgetItem {
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
-  due_at_utc?: string | null;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseTaskWidgetResponse {
@@ -111,9 +112,9 @@ export interface CaseWorkspaceTaskItem {
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
-  due_at_utc?: string | null;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseWorkspaceNoteItem {
@@ -122,14 +123,14 @@ export interface CaseWorkspaceNoteItem {
   note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
-  created_at_utc: string;
-  edited_at_utc?: string | null;
+  created_at_utc: UtcTimestamp;
+  edited_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseWorkspaceActivityItem {
   source: ActivitySource;
   type: string;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   actor_type: string;
   actor_id: string;
   detail: JsonObject;
@@ -157,14 +158,14 @@ export interface IncidentTaskItem {
   task_type: TaskType;
   status: TaskStatus;
   priority: TaskPriority;
-  due_at_utc?: string | null;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  assigned_at_utc?: string | null;
+  assigned_at_utc?: UtcTimestamp | null;
   assigned_by_user_id?: string | null;
   created_by_user_id?: string | null;
-  created_at_utc?: string | null;
-  completed_at_utc?: string | null;
-  canceled_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
+  canceled_at_utc?: UtcTimestamp | null;
   canceled_reason?: string | null;
   overdue: boolean;
 }
@@ -180,14 +181,14 @@ export interface IncidentNoteItem {
   note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
-  created_at_utc: string;
+  created_at_utc: UtcTimestamp;
   edited: boolean;
   edited_by_user_id?: string | null;
-  edited_at_utc?: string | null;
-  updated_at_utc: string;
+  edited_at_utc?: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp;
   is_deleted: boolean;
   deleted_by_user_id?: string | null;
-  deleted_at_utc?: string | null;
+  deleted_at_utc?: UtcTimestamp | null;
 }
 
 export interface IncidentNotesResponse {
@@ -323,7 +324,7 @@ export function createIncidentTask(incidentId: string, data: {
   description?: string;
   task_type?: TaskType;
   priority?: TaskPriority;
-  due_at_utc?: string;
+  due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
 }) {
   return request<IncidentTaskItem>(`/incidents/${incidentId}/tasks`, {
@@ -337,7 +338,7 @@ export function patchTask(taskId: string, data: {
   description?: string;
   task_type?: TaskType;
   priority?: TaskPriority;
-  due_at_utc?: string;
+  due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
   status?: TaskStatus;
 }) {
