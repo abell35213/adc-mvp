@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 
-const CASE_STATUSES = ["new", "awaiting_evidence", "in_review", "ready_for_export", "escalated", "closed"] as const;
+const CASE_STATUSES = [
+  "new",
+  "awaiting_evidence",
+  "awaiting_follow_up",
+  "in_review",
+  "ready_for_export",
+  "exported",
+  "escalated",
+  "closed",
+] as const;
 
 interface CaseStatusControlProps {
   caseStatus: string;
