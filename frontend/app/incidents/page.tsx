@@ -127,7 +127,7 @@ export default function IncidentsPage() {
       waitingDriver,
       ready,
       attention,
-      blocked: incidents.filter((incident) => incident.readiness_state === "blocked").length,
+      blocked: incidents.filter((incident) => (incident.readiness_state ?? "not_ready") === "not_ready").length,
       missingEvidence: incidents.filter((incident) => evidenceState(incident) === "missing").length,
     };
   }, [incidents]);
