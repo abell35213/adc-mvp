@@ -123,7 +123,7 @@ export default function GenerateExportModal({
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-border-default px-3 py-2 text-sm hover:bg-surface-muted">Back</button>
+          <button onClick={onClose} className="rounded border border-border-default px-3 py-2 text-sm hover:bg-surface-muted">Cancel</button>
           <button onClick={handleGenerate} disabled={disabled} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {disabled ? "Generating…" : "Generate Export"}
           </button>
