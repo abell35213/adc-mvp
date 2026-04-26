@@ -43,7 +43,7 @@ function getUrgencyTone(item: CaseOpsQueueItem) {
     };
   }
 
-  if (item.case_status === "new" || item.blockers.important > 0 || item.readiness_state === "blocked") {
+  if (item.case_status === "new" || item.blockers.important > 0 || item.readiness_state === "not_ready") {
     return {
       row: "border-l-4 border-status-warning bg-status-warning-soft/40",
       badge: "bg-status-warning-soft text-status-warning",
