@@ -4,7 +4,8 @@ type ReadinessProgressBarProps = {
 };
 
 export default function ReadinessProgressBar({ percent, label }: ReadinessProgressBarProps) {
-  const boundedPercent = Math.max(0, Math.min(100, percent));
+  const safePercent = Number.isFinite(percent) ? percent : 0;
+  const boundedPercent = Math.max(0, Math.min(100, safePercent));
 
   return (
     <div>

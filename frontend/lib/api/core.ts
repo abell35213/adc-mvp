@@ -53,10 +53,6 @@ export class ApiNetworkError extends Error {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export interface ParsedApiError {
   message?: string;
   code?: string;
