@@ -165,9 +165,9 @@ function tagValidationRow(row: IntegrationValidationRawResponse): IntegrationVal
     "messages" in row ||
     "timestamp" in row
   ) {
-    return { kind: "current", ...(row as IntegrationValidationResultCurrentResponse) };
+    return { kind: "current", ...row };
   }
-  return { kind: "legacy", ...(row as IntegrationValidationResultLegacyResponse) };
+  return { kind: "legacy", ...row };
 }
 
 function slugify(parts: ReadonlyArray<string>): string {
@@ -177,6 +177,13 @@ function slugify(parts: ReadonlyArray<string>): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+/**
+ * Sentinel timestamp for validation rows that arrive without a server
+ * timestamp.  Using the Unix epoch keeps these rows sortable behind any
+ * row that does have a real timestamp.
+ */
+const UNKNOWN_TIMESTAMP = new Date(0).toISOString();
 
 function normalizeValidationRow(row: IntegrationValidationRow): IntegrationValidationResult {
   if (row.kind === "current") {
@@ -189,7 +196,7 @@ function normalizeValidationRow(row: IntegrationValidationRow): IntegrationValid
       capabilityStatus: row.capabilityStatus ?? status,
       mappingStatus: row.mappingStatus ?? status,
       messages,
-      timestamp: row.timestamp ?? new Date(0).toISOString(),
+      timestamp: row.timestamp ?? UNKNOWN_TIMESTAMP,
     };
   }
   const status = row.status ?? "not_started";
@@ -201,7 +208,7 @@ function normalizeValidationRow(row: IntegrationValidationRow): IntegrationValid
     capabilityStatus: status,
     mappingStatus: status,
     messages,
-    timestamp: row.checked_at_utc ?? new Date(0).toISOString(),
+    timestamp: row.checked_at_utc ?? UNKNOWN_TIMESTAMP,
   };
 }
 
