@@ -42,11 +42,20 @@ export default function ExportsPage() {
     failed: exports.filter((item) => item.status === "failed" || item.status === "expired").length,
   }), [exports]);
 
+  function getBlockedDownloadMessage(downloadUrl: string) {
+    try {
+      const { host } = new URL(downloadUrl);
+      return `Download URL from unrecognized host "${host}" was blocked. Verify the export download configuration or contact support if this host should be allowed.`;
+    } catch {
+      return "Download URL from an unrecognized host was blocked. Verify the export download configuration or contact support if this URL should be allowed.";
+    }
+  }
+
   async function handleDownload(exportId: string) {
     try {
       const result = await downloadExport(exportId);
       const opened = safeOpenDownloadUrl(result.url);
-      if (!opened) setError("Download URL was blocked because host validation failed.");
+      if (!opened) setError(getBlockedDownloadMessage(result.url));
     } catch (err: unknown) {
       setError(toUserErrorMessage(err, "Download failed"));
     }
