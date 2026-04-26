@@ -1,5 +1,10 @@
 /** Thin wrapper around fetch for talking to the FastAPI backend. */
 
+import {
+  buildQuery as buildQueryImpl,
+  parseApiErrorPayload as parseApiErrorPayloadImpl,
+} from "./queryString.mjs";
+
 const API_BASE =
   typeof window === "undefined"
     ? process.env.API_INTERNAL_BASE_URL ??
@@ -52,26 +57,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseApiErrorPayload(payload: unknown): {
+export interface ParsedApiError {
   message?: string;
   code?: string;
   retryHint?: string;
   correlationId?: string;
-} {
-  if (!isPlainObject(payload)) return {};
-  const detail = (payload as ApiErrorPayload).detail;
-  if (typeof detail === "string") {
-    return { message: detail };
-  }
-  if (!isPlainObject(detail)) return {};
-  const d = detail as ApiErrorDetail;
-  return {
-    message: typeof d.message === "string" ? d.message : undefined,
-    code: typeof d.code === "string" ? d.code : undefined,
-    retryHint: typeof d.retry_hint === "string" ? d.retry_hint : undefined,
-    correlationId: typeof d.correlation_id === "string" ? d.correlation_id : undefined,
-  };
 }
+
+export const parseApiErrorPayload = parseApiErrorPayloadImpl as (
+  payload: unknown
+) => ParsedApiError;
 
 export function toUserErrorMessage(error: unknown, fallback = "Request failed"): string {
   if (!(error instanceof ApiRequestError)) {
@@ -168,15 +163,8 @@ export type QueryValue = string | number | boolean | null | undefined;
  * Skips entries whose value is `undefined`, `null`, or an empty string,
  * matching the behavior previously hand-rolled in each request helper.
  */
-export function buildQuery<T extends { [K in keyof T]: QueryValue }>(
+export const buildQuery = buildQueryImpl as <
+  T extends { [K in keyof T]: QueryValue }
+>(
   params?: T | undefined
-): string {
-  if (!params) return "";
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params) as Array<[string, QueryValue]>) {
-    if (value === undefined || value === null || value === "") continue;
-    search.set(key, String(value));
-  }
-  const qs = search.toString();
-  return qs ? `?${qs}` : "";
-}
+) => string;
