@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MainLayout from "@/components/MainLayout";
 import OnboardingStepLayout from "@/components/onboarding/OnboardingStepLayout";
@@ -205,9 +206,9 @@ export default function OnboardingWizardClient() {
           <div className="rounded-lg border border-gray-200 p-3">
             <p className="text-sm font-semibold text-gray-900">Current step: {activeStep.title}</p>
             <p className="mt-1 text-sm text-gray-600">Open the step page to complete detailed remediation and validation tasks.</p>
-            <a className="mt-2 inline-block text-sm font-semibold text-blue-700 hover:underline" href={activeStep.path}>
+            <Link className="mt-2 inline-block text-sm font-semibold text-blue-700 hover:underline" href={activeStep.path}>
               Open step workspace
-            </a>
+            </Link>
           </div>
         </div>
       </OnboardingStepLayout>
