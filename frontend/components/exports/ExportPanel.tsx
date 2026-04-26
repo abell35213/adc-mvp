@@ -23,9 +23,9 @@ export default function ExportPanel({ exports: exportList, onExport, onDownload,
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {Object.entries({ Queued: counts.queued, Processing: counts.processing, Ready: counts.ready, Failed: counts.failed }).map(([k, v]) => (
-          <div key={k} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
-            <p className="text-xs uppercase text-gray-500">{k}</p>
-            <p className="text-xl font-semibold text-gray-900">{v}</p>
+          <div key={k} className="rounded border border-border-default bg-surface p-3 text-sm">
+            <p className="text-xs uppercase text-text-muted">{k}</p>
+            <p className="text-xl font-semibold text-text-primary">{v}</p>
           </div>
         ))}
       </div>
