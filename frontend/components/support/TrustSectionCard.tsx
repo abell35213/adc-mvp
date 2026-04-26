@@ -11,8 +11,8 @@ export default function TrustSectionCard({ id, title, summary, points }: TrustSe
       <h3 className="text-base font-semibold text-text-primary">{title}</h3>
       <p className="mt-1 text-sm text-text-secondary">{summary}</p>
       <ul className="mt-3 space-y-2 text-sm text-text-secondary">
-        {points.map((point) => (
-          <li key={point} className="flex gap-2">
+        {points.map((point, index) => (
+          <li key={`${id}-point-${index}`} className="flex gap-2">
             <span aria-hidden className="mt-1 h-2 w-2 rounded-full bg-status-info" />
             <span>{point}</span>
           </li>
