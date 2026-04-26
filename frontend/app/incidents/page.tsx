@@ -44,16 +44,12 @@ const SAVED_VIEW_LABELS: Record<SavedViewKey, string> = {
 
 export default function IncidentsPage() {
   const { user, loading: authLoading } = useAuth();
-  const [referenceNowMs, setReferenceNowMs] = useState(0);
+  const [referenceNowMs] = useState(() => Date.now());
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savedView, setSavedView] = useState<SavedViewKey>("all");
   const [filters, setFilters] = useState<IncidentFilters>(DEFAULT_FILTERS);
-
-  useEffect(() => {
-    setReferenceNowMs(Date.now());
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -128,7 +124,7 @@ export default function IncidentsPage() {
   }
 
   function inDateWindow(incident: Incident, dateRange: IncidentFilters["dateRange"]) {
-    if (dateRange === "all" || referenceNowMs === 0) return true;
+    if (dateRange === "all") return true;
     if (!incident.created_at_utc) return false;
     const created = new Date(incident.created_at_utc).getTime();
     const ageMs = referenceNowMs - created;
