@@ -1,5 +1,7 @@
 /** Thin wrapper around fetch for talking to the FastAPI backend. */
 
+import type { ZodType } from "zod";
+
 import {
   buildQuery as buildQueryImpl,
   parseApiErrorPayload as parseApiErrorPayloadImpl,
@@ -50,6 +52,23 @@ export class ApiNetworkError extends Error {
     super(message);
     this.name = "ApiNetworkError";
     this.cause = cause;
+  }
+}
+
+/**
+ * Thrown when a successful HTTP response fails runtime schema
+ * validation.  Carries the underlying zod issue for diagnostics while
+ * presenting a stable, user-safe message.
+ */
+export class ApiResponseValidationError extends Error {
+  path: string;
+  issues: unknown;
+
+  constructor(path: string, issues: unknown) {
+    super(`Response from ${path} did not match expected schema`);
+    this.name = "ApiResponseValidationError";
+    this.path = path;
+    this.issues = issues;
   }
 }
 
@@ -164,3 +183,27 @@ export const buildQuery = buildQueryImpl as <
 >(
   params?: T | undefined
 ) => string;
+
+/* ── Validated request helper ───────────────────────────────────── */
+
+/**
+ * Issue a request and validate the parsed JSON response against a
+ * zod schema.  On schema mismatch, throws {@link ApiResponseValidationError}
+ * so calling code can distinguish "server returned an unexpected shape"
+ * from a normal HTTP error.
+ *
+ * Prefer this over the bare {@link request} helper for endpoints whose
+ * payload shape is security-sensitive or polymorphic.
+ */
+export async function requestValidated<S extends ZodType>(
+  path: string,
+  schema: S,
+  init?: RequestInit
+): Promise<ReturnType<S["parse"]>> {
+  const raw = await request<unknown>(path, init);
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    throw new ApiResponseValidationError(path, result.error.issues);
+  }
+  return result.data as ReturnType<S["parse"]>;
+}

@@ -1,6 +1,7 @@
 /* ── Onboarding ─────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, requestValidated } from "./core";
+import { IntegrationValidationRowsSchema } from "./schemas";
 import type {
   OnboardingStepStatus,
   OnboardingReadinessStatus,
@@ -213,9 +214,14 @@ function normalizeValidationRow(row: IntegrationValidationRow): IntegrationValid
 }
 
 export function getIntegrationValidationResults() {
-  return request<IntegrationValidationRawResponse[]>(
-    "/org/integrations/validation-results"
-  ).then((rows) => rows.map(tagValidationRow).map(normalizeValidationRow));
+  return requestValidated(
+    "/org/integrations/validation-results",
+    IntegrationValidationRowsSchema
+  ).then((rows) =>
+    (rows as IntegrationValidationRawResponse[])
+      .map(tagValidationRow)
+      .map(normalizeValidationRow)
+  );
 }
 
 export function getProtocolSetupStepData() {

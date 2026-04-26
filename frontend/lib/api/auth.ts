@@ -1,6 +1,7 @@
 /* ── Auth ──────────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, requestValidated } from "./core";
+import { MeResponseSchema } from "./schemas";
 
 export interface MeResponse {
   user_id: string;
@@ -10,7 +11,7 @@ export interface MeResponse {
 }
 
 export function getMe() {
-  return request<MeResponse>("/auth/me");
+  return requestValidated("/auth/me", MeResponseSchema) as Promise<MeResponse>;
 }
 
 export interface LoginResponse {
