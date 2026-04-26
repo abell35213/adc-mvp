@@ -44,12 +44,16 @@ const SAVED_VIEW_LABELS: Record<SavedViewKey, string> = {
 
 export default function IncidentsPage() {
   const { user, loading: authLoading } = useAuth();
-  const referenceNow = useRef(Date.now());
+  const referenceNow = useRef(0);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savedView, setSavedView] = useState<SavedViewKey>("all");
   const [filters, setFilters] = useState<IncidentFilters>(DEFAULT_FILTERS);
+
+  useEffect(() => {
+    referenceNow.current = Date.now();
+  }, []);
 
   useEffect(() => {
     if (!user) return;
