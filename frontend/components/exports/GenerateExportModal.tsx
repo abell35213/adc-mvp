@@ -21,19 +21,24 @@ interface GenerateExportModalProps {
   preflightWarnings?: string[];
 }
 
-const DEFAULT_OPTIONS: ExportOptions = {
-  profile_id: "court_defense_v1",
-  include_media: true,
-  include_raw_telemetry: true,
-  include_driver_statement: true,
-};
-
 const EXPORT_TYPES: Array<{ value: ExportType; label: string; profileId: ExportOptions["profile_id"] }> = [
   { value: "court_defense", label: "Court defense", profileId: "court_defense_v1" },
   { value: "insurer_packet", label: "Insurer packet", profileId: "insurer_packet_v1" },
   { value: "internal_review", label: "Internal review", profileId: "internal_review_v1" },
   { value: "compliance_audit", label: "Compliance audit", profileId: "compliance_audit_v1" },
 ];
+
+const PROFILE_DEFAULTS: Record<ExportType, Omit<ExportOptions, "profile_id">> = {
+  court_defense: { include_media: true, include_raw_telemetry: true, include_driver_statement: true },
+  insurer_packet: { include_media: true, include_raw_telemetry: false, include_driver_statement: true },
+  internal_review: { include_media: true, include_raw_telemetry: true, include_driver_statement: true },
+  compliance_audit: { include_media: false, include_raw_telemetry: true, include_driver_statement: false },
+};
+
+function defaultOptionsForType(type: ExportType): ExportOptions {
+  const profileId = EXPORT_TYPES.find((t) => t.value === type)?.profileId ?? "court_defense_v1";
+  return { profile_id: profileId, ...PROFILE_DEFAULTS[type] };
+}
 
 export default function GenerateExportModal({
   open,
@@ -46,7 +51,7 @@ export default function GenerateExportModal({
   preflightWarnings = [],
 }: GenerateExportModalProps) {
   const [exportType, setExportType] = useState<ExportType>("court_defense");
-  const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
+  const [options, setOptions] = useState<ExportOptions>(() => defaultOptionsForType("court_defense"));
 
   const includedSections = useMemo(() => {
     const sections = [
@@ -63,8 +68,7 @@ export default function GenerateExportModal({
   if (!open) return null;
 
   async function handleGenerate() {
-    const profileId = EXPORT_TYPES.find((item) => item.value === exportType)?.profileId ?? "court_defense_v1";
-    await onSubmit({ exportType, options: { ...options, profile_id: profileId } });
+    await onSubmit({ exportType, options });
   }
 
   return (
@@ -84,7 +88,11 @@ export default function GenerateExportModal({
               Packet type
               <select
                 value={exportType}
-                onChange={(e) => setExportType(e.target.value as ExportType)}
+                onChange={(e) => {
+                  const newType = e.target.value as ExportType;
+                  setExportType(newType);
+                  setOptions(defaultOptionsForType(newType));
+                }}
                 className="mt-1 w-full rounded-md border border-border-default bg-surface px-3 py-2 text-sm"
               >
                 {EXPORT_TYPES.map((type) => (

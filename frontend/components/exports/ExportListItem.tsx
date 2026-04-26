@@ -9,6 +9,7 @@ interface ExportListItemProps {
   showIncident?: boolean;
   onDownload?: (exportId: string) => void;
   onRetry?: (exportId: string) => void;
+  onDetails?: (exportId: string) => void;
 }
 
 function formatTime(iso?: string | null): string {
@@ -21,7 +22,7 @@ function warningCount(item: ExportSummary): number {
   return Array.isArray(warnings) ? warnings.length : 0;
 }
 
-export default function ExportListItem({ item, showIncident = false, onDownload, onRetry }: ExportListItemProps) {
+export default function ExportListItem({ item, showIncident = false, onDownload, onRetry, onDetails }: ExportListItemProps) {
   const shortId = `${item.export_id.slice(0, 10)}…`;
   const warnCount = warningCount(item);
 
@@ -56,6 +57,11 @@ export default function ExportListItem({ item, showIncident = false, onDownload,
           <Link href={`/incidents/${item.incident_id}`} className="rounded border border-border-default px-2 py-1 text-text-primary hover:bg-surface-muted">
             View incident
           </Link>
+        )}
+        {onDetails && (
+          <button onClick={() => onDetails(item.export_id)} className="rounded border border-border-default px-2 py-1 text-text-secondary hover:bg-surface-muted">
+            Details
+          </button>
         )}
         {item.status === "ready" && onDownload && (
           <button onClick={() => onDownload(item.export_id)} className="rounded bg-green-600 px-3 py-1 font-medium text-white hover:bg-green-700">
