@@ -199,15 +199,22 @@ export function listIncidents() {
   return request<Incident[]>("/incidents/");
 }
 
-export function createIncident(data: {
+export interface CreateIncidentRequest {
   severity: IncidentSeverity;
   adc_vehicle_id: string;
   samsara_vehicle_id: string;
   adc_driver_id: string;
   window_start?: string;
   window_end?: string;
-}) {
-  return request<{ incident_id: string; status: IncidentStatus }>("/incidents/", {
+}
+
+export interface CreateIncidentResponse {
+  incident_id: string;
+  status: IncidentStatus;
+}
+
+export function createIncident(data: CreateIncidentRequest) {
+  return request<CreateIncidentResponse>("/incidents/", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -256,21 +263,35 @@ export function getOverdueTasks(params?: { limit?: number }) {
   return request<CaseTaskWidgetResponse>(`/tasks/overdue${suffix}`);
 }
 
-export function patchIncidentOwner(incidentId: string, data: {
+export interface PatchIncidentOwnerRequest {
   operation: OwnerOperation;
   owner_user_id?: string | null;
-}) {
-  return request<{ incident_id: string; owner_user_id?: string | null }>(`/incidents/${incidentId}/owner`, {
+}
+
+export interface PatchIncidentOwnerResponse {
+  incident_id: string;
+  owner_user_id?: string | null;
+}
+
+export function patchIncidentOwner(incidentId: string, data: PatchIncidentOwnerRequest) {
+  return request<PatchIncidentOwnerResponse>(`/incidents/${incidentId}/owner`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export function patchIncidentStatus(incidentId: string, data: {
+export interface PatchIncidentStatusRequest {
   case_status: CaseStatus;
   reason: string;
-}) {
-  return request<{ incident_id: string; case_status: CaseStatus }>(`/incidents/${incidentId}/status`, {
+}
+
+export interface PatchIncidentStatusResponse {
+  incident_id: string;
+  case_status: CaseStatus;
+}
+
+export function patchIncidentStatus(incidentId: string, data: PatchIncidentStatusRequest) {
+  return request<PatchIncidentStatusResponse>(`/incidents/${incidentId}/status`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -285,30 +306,38 @@ export function listIncidentNotes(incidentId: string, params?: { includeDeleted?
   return request<IncidentNotesResponse>(`/incidents/${incidentId}/notes${suffix}`);
 }
 
-export function createIncidentNote(incidentId: string, data: {
+export interface CreateIncidentNoteRequest {
   body: string;
   note_type?: NoteType;
   tags?: string[];
-}) {
+}
+
+export function createIncidentNote(incidentId: string, data: CreateIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export function patchIncidentNote(incidentId: string, data: {
+export interface PatchIncidentNoteRequest {
   note_id: string;
   body?: string;
   note_type?: NoteType;
   tags?: string[];
-}) {
+}
+
+export function patchIncidentNote(incidentId: string, data: PatchIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export function deleteIncidentNote(incidentId: string, data: { note_id: string }) {
+export interface DeleteIncidentNoteRequest {
+  note_id: string;
+}
+
+export function deleteIncidentNote(incidentId: string, data: DeleteIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "DELETE",
     body: JSON.stringify(data),
@@ -319,21 +348,23 @@ export function listIncidentTasks(incidentId: string) {
   return request<IncidentTaskListResponse>(`/incidents/${incidentId}/tasks`);
 }
 
-export function createIncidentTask(incidentId: string, data: {
+export interface CreateIncidentTaskRequest {
   title: string;
   description?: string;
   task_type?: TaskType;
   priority?: TaskPriority;
   due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
-}) {
+}
+
+export function createIncidentTask(incidentId: string, data: CreateIncidentTaskRequest) {
   return request<IncidentTaskItem>(`/incidents/${incidentId}/tasks`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export function patchTask(taskId: string, data: {
+export interface PatchTaskRequest {
   title?: string;
   description?: string;
   task_type?: TaskType;
@@ -341,7 +372,9 @@ export function patchTask(taskId: string, data: {
   due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
   status?: TaskStatus;
-}) {
+}
+
+export function patchTask(taskId: string, data: PatchTaskRequest) {
   return request<IncidentTaskItem>(`/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -354,7 +387,11 @@ export function completeTask(taskId: string) {
   });
 }
 
-export function cancelTask(taskId: string, data?: { reason?: string }) {
+export interface CancelTaskRequest {
+  reason?: string;
+}
+
+export function cancelTask(taskId: string, data?: CancelTaskRequest) {
   return request<IncidentTaskItem>(`/tasks/${taskId}/cancel`, {
     method: "POST",
     body: JSON.stringify(data ?? {}),

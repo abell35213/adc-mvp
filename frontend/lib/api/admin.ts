@@ -51,10 +51,12 @@ export function getDriverProtocolInstructions(scope?: string) {
   );
 }
 
-export function updateDriverProtocolInstructions(data: {
+export interface UpdateDriverProtocolInstructionsRequest {
   scope: string;
   steps: DriverInstructionStep[];
-}) {
+}
+
+export function updateDriverProtocolInstructions(data: UpdateDriverProtocolInstructionsRequest) {
   return request<DriverInstructionSet>("/admin/driver-protocol/instructions", {
     method: "PUT",
     body: JSON.stringify(data),
@@ -159,13 +161,20 @@ export function getVehicleQrPayload(vehicleId: string) {
   return request<{ deep_link: string }>(`/admin/vehicles/${vehicleId}/qr`);
 }
 
-export function createVehicleImportJob(data: {
+export interface CreateVehicleImportJobRequest {
   provider: string;
   csv_content: string;
   header_mapping: Record<string, string>;
   inactive_unit_numbers: string[];
-}) {
-  return request<{ job_id: string; status: ImportJobStatus }>("/org/vehicles/import", {
+}
+
+export interface CreateImportJobResponse {
+  job_id: string;
+  status: ImportJobStatus;
+}
+
+export function createVehicleImportJob(data: CreateVehicleImportJobRequest) {
+  return request<CreateImportJobResponse>("/org/vehicles/import", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -175,13 +184,15 @@ export function getVehicleImportJob(jobId: string) {
   return request<VehicleImportJobResponse>(`/org/vehicles/import-jobs/${jobId}`);
 }
 
-export function createDriverImportJob(data: {
+export interface CreateDriverImportJobRequest {
   provider: string;
   csv_content: string;
   header_mapping: Record<string, string>;
   inactive_mobile_phones: string[];
-}) {
-  return request<{ job_id: string; status: ImportJobStatus }>("/org/drivers/import", {
+}
+
+export function createDriverImportJob(data: CreateDriverImportJobRequest) {
+  return request<CreateImportJobResponse>("/org/drivers/import", {
     method: "POST",
     body: JSON.stringify(data),
   });
