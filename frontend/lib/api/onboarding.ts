@@ -99,23 +99,6 @@ export interface IntegrationValidationResult {
   timestamp: string;
 }
 
-type IntegrationValidationResultLegacyResponse = {
-  integration_key?: string;
-  status?: OnboardingStepStatus;
-  checked_at_utc?: UtcTimestamp;
-  detail?: string;
-  errors?: string[];
-};
-
-type IntegrationValidationResultCurrentResponse = {
-  integration_id?: string;
-  credentialStatus?: OnboardingStepStatus;
-  capabilityStatus?: OnboardingStepStatus;
-  mappingStatus?: OnboardingStepStatus;
-  messages?: string[];
-  timestamp?: string;
-};
-
 export interface ProtocolSetupStepData {
   instruction_set_selected: boolean;
   instruction_source: InstructionSource;
@@ -134,46 +117,98 @@ export function getOrgOnboardingQrStats() {
   return request<VehicleQrStats>("/org/onboarding/qr-stats");
 }
 
+/**
+ * Raw row shape returned by the *legacy* version of
+ * `/org/integrations/validation-results` (pre-redesign).
+ */
+interface IntegrationValidationResultLegacyResponse {
+  integration_key?: string;
+  status?: OnboardingStepStatus;
+  checked_at_utc?: UtcTimestamp;
+  detail?: string;
+  errors?: string[];
+}
+
+/**
+ * Raw row shape returned by the *current* version of
+ * `/org/integrations/validation-results`.
+ */
+interface IntegrationValidationResultCurrentResponse {
+  integration_id?: string;
+  credentialStatus?: OnboardingStepStatus;
+  capabilityStatus?: OnboardingStepStatus;
+  mappingStatus?: OnboardingStepStatus;
+  messages?: string[];
+  timestamp?: string;
+}
+
+type IntegrationValidationRawResponse =
+  | IntegrationValidationResultLegacyResponse
+  | IntegrationValidationResultCurrentResponse;
+
+/**
+ * Tagged-union view of a raw validation-result row.  The discriminator
+ * is computed from the presence of shape-specific fields rather than a
+ * server-supplied flag; once narrowed, downstream code can access each
+ * branch's fields directly without `as` casts.
+ */
+type IntegrationValidationRow =
+  | ({ kind: "current" } & IntegrationValidationResultCurrentResponse)
+  | ({ kind: "legacy" } & IntegrationValidationResultLegacyResponse);
+
+function tagValidationRow(row: IntegrationValidationRawResponse): IntegrationValidationRow {
+  if (
+    "credentialStatus" in row ||
+    "capabilityStatus" in row ||
+    "mappingStatus" in row ||
+    "integration_id" in row ||
+    "messages" in row ||
+    "timestamp" in row
+  ) {
+    return { kind: "current", ...(row as IntegrationValidationResultCurrentResponse) };
+  }
+  return { kind: "legacy", ...(row as IntegrationValidationResultLegacyResponse) };
+}
+
+function slugify(parts: ReadonlyArray<string>): string {
+  return parts
+    .join("|")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeValidationRow(row: IntegrationValidationRow): IntegrationValidationResult {
+  if (row.kind === "current") {
+    const status = row.credentialStatus ?? "not_started";
+    const messages = row.messages ?? [];
+    const fallbackId = slugify([row.timestamp ?? "", status, ...messages]);
+    return {
+      integration_id: row.integration_id ?? `integration-${fallbackId || "unknown"}`,
+      credentialStatus: row.credentialStatus ?? status,
+      capabilityStatus: row.capabilityStatus ?? status,
+      mappingStatus: row.mappingStatus ?? status,
+      messages,
+      timestamp: row.timestamp ?? new Date(0).toISOString(),
+    };
+  }
+  const status = row.status ?? "not_started";
+  const messages = row.errors ?? (row.detail ? [row.detail] : []);
+  const fallbackId = slugify([row.checked_at_utc ?? "", status, ...messages]);
+  return {
+    integration_id: row.integration_key ?? `integration-${fallbackId || "unknown"}`,
+    credentialStatus: status,
+    capabilityStatus: status,
+    mappingStatus: status,
+    messages,
+    timestamp: row.checked_at_utc ?? new Date(0).toISOString(),
+  };
+}
+
 export function getIntegrationValidationResults() {
-  return request<Array<IntegrationValidationResultLegacyResponse | IntegrationValidationResultCurrentResponse>>(
+  return request<IntegrationValidationRawResponse[]>(
     "/org/integrations/validation-results"
-  ).then((rows) =>
-    rows.map((row) => {
-      const status = (row as IntegrationValidationResultCurrentResponse).credentialStatus
-        ?? (row as IntegrationValidationResultLegacyResponse).status
-        ?? "not_started";
-      const mappedMessages = (row as IntegrationValidationResultCurrentResponse).messages
-        ?? (row as IntegrationValidationResultLegacyResponse).errors
-        ?? ((row as IntegrationValidationResultLegacyResponse).detail
-          ? [(row as IntegrationValidationResultLegacyResponse).detail as string]
-          : []);
-      const fallbackIdSource = [
-        (row as IntegrationValidationResultCurrentResponse).timestamp
-          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
-          ?? "",
-        status,
-        ...mappedMessages,
-      ]
-        .join("|")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      return {
-        integration_id:
-          (row as IntegrationValidationResultCurrentResponse).integration_id
-          ?? (row as IntegrationValidationResultLegacyResponse).integration_key
-          ?? `integration-${fallbackIdSource || "unknown"}`,
-        credentialStatus: (row as IntegrationValidationResultCurrentResponse).credentialStatus ?? status,
-        capabilityStatus: (row as IntegrationValidationResultCurrentResponse).capabilityStatus ?? status,
-        mappingStatus: (row as IntegrationValidationResultCurrentResponse).mappingStatus ?? status,
-        messages: mappedMessages,
-        timestamp:
-          (row as IntegrationValidationResultCurrentResponse).timestamp
-          ?? (row as IntegrationValidationResultLegacyResponse).checked_at_utc
-          ?? new Date(0).toISOString(),
-      };
-    })
-  );
+  ).then((rows) => rows.map(tagValidationRow).map(normalizeValidationRow));
 }
 
 export function getProtocolSetupStepData() {

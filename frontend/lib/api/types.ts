@@ -231,12 +231,23 @@ export interface Incident {
   driver_protocol_summary?: DriverProtocolSummary | null;
 }
 
+/**
+ * Single entry in {@link IncidentDetail.blockers}.  Mirrors the inline
+ * shape returned by the backend; promoted to a named interface so it
+ * can be shared with consumer components.
+ */
+export interface IncidentBlocker {
+  code: string;
+  message: string;
+  severity: BlockerSeverity;
+}
+
 export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
   timeline: EventSummary[];
   completeness_missing_items?: string[];
-  blockers?: Array<{ code: string; message: string; severity: BlockerSeverity }>;
+  blockers?: IncidentBlocker[];
 }
 
 export type OnboardingStepStatus =
