@@ -8,9 +8,13 @@ import ExportReadyList from "@/components/case-ops/ExportReadyList";
 import IncidentFilterBar, {
   type IncidentFilters,
 } from "@/components/case-ops/IncidentFilterBar";
-import IncidentQueueTable from "@/components/case-ops/IncidentQueueTable";
+import IncidentQueueTable, {
+  type QueueTabKey,
+} from "@/components/case-ops/IncidentQueueTable";
 import IncidentSummaryCards from "@/components/case-ops/IncidentSummaryCards";
 import OverdueFollowUpList from "@/components/case-ops/OverdueFollowUpList";
+import SectionCard from "@/components/layout/SectionCard";
+import PageHeader from "@/components/layout/PageHeader";
 import OnboardingProgressDashboard from "@/components/onboarding/OnboardingProgressDashboard";
 import {
   getIntegrationValidationResults,
@@ -43,6 +47,23 @@ const DEFAULT_FILTERS: IncidentFilters = {
   sort: "urgency",
 };
 
+const TAB_TO_STATUS: Record<QueueTabKey, string> = {
+  all: "",
+  new: "new",
+  in_review: "in_review",
+  awaiting_evidence: "awaiting_evidence",
+  ready_for_export: "ready_for_export",
+  escalated: "escalated",
+};
+
+function getFirstPriority(queue: CaseOpsQueueItem[]) {
+  return (
+    queue.find((item) => item.case_status === "escalated" || item.blockers.critical > 0) ??
+    queue.find((item) => item.case_status === "new" || item.blockers.important > 0) ??
+    queue[0]
+  );
+}
+
 export default function DashboardClient() {
   const { user } = useAuth();
   const router = useRouter();
@@ -71,6 +92,11 @@ export default function DashboardClient() {
   const [onboarding, setOnboarding] = useState<OrgLaunchReadiness | null>(null);
   const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
+
+  const activeTab = (Object.keys(TAB_TO_STATUS).find(
+    (key) => TAB_TO_STATUS[key as QueueTabKey] === filters.status
+  ) as QueueTabKey | undefined) ?? "all";
+
   const resumeOnboardingHref = useMemo(() => {
     if (typeof window === "undefined") return "/onboarding";
     const persistedStep = window.localStorage.getItem(ONBOARDING_WIZARD_STORAGE_KEY);
@@ -147,6 +173,40 @@ export default function DashboardClient() {
     [queue]
   );
 
+  const tabCounts = useMemo(() => {
+    const counts: Record<QueueTabKey, number> = {
+      all: queue.length,
+      new: 0,
+      in_review: 0,
+      awaiting_evidence: 0,
+      ready_for_export: 0,
+      escalated: 0,
+    };
+    for (const item of queue) {
+      if (item.case_status in counts) {
+        counts[item.case_status as QueueTabKey] += 1;
+      }
+    }
+
+    return [
+      { key: "all" as const, label: "All", count: counts.all },
+      { key: "new" as const, label: "New", count: counts.new },
+      { key: "in_review" as const, label: "In Review", count: counts.in_review },
+      { key: "awaiting_evidence" as const, label: "Awaiting Evidence", count: counts.awaiting_evidence },
+      { key: "ready_for_export" as const, label: "Ready for Export", count: counts.ready_for_export },
+      { key: "escalated" as const, label: "Escalated", count: counts.escalated },
+    ];
+  }, [queue]);
+
+  const firstPriority = useMemo(() => getFirstPriority(queue), [queue]);
+  const integrationIssues = integrationValidationResults.filter(
+    (result) =>
+      result.credentialStatus !== "completed" ||
+      result.capabilityStatus !== "completed" ||
+      result.mappingStatus !== "completed"
+  );
+  const onboardingBlockers = onboarding?.blockers ?? [];
+
   const updateFilters = (next: IncidentFilters) => {
     setFilters(next);
     setQueueLoading(true);
@@ -209,22 +269,32 @@ export default function DashboardClient() {
   return (
     <MainLayout title="Command Center">
       <div className="space-y-4">
-        <header>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Incident Command Center</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Work active incidents, manage ownership, and clear blockers fast.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push(resumeOnboardingHref)}
-            className="mt-3 rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100"
-          >
-            Resume onboarding wizard
-          </button>
-        </header>
+        <PageHeader
+          eyebrow="Case Operations"
+          title="Incident Command Center"
+          subtitle="Answer what's new, blocked, ready, and first priority in under 10 seconds."
+          actions={(
+            <button
+              type="button"
+              onClick={() => router.push(resumeOnboardingHref)}
+              className="rounded border border-status-info/40 bg-status-info-soft px-3 py-1.5 text-sm font-medium text-status-info hover:opacity-90"
+            >
+              Resume onboarding wizard
+            </button>
+          )}
+          meta={
+            firstPriority ? (
+              <span>
+                First priority: <strong>{firstPriority.incident_id.slice(0, 8)}…</strong> · {firstPriority.blockers.critical} critical blockers · owner {firstPriority.owner_user_id ? firstPriority.owner_user_id.slice(0, 8) : "unassigned"}
+              </span>
+            ) : (
+              "No active incidents in the current queue."
+            )
+          }
+        />
 
-        {overviewError ? <p className="text-sm text-red-600">{overviewError}</p> : null}
-        {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+        {overviewError ? <p className="text-sm text-status-critical">{overviewError}</p> : null}
+        {actionError ? <p className="text-sm text-status-critical">{actionError}</p> : null}
 
         <OnboardingProgressDashboard
           readiness={onboarding}
@@ -234,29 +304,79 @@ export default function DashboardClient() {
         />
 
         <IncidentSummaryCards metrics={metrics} loading={overviewLoading} />
-        <IncidentFilterBar
-          filters={filters}
-          onChange={updateFilters}
-          onReset={() => updateFilters(DEFAULT_FILTERS)}
-        />
 
-        <IncidentQueueTable
-          items={queue}
-          loading={queueLoading}
-          error={queueError}
-          onOpen={(incidentId) => router.push(`/incidents/${incidentId}`)}
-          onAssignMe={onAssignMe}
-          onCaseStatusChange={onCaseStatusChange}
-        />
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <div className="space-y-4">
+            <IncidentFilterBar
+              filters={filters}
+              onChange={updateFilters}
+              onReset={() => updateFilters(DEFAULT_FILTERS)}
+            />
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <AlertsPanel alerts={alerts} loading={overviewLoading} error={overviewError} />
-          <ExportReadyList items={exportReady} loading={queueLoading} />
-          <OverdueFollowUpList
-            items={overdueTasks.length > 0 ? overdueTasks : myOpenTasks.filter((task) => task.status !== "completed")}
-            loading={overviewLoading}
-            error={overviewError}
-          />
+            <IncidentQueueTable
+              items={queue}
+              loading={queueLoading}
+              error={queueError}
+              tabs={tabCounts}
+              activeTab={activeTab}
+              onTabChange={(tab) => updateFilters({ ...filters, status: TAB_TO_STATUS[tab] })}
+              onOpen={(incidentId) => router.push(`/incidents/${incidentId}`)}
+              onAssignMe={onAssignMe}
+              onCaseStatusChange={onCaseStatusChange}
+            />
+          </div>
+
+          <aside className="space-y-4">
+            <AlertsPanel alerts={alerts} loading={overviewLoading} error={overviewError} />
+            <ExportReadyList items={exportReady} loading={queueLoading} />
+            <OverdueFollowUpList
+              items={overdueTasks.length > 0 ? overdueTasks : myOpenTasks.filter((task) => task.status !== "completed")}
+              loading={overviewLoading}
+              error={overviewError}
+            />
+
+            <SectionCard
+              title="Integration Issues"
+              tone="warning"
+              description="Integration failures that can block evidence capture."
+            >
+              {overviewLoading ? <p className="text-sm text-text-secondary">Loading integration validation…</p> : null}
+              {!overviewLoading && integrationIssues.length === 0 ? (
+                <p className="text-sm text-text-secondary">No active integration issues.</p>
+              ) : null}
+              {!overviewLoading && integrationIssues.length > 0 ? (
+                <ul className="space-y-2 text-sm">
+                  {integrationIssues.slice(0, 5).map((result) => (
+                    <li key={result.integration_id} className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2">
+                      <p className="font-medium text-text-primary">{result.integration_id}</p>
+                      <p className="text-xs text-status-warning">{result.messages[0] ?? "Validation is incomplete."}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </SectionCard>
+
+            <SectionCard
+              title="Onboarding Blockers"
+              tone="info"
+              description="Go-live dependencies not yet completed."
+            >
+              {overviewLoading ? <p className="text-sm text-text-secondary">Loading onboarding status…</p> : null}
+              {!overviewLoading && onboardingBlockers.length === 0 ? (
+                <p className="text-sm text-text-secondary">No onboarding blockers.</p>
+              ) : null}
+              {!overviewLoading && onboardingBlockers.length > 0 ? (
+                <ul className="space-y-2 text-sm">
+                  {onboardingBlockers.slice(0, 5).map((item) => (
+                    <li key={item.code} className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2">
+                      <p className="font-medium text-text-primary">{item.title}</p>
+                      <p className="text-xs text-text-secondary">{item.detail}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </SectionCard>
+          </aside>
         </div>
       </div>
     </MainLayout>
