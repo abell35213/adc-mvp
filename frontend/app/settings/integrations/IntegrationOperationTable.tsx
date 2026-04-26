@@ -1,21 +1,11 @@
 import type { IntegrationOperationDiagnostics } from "@/lib/api";
+import { normalizeErrorCode, parseRetryCount } from "@/lib/integrationsDiagnostics";
 
 type Props = {
   rows: IntegrationOperationDiagnostics[];
   onSelect: (row: IntegrationOperationDiagnostics) => void;
   onRetry?: (row: IntegrationOperationDiagnostics) => void;
 };
-
-function getRetryCount(row: IntegrationOperationDiagnostics) {
-  const retryFromResult = row.result_json["retry_count"];
-  const retryFromPayload = row.payload_json["retry_count"];
-  const retryCount = Number(
-    (typeof retryFromResult === "number" ? retryFromResult : undefined) ??
-      (typeof retryFromPayload === "number" ? retryFromPayload : undefined) ??
-      0
-  );
-  return Number.isNaN(retryCount) ? 0 : retryCount;
-}
 
 export default function IntegrationOperationTable({ rows, onSelect, onRetry }: Props) {
   return (
@@ -39,8 +29,8 @@ export default function IntegrationOperationTable({ rows, onSelect, onRetry }: P
           </thead>
           <tbody className="divide-y dark:divide-gray-700">
             {rows.map((row) => {
-              const retryCount = getRetryCount(row);
-              const normalizedCode = row.error_category ?? row.error_code ?? "NONE";
+              const retryCount = parseRetryCount(row);
+              const normalizedCode = normalizeErrorCode(row);
               const canRetry = Boolean(row.error_retryable);
               return (
                 <tr key={row.operation_id}>

@@ -12,6 +12,7 @@ import IntegrationConnectionCard from "./IntegrationConnectionCard";
 import IntegrationHealthTable from "./IntegrationHealthTable";
 import IntegrationOperationTable from "./IntegrationOperationTable";
 import IntegrationOperationDrawer from "./IntegrationOperationDrawer";
+import { normalizeErrorCode, parseRetryCount } from "@/lib/integrationsDiagnostics";
 
 export type IntegrationHealthSummary = {
   provider: string;
@@ -36,24 +37,6 @@ const TIME_RANGE_HOURS: Record<string, number> = {
   "7d": 168,
   "30d": 720,
 };
-
-function normalizeErrorCode(operation: IntegrationOperationDiagnostics) {
-  if (operation.error_category) return operation.error_category.toUpperCase();
-  if (operation.error_code) return operation.error_code.toUpperCase();
-  if ((operation.error_message ?? "").toLowerCase().includes("timeout")) return "TIMEOUT";
-  return "NONE";
-}
-
-function parseRetryCount(operation: IntegrationOperationDiagnostics) {
-  const retryFromResult = operation.result_json["retry_count"];
-  const retryFromPayload = operation.payload_json["retry_count"];
-  const retryCount = Number(
-    (typeof retryFromResult === "number" ? retryFromResult : undefined) ??
-      (typeof retryFromPayload === "number" ? retryFromPayload : undefined) ??
-      0
-  );
-  return Number.isNaN(retryCount) ? 0 : retryCount;
-}
 
 function isStuck(operation: IntegrationOperationDiagnostics, now: number) {
   if (!["queued", "running", "processing_at_provider"].includes(operation.status)) return false;
