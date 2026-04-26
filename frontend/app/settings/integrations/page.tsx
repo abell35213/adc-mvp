@@ -165,10 +165,9 @@ export default function IntegrationSettingsPage() {
       const reason = `${connection.reason ?? ""}`.toLowerCase();
       return reason.includes("reauth") || reason.includes("token") || reason.includes("expired");
     }).length;
-    const recentFailures = filteredOperations.filter((operation) => {
-      const failedStates = ["failed", "error", "timed_out"];
-      return failedStates.includes(operation.status) || normalizeErrorCode(operation) !== "NONE";
-    }).length;
+    const recentFailures = filteredOperations.filter(
+      (operation) => normalizeErrorCode(operation) !== "NONE"
+    ).length;
 
     return { connected, validationErrors, needsReauth, recentFailures };
   }, [connections, filteredOperations]);
