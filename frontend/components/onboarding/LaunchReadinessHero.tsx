@@ -1,9 +1,10 @@
 import LaunchReadinessBanner from "./LaunchReadinessBanner";
 import ReadinessProgressBar from "./ReadinessProgressBar";
+import type { OnboardingReadinessStatus } from "@/lib/api";
 
 type LaunchReadinessHeroProps = {
   percent: number;
-  status: "not_started" | "in_progress" | "blocked" | "pilot_ready" | "launch_ready";
+  status: OnboardingReadinessStatus;
   recommendation: string;
   blockersCount: number;
   blockersHref: string;

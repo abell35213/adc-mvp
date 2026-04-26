@@ -1,13 +1,14 @@
 import Link from "next/link";
+import type { OnboardingReadinessStatus } from "@/lib/api";
 
 type LaunchReadinessBannerProps = {
-  status: "not_started" | "in_progress" | "blocked" | "pilot_ready" | "launch_ready";
+  status: OnboardingReadinessStatus;
   recommendation: string;
   blockersCount: number;
   blockersHref: string;
 };
 
-const STATUS_LABELS: Record<LaunchReadinessBannerProps["status"], string> = {
+const STATUS_LABELS: Record<OnboardingReadinessStatus, string> = {
   not_started: "Not started",
   in_progress: "In progress",
   blocked: "Blocked",
@@ -15,7 +16,7 @@ const STATUS_LABELS: Record<LaunchReadinessBannerProps["status"], string> = {
   launch_ready: "Launch ready",
 };
 
-const STATUS_STYLES: Record<LaunchReadinessBannerProps["status"], string> = {
+const STATUS_STYLES: Record<OnboardingReadinessStatus, string> = {
   not_started: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
   in_progress: "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200",
   blocked: "border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200",

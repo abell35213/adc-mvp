@@ -100,7 +100,7 @@ export default function OnboardingProgressDashboard({
       title: "Data imports",
       href: "/settings/integrations",
       ctaLabel: "Import data",
-      completed: importSummary.total > 0 && importSummary.failed === 0,
+      completed: importSummary.total > 0 && importSummary.succeeded === importSummary.total,
       summary: `${importSummary.succeeded}/${importSummary.total} jobs succeeded${importSummary.failed ? ` · ${importSummary.failed} failed` : ""}`,
       missingCue: "Missing cue: resolve failed imports and rerun connector sync.",
     },
