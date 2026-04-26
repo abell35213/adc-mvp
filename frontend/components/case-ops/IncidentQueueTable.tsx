@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CaseOpsQueueItem } from "@/lib/api";
 
-type QueueTabKey = "all" | "new" | "in_review" | "awaiting_evidence" | "ready_for_export" | "escalated";
+type QueueTabKey = "all" | "new" | "in_review" | "awaiting_evidence" | "ready_for_export" | "escalated" | "awaiting_follow_up" | "exported" | "closed";
 
 interface QueueTab {
   key: QueueTabKey;
@@ -26,7 +26,9 @@ const STATUSES = [
   "awaiting_evidence",
   "in_review",
   "ready_for_export",
+  "awaiting_follow_up",
   "escalated",
+  "exported",
   "closed",
 ];
 

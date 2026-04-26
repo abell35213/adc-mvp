@@ -47,6 +47,20 @@ const DEFAULT_FILTERS: IncidentFilters = {
   sort: "urgency",
 };
 
+const QUEUE_PAGE_SIZE = 50;
+const QUEUE_ALL_PAGE_SIZE = 500;
+
+function buildQueueParams(filters: IncidentFilters, includeStatus = true) {
+  return {
+    ...(includeStatus && filters.status ? { status: filters.status } : {}),
+    readiness_state: filters.readiness_state || undefined,
+    blockers: filters.blockers || undefined,
+    search: filters.search || undefined,
+    sort: filters.sort,
+    page: 1,
+  };
+}
+
 const TAB_TO_STATUS: Record<QueueTabKey, string> = {
   all: "",
   new: "new",
@@ -54,6 +68,9 @@ const TAB_TO_STATUS: Record<QueueTabKey, string> = {
   awaiting_evidence: "awaiting_evidence",
   ready_for_export: "ready_for_export",
   escalated: "escalated",
+  awaiting_follow_up: "awaiting_follow_up",
+  exported: "exported",
+  closed: "closed",
 };
 
 function getFirstPriority(queue: CaseOpsQueueItem[]) {
@@ -80,6 +97,7 @@ export default function DashboardClient() {
   });
 
   const [queue, setQueue] = useState<CaseOpsQueueItem[]>([]);
+  const [queueAll, setQueueAll] = useState<CaseOpsQueueItem[]>([]);
   const [metrics, setMetrics] = useState<CaseOpsSummaryMetrics | null>(null);
   const [alerts, setAlerts] = useState<CaseOpsAlerts | null>(null);
   const [overdueTasks, setOverdueTasks] = useState<CaseTaskWidgetItem[]>([]);
@@ -108,17 +126,13 @@ export default function DashboardClient() {
   useEffect(() => {
     if (!user) return;
 
-    getIncidentQueue({
-      status: filters.status || undefined,
-      readiness_state: filters.readiness_state || undefined,
-      blockers: filters.blockers || undefined,
-      search: filters.search || undefined,
-      sort: filters.sort,
-      page: 1,
-      page_size: 50,
-    })
-      .then((payload) => {
-        setQueue(payload.items);
+    Promise.all([
+      getIncidentQueue({ ...buildQueueParams(filters), page_size: QUEUE_PAGE_SIZE }),
+      getIncidentQueue({ ...buildQueueParams(filters, false), page_size: QUEUE_ALL_PAGE_SIZE }),
+    ])
+      .then(([filtered, unfiltered]) => {
+        setQueue(filtered.items);
+        setQueueAll(unfiltered.items);
         setQueueError("");
       })
       .catch((err) => setQueueError(toUserErrorMessage(err, "Failed to load queue")))
@@ -169,20 +183,23 @@ export default function DashboardClient() {
   }, [user]);
 
   const exportReady = useMemo(
-    () => queue.filter((item) => item.case_status === "ready_for_export"),
-    [queue]
+    () => queueAll.filter((item) => item.case_status === "ready_for_export"),
+    [queueAll]
   );
 
   const tabCounts = useMemo(() => {
     const counts: Record<QueueTabKey, number> = {
-      all: queue.length,
+      all: queueAll.length,
       new: 0,
       in_review: 0,
       awaiting_evidence: 0,
       ready_for_export: 0,
       escalated: 0,
+      awaiting_follow_up: 0,
+      exported: 0,
+      closed: 0,
     };
-    for (const item of queue) {
+    for (const item of queueAll) {
       if (item.case_status in counts) {
         counts[item.case_status as QueueTabKey] += 1;
       }
@@ -195,8 +212,11 @@ export default function DashboardClient() {
       { key: "awaiting_evidence" as const, label: "Awaiting Evidence", count: counts.awaiting_evidence },
       { key: "ready_for_export" as const, label: "Ready for Export", count: counts.ready_for_export },
       { key: "escalated" as const, label: "Escalated", count: counts.escalated },
+      { key: "awaiting_follow_up" as const, label: "Awaiting Follow-Up", count: counts.awaiting_follow_up },
+      { key: "exported" as const, label: "Exported", count: counts.exported },
+      { key: "closed" as const, label: "Closed", count: counts.closed },
     ];
-  }, [queue]);
+  }, [queueAll]);
 
   const firstPriority = useMemo(() => getFirstPriority(queue), [queue]);
   const integrationIssues = integrationValidationResults.filter(
@@ -222,17 +242,13 @@ export default function DashboardClient() {
 
   const refreshQueue = () => {
     setQueueLoading(true);
-    getIncidentQueue({
-      status: filters.status || undefined,
-      readiness_state: filters.readiness_state || undefined,
-      blockers: filters.blockers || undefined,
-      search: filters.search || undefined,
-      sort: filters.sort,
-      page: 1,
-      page_size: 50,
-    })
-      .then((payload) => {
-        setQueue(payload.items);
+    Promise.all([
+      getIncidentQueue({ ...buildQueueParams(filters), page_size: QUEUE_PAGE_SIZE }),
+      getIncidentQueue({ ...buildQueueParams(filters, false), page_size: QUEUE_ALL_PAGE_SIZE }),
+    ])
+      .then(([filtered, unfiltered]) => {
+        setQueue(filtered.items);
+        setQueueAll(unfiltered.items);
         setQueueError("");
       })
       .catch((err) => setQueueError(toUserErrorMessage(err, "Failed to reload queue")))

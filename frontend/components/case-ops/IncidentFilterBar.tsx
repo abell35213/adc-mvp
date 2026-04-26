@@ -49,7 +49,9 @@ export default function IncidentFilterBar({
           <option value="awaiting_evidence">Awaiting evidence</option>
           <option value="in_review">In review</option>
           <option value="ready_for_export">Ready for export</option>
+          <option value="awaiting_follow_up">Awaiting follow-up</option>
           <option value="escalated">Escalated</option>
+          <option value="exported">Exported</option>
           <option value="closed">Closed</option>
         </select>
         <select
