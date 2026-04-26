@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import MainLayout from "@/components/MainLayout";
 import ReportSummaryCards from "@/components/reports/ReportSummaryCards";
 
@@ -103,11 +103,35 @@ const REPORT_DATA: Record<
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<ReportTabKey>("attention");
   const activeReport = REPORT_DATA[activeTab];
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const maxTrendValue = useMemo(
     () => Math.max(...activeReport.trend.map((point) => point.value), 1),
     [activeReport.trend],
   );
+
+  function handleTabKeyDown(event: React.KeyboardEvent, currentKey: ReportTabKey) {
+    const keys = REPORT_TABS.map((t) => t.key);
+    const currentIndex = keys.indexOf(currentKey);
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % keys.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + keys.length) % keys.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = keys.length - 1;
+    }
+
+    if (nextIndex !== null) {
+      event.preventDefault();
+      const nextKey = keys[nextIndex];
+      setActiveTab(nextKey);
+      tabRefs.current[nextKey]?.focus();
+    }
+  }
 
   return (
     <MainLayout title="Reports">
@@ -115,14 +139,21 @@ export default function ReportsPage() {
         <div className="rounded-lg border border-border-default bg-surface p-4 shadow-card">
           <h2 className="text-xl font-semibold text-text-primary">Operations reporting overview</h2>
           <p className="mt-1 text-sm text-text-secondary">{activeReport.subtitle}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div role="tablist" aria-label="Report categories" className="mt-3 flex flex-wrap gap-2">
             {REPORT_TABS.map((tab) => {
               const active = tab.key === activeTab;
               return (
                 <button
                   key={tab.key}
+                  id={`report-tab-${tab.key}`}
+                  role="tab"
                   type="button"
+                  aria-selected={active}
+                  aria-controls={`report-panel-${tab.key}`}
+                  tabIndex={active ? 0 : -1}
+                  ref={(el) => { tabRefs.current[tab.key] = el; }}
                   onClick={() => setActiveTab(tab.key)}
+                  onKeyDown={(e) => handleTabKeyDown(e, tab.key)}
                   className={[
                     "rounded-md px-3 py-1.5 text-sm font-medium transition",
                     active
@@ -137,6 +168,13 @@ export default function ReportsPage() {
           </div>
         </div>
 
+        <div
+          id={`report-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`report-tab-${activeTab}`}
+          tabIndex={0}
+          className="space-y-4 focus:outline-none"
+        >
         <ReportSummaryCards items={activeReport.cards} />
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -191,6 +229,7 @@ export default function ReportsPage() {
             </div>
           </article>
         </section>
+        </div>
       </div>
     </MainLayout>
   );
