@@ -21,27 +21,13 @@ export default function CaseOwnerControl({ ownerUserId, onAssignMe, onClearOwner
   };
 
   return (
-    <div className="rounded-md border bg-gray-50 p-3 dark:bg-gray-900/40">
-      <p className="text-xs text-gray-500">Case owner</p>
-      <p className="mt-1 font-mono text-xs text-gray-800 dark:text-gray-200">
-        {ownerUserId ? `${ownerUserId.slice(0, 8)}…` : "Unassigned"}
-      </p>
-      <div className="mt-2 flex gap-2">
-        <button
-          onClick={() => run(onAssignMe)}
-          disabled={busy}
-          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          Assign me
-        </button>
-        <button
-          onClick={() => run(onClearOwner)}
-          disabled={busy || !ownerUserId}
-          className="rounded border px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-60 dark:border-gray-600 dark:hover:bg-gray-700"
-        >
-          Clear
-        </button>
+    <section className="rounded-lg border bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner</p>
+      <p className="mt-1 text-sm font-medium text-gray-900">{ownerUserId ? `${ownerUserId.slice(0, 8)}…` : "Unassigned"}</p>
+      <div className="mt-3 flex gap-2">
+        <button onClick={() => run(onAssignMe)} disabled={busy} className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60">Assign me</button>
+        <button onClick={() => run(onClearOwner)} disabled={busy || !ownerUserId} className="rounded border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60">Clear</button>
       </div>
-    </div>
+    </section>
   );
 }
