@@ -41,7 +41,7 @@ export default function IntegrationOperationTable({ rows, onSelect, onRetry }: P
             {rows.map((row) => {
               const retryCount = getRetryCount(row);
               const normalizedCode = row.error_category ?? row.error_code ?? "NONE";
-              const canRetry = Boolean(row.error_retryable) || ["failed", "timed_out", "error"].includes(row.status);
+              const canRetry = Boolean(row.error_retryable);
               return (
                 <tr key={row.operation_id}>
                   <td className="py-2">{row.requested_at_utc ? new Date(row.requested_at_utc).toLocaleString() : "—"}</td>
