@@ -1,6 +1,6 @@
 /* ── Admin ─────────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, buildQuery } from "./core";
 import type {
   ImportJobStatus,
   ExportType,
@@ -45,9 +45,8 @@ export interface DriverInstructionSet {
 }
 
 export function getDriverProtocolInstructions(scope?: string) {
-  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
   return request<DriverInstructionSet>(
-    `/admin/driver-protocol/instructions${query}`
+    `/admin/driver-protocol/instructions${buildQuery({ scope })}`
   );
 }
 
@@ -64,9 +63,8 @@ export function updateDriverProtocolInstructions(data: UpdateDriverProtocolInstr
 }
 
 export function resetDriverProtocolInstructions(scope?: string) {
-  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
   return request<DriverInstructionSet>(
-    `/admin/driver-protocol/instructions/reset${query}`,
+    `/admin/driver-protocol/instructions/reset${buildQuery({ scope })}`,
     { method: "POST" }
   );
 }
@@ -270,22 +268,16 @@ export interface AuditSearchResponseItem {
   metadata: JsonObject;
 }
 
-export function getOpsDashboard(params?: {
+export interface GetOpsDashboardParams {
   stale_after_minutes?: number;
   lookback_hours?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.stale_after_minutes) {
-    query.set("stale_after_minutes", String(params.stale_after_minutes));
-  }
-  if (params?.lookback_hours) {
-    query.set("lookback_hours", String(params.lookback_hours));
-  }
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<OpsDashboardResponse>(`/admin/ops/dashboard${suffix}`);
 }
 
-export function searchOpsAudit(params?: {
+export function getOpsDashboard(params?: GetOpsDashboardParams) {
+  return request<OpsDashboardResponse>(`/admin/ops/dashboard${buildQuery(params)}`);
+}
+
+export interface SearchOpsAuditParams {
   q?: string;
   action?: string;
   event_type?: string;
@@ -293,15 +285,8 @@ export function searchOpsAudit(params?: {
   actor_id?: string;
   lookback_hours?: number;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.q) query.set("q", params.q);
-  if (params?.action) query.set("action", params.action);
-  if (params?.event_type) query.set("event_type", params.event_type);
-  if (params?.outcome) query.set("outcome", params.outcome);
-  if (params?.actor_id) query.set("actor_id", params.actor_id);
-  if (params?.lookback_hours) query.set("lookback_hours", String(params.lookback_hours));
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<AuditSearchResponseItem[]>(`/admin/ops/audit-search${suffix}`);
+}
+
+export function searchOpsAudit(params?: SearchOpsAuditParams) {
+  return request<AuditSearchResponseItem[]>(`/admin/ops/audit-search${buildQuery(params)}`);
 }

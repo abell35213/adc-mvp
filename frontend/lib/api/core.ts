@@ -112,3 +112,32 @@ export async function request<T>(
   }
   return undefined as T;
 }
+
+/* ── Query-string helper ────────────────────────────────────────── */
+
+/**
+ * Primitive value accepted by {@link buildQuery}.  Values of `undefined`,
+ * `null`, or empty string are skipped so that callers can pass partially
+ * filled `params` objects without having to guard each field.
+ */
+export type QueryValue = string | number | boolean | null | undefined;
+
+/**
+ * Build a URL query-string suffix (including the leading `?`) from a
+ * record of primitives.  Returns `""` when no values are present.
+ *
+ * Skips entries whose value is `undefined`, `null`, or an empty string,
+ * matching the behavior previously hand-rolled in each request helper.
+ */
+export function buildQuery<T extends { [K in keyof T]: QueryValue }>(
+  params?: T | undefined
+): string {
+  if (!params) return "";
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params) as Array<[string, QueryValue]>) {
+    if (value === undefined || value === null || value === "") continue;
+    search.set(key, String(value));
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}

@@ -1,6 +1,6 @@
 /* ── Integrations ──────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, buildQuery } from "./core";
 import type { IntegrationConnectionStatus, JsonObject, UtcTimestamp } from "./types";
 
 export interface IntegrationConnectionHealth {
@@ -57,30 +57,27 @@ export function getIntegrationConnections() {
   return request<IntegrationConnectionHealth[]>("/org/integrations");
 }
 
-export function getIntegrationOperations(params?: {
+export interface GetIntegrationOperationsParams {
   provider?: string;
   status?: string;
   incident_id?: string;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.provider) query.set("provider", params.provider);
-  if (params?.status) query.set("status", params.status);
-  if (params?.incident_id) query.set("incident_id", params.incident_id);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<IntegrationOperationDiagnostics[]>(`/integration-operations${suffix}`);
 }
 
-export function getWebhookDiagnostics(params?: {
+export function getIntegrationOperations(params?: GetIntegrationOperationsParams) {
+  return request<IntegrationOperationDiagnostics[]>(
+    `/integration-operations${buildQuery(params)}`
+  );
+}
+
+export interface GetWebhookDiagnosticsParams {
   provider?: string;
   status?: string;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.provider) query.set("provider", params.provider);
-  if (params?.status) query.set("status", params.status);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<ProviderWebhookEvent[]>(`/admin/ops/webhook-events${suffix}`);
+}
+
+export function getWebhookDiagnostics(params?: GetWebhookDiagnosticsParams) {
+  return request<ProviderWebhookEvent[]>(
+    `/admin/ops/webhook-events${buildQuery(params)}`
+  );
 }

@@ -1,6 +1,6 @@
 /* ── Incidents ─────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, buildQuery } from "./core";
 import type {
   Incident,
   IncidentDetail,
@@ -224,7 +224,7 @@ export function getIncident(id: string) {
   return request<IncidentDetail>(`/incidents/${id}`);
 }
 
-export function getIncidentQueue(params?: {
+export interface GetIncidentQueueParams {
   status?: string;
   readiness_state?: string;
   blockers?: string;
@@ -232,17 +232,10 @@ export function getIncidentQueue(params?: {
   sort?: CaseOpsQueueSort;
   page?: number;
   page_size?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.status) query.set("status", params.status);
-  if (params?.readiness_state) query.set("readiness_state", params.readiness_state);
-  if (params?.blockers) query.set("blockers", params.blockers);
-  if (params?.search) query.set("search", params.search);
-  if (params?.sort) query.set("sort", params.sort);
-  if (params?.page) query.set("page", String(params.page));
-  if (params?.page_size) query.set("page_size", String(params.page_size));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<CaseOpsQueueResponse>(`/incidents/queue${suffix}`);
+}
+
+export function getIncidentQueue(params?: GetIncidentQueueParams) {
+  return request<CaseOpsQueueResponse>(`/incidents/queue${buildQuery(params)}`);
 }
 
 export function getIncidentSummaryMetrics() {
@@ -254,13 +247,11 @@ export function getIncidentAlerts() {
 }
 
 export function getMyOpenTasks(params?: { limit?: number }) {
-  const suffix = params?.limit ? `?limit=${params.limit}` : "";
-  return request<CaseTaskWidgetResponse>(`/tasks/my-open${suffix}`);
+  return request<CaseTaskWidgetResponse>(`/tasks/my-open${buildQuery(params)}`);
 }
 
 export function getOverdueTasks(params?: { limit?: number }) {
-  const suffix = params?.limit ? `?limit=${params.limit}` : "";
-  return request<CaseTaskWidgetResponse>(`/tasks/overdue${suffix}`);
+  return request<CaseTaskWidgetResponse>(`/tasks/overdue${buildQuery(params)}`);
 }
 
 export interface PatchIncidentOwnerRequest {
@@ -302,8 +293,9 @@ export function getIncidentWorkspace(incidentId: string) {
 }
 
 export function listIncidentNotes(incidentId: string, params?: { includeDeleted?: boolean }) {
-  const suffix = params?.includeDeleted ? "?include_deleted=true" : "";
-  return request<IncidentNotesResponse>(`/incidents/${incidentId}/notes${suffix}`);
+  return request<IncidentNotesResponse>(
+    `/incidents/${incidentId}/notes${buildQuery({ include_deleted: params?.includeDeleted ? true : undefined })}`
+  );
 }
 
 export interface CreateIncidentNoteRequest {
