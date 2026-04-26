@@ -25,9 +25,9 @@ function getSuggestedActions(operation: IntegrationOperationDiagnostics): Sugges
 
   if (operation.error_retryable || ["failed", "timed_out", "error"].includes(operation.status)) {
     suggestions.push({
-      label: "Review retry policy",
-      href: "/admin/ops",
-      description: "Confirm retry backoff and queue handling for this provider.",
+      label: "Review integration settings",
+      href: "/settings/integrations",
+      description: "Inspect this provider connection and retry configuration to restore ingestion.",
     });
   }
 
