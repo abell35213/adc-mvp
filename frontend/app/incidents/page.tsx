@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import MainLayout from "@/components/MainLayout";
 import DocumentationCenter from "@/components/commercial/DocumentationCenter";
@@ -26,7 +26,6 @@ interface IncidentFilters {
   evidenceState: "all" | "missing" | "partial" | "complete";
 }
 
-const REFERENCE_NOW = Date.now();
 
 const DEFAULT_FILTERS: IncidentFilters = {
   status: "all",
@@ -45,6 +44,7 @@ const SAVED_VIEW_LABELS: Record<SavedViewKey, string> = {
 
 export default function IncidentsPage() {
   const { user, loading: authLoading } = useAuth();
+  const referenceNow = useRef(Date.now());
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -60,14 +60,16 @@ export default function IncidentsPage() {
   }, [user]);
 
   function friendlyStatus(s: string): string {
-    if (s === "evidence_capturing" || s === "open") return "Capturing Evidence";
-    if (s === "ready" || s === "closed" || s === "export_ready") return "Export Ready";
-    return "Ready for Export";
+    if (s === "open") return "Open";
+    if (s === "evidence_capturing") return "Capturing Evidence";
+    if (s === "closed") return "Closed";
+    return s.replaceAll("_", " ");
   }
 
   function statusTone(s: string): StatusTone {
-    if (s === "evidence_capturing" || s === "open") return "warning";
-    if (s === "ready" || s === "closed" || s === "export_ready") return "success";
+    if (s === "open") return "info";
+    if (s === "evidence_capturing") return "warning";
+    if (s === "closed") return "success";
     return "info";
   }
 
@@ -119,7 +121,7 @@ export default function IncidentsPage() {
     if (dateRange === "all") return true;
     if (!incident.created_at_utc) return false;
     const created = new Date(incident.created_at_utc).getTime();
-    const ageMs = REFERENCE_NOW - created;
+    const ageMs = referenceNow.current - created;
     if (dateRange === "today") return ageMs <= 24 * 60 * 60 * 1000;
     return ageMs <= 7 * 24 * 60 * 60 * 1000;
   }
@@ -152,7 +154,7 @@ export default function IncidentsPage() {
     if (savedView === "driver_wait" && !isWaitingOnDriver(incident)) return false;
     if (savedView === "ready" && !isReady(incident)) return false;
 
-    if (filters.status === "capturing" && isReady(incident)) return false;
+    if (filters.status === "capturing" && !["open", "evidence_capturing"].includes(incident.status)) return false;
     if (filters.status === "ready" && !isReady(incident)) return false;
 
     if (filters.owner !== "all" && ownerState(incident) !== filters.owner) return false;
@@ -262,9 +264,11 @@ export default function IncidentsPage() {
               className="rounded border border-border-default bg-surface px-3 py-2 text-sm"
             >
               <option value="all">Readiness: all</option>
-              <option value="ready">Readiness ready</option>
-              <option value="blocked">Readiness blocked</option>
-              <option value="not_ready">Readiness not ready</option>
+              <option value="not_ready">Not ready</option>
+              <option value="conditionally_ready">Conditionally ready</option>
+              <option value="ready_for_export">Ready for export</option>
+              <option value="exported">Exported</option>
+              <option value="closed">Closed</option>
             </select>
             <select
               value={filters.evidenceState}
@@ -305,7 +309,7 @@ export default function IncidentsPage() {
         {(loading || authLoading) && <p className="text-text-muted">Loading…</p>}
         {error && <p className="text-status-critical">{error}</p>}
 
-        {!loading && (
+        {!loading && !error && (
           <DataTableShell
             className="w-full"
             title="Incident table"
@@ -349,7 +353,10 @@ export default function IncidentsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={statusBadgeClass(readiness === "ready" ? "success" : readiness === "blocked" ? "critical" : "warning")}>
+                    <span className={statusBadgeClass(
+                      ["ready_for_export", "exported", "closed"].includes(readiness) ? "success" :
+                      readiness === "not_ready" ? "critical" : "warning"
+                    )}>
                       {readiness.replaceAll("_", " ")}
                     </span>
                   </td>
