@@ -28,7 +28,8 @@ export default function BlockersPanel({
   emptyMessage = "No blockers detected.",
   maxItems = 4,
 }: BlockersPanelProps) {
-  const visible = blockers.slice(0, maxItems);
+  const safeMaxItems = Math.max(0, maxItems);
+  const visible = blockers.slice(0, safeMaxItems);
 
   return (
     <section className="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
