@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SectionCard from "@/components/layout/SectionCard";
 import type { CaseOpsQueueItem } from "@/lib/api";
 
 interface ExportReadyListProps {
@@ -8,21 +9,29 @@ interface ExportReadyListProps {
 
 export default function ExportReadyList({ items, loading }: ExportReadyListProps) {
   return (
-    <section className="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Export-ready list</h3>
-      {loading && <p className="mt-2 text-sm text-gray-500">Loading export-ready incidents…</p>}
-      {!loading && items.length === 0 && <p className="mt-2 text-sm text-gray-500">No incidents are ready for export.</p>}
+    <SectionCard
+      title="Ready for Export"
+      tone="success"
+      description="Cases cleared for export once QA is complete."
+    >
+      {loading && <p className="text-sm text-text-secondary">Loading export-ready incidents…</p>}
+      {!loading && items.length === 0 && (
+        <p className="text-sm text-text-secondary">No incidents are ready for export.</p>
+      )}
       {!loading && items.length > 0 && (
-        <ul className="mt-2 space-y-2 text-sm">
-          {items.slice(0, 8).map((item) => (
-            <li key={item.incident_id}>
-              <Link href={`/incidents/${item.incident_id}`} className="text-blue-600 hover:underline dark:text-blue-400">
+        <ul className="space-y-2 text-sm">
+          {items.slice(0, 6).map((item) => (
+            <li key={item.incident_id} className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2">
+              <Link href={`/incidents/${item.incident_id}`} className="font-medium text-status-success hover:underline">
                 {item.incident_id.slice(0, 8)}…
               </Link>
+              <p className="text-xs text-text-secondary">
+                Completeness {Math.round(item.completeness_percent)}% · Owner {item.owner_user_id ? item.owner_user_id.slice(0, 8) : "unassigned"}
+              </p>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </SectionCard>
   );
 }
