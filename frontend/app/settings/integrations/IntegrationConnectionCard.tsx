@@ -42,11 +42,13 @@ export default function IntegrationConnectionCard({ connection, onAction }: Prop
           <dd className="font-medium">{formatDate(connection.last_synced_at_utc)}</dd>
         </div>
       </dl>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={() => onAction?.("Validate", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Validate</button>
-        <button onClick={() => onAction?.("Reconnect", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Reconnect</button>
-        <button onClick={() => onAction?.("Details", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Details</button>
-      </div>
+      {onAction ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => onAction("Validate", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Validate</button>
+          <button onClick={() => onAction("Reconnect", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Reconnect</button>
+          <button onClick={() => onAction("Details", connection)} className="rounded border px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">Details</button>
+        </div>
+      ) : null}
     </article>
   );
 }
