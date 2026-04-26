@@ -99,7 +99,10 @@ export default function IncidentsPage() {
   }
 
   function ownerState(incident: Incident): "assigned" | "unassigned" {
-    return incident.adc_driver_id ? "assigned" : "unassigned";
+    const ownerUserId = (
+      incident as Incident & { owner_user_id?: string | number | null }
+    ).owner_user_id;
+    return ownerUserId ? "assigned" : "unassigned";
   }
 
   function evidenceState(incident: Incident): IncidentFilters["evidenceState"] {
