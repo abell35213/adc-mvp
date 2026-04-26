@@ -1,16 +1,19 @@
 import type { IntegrationOperationDiagnostics } from "@/lib/api";
+import { normalizeErrorCode, parseRetryCount } from "@/lib/integrationsDiagnostics";
 
 type Props = {
   rows: IntegrationOperationDiagnostics[];
   onSelect: (row: IntegrationOperationDiagnostics) => void;
+  onRetry?: (row: IntegrationOperationDiagnostics) => void;
 };
 
-export default function IntegrationOperationTable({ rows, onSelect }: Props) {
+export default function IntegrationOperationTable({ rows, onSelect, onRetry }: Props) {
   return (
     <section className="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <h2 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-50">Integration operations</h2>
+      <h2 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-50">Integration operations</h2>
+      <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">Investigate failures quickly, retry operations with known transient errors, and open details for remediation guidance.</p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] text-left text-xs">
+        <table className="w-full min-w-[980px] text-left text-xs">
           <thead className="text-gray-500">
             <tr>
               <th className="py-2">Time</th>
@@ -21,19 +24,14 @@ export default function IntegrationOperationTable({ rows, onSelect }: Props) {
               <th className="py-2">Status</th>
               <th className="py-2">Retry count</th>
               <th className="py-2">Normalized error</th>
-              <th className="py-2" />
+              <th className="py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y dark:divide-gray-700">
             {rows.map((row) => {
-              const retryFromResult = row.result_json["retry_count"];
-              const retryFromPayload = row.payload_json["retry_count"];
-              const retryCount = Number(
-                (typeof retryFromResult === "number" ? retryFromResult : undefined) ??
-                (typeof retryFromPayload === "number" ? retryFromPayload : undefined) ??
-                0
-              );
-              const normalizedCode = row.error_category ?? row.error_code ?? "NONE";
+              const retryCount = parseRetryCount(row);
+              const normalizedCode = normalizeErrorCode(row);
+              const canRetry = Boolean(row.error_retryable);
               return (
                 <tr key={row.operation_id}>
                   <td className="py-2">{row.requested_at_utc ? new Date(row.requested_at_utc).toLocaleString() : "—"}</td>
@@ -42,15 +40,24 @@ export default function IntegrationOperationTable({ rows, onSelect }: Props) {
                   <td className="py-2">{row.domain ?? "—"}</td>
                   <td className="py-2">{row.operation_type}</td>
                   <td className="py-2">{row.status}</td>
-                  <td className="py-2">{Number.isNaN(retryCount) ? 0 : retryCount}</td>
+                  <td className="py-2">{retryCount}</td>
                   <td className="py-2">{normalizedCode}</td>
-                  <td className="py-2 text-right">
-                    <button
-                      onClick={() => onSelect(row)}
-                      className="rounded border px-2 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
-                    >
-                      Inspect
-                    </button>
+                  <td className="py-2">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => onRetry?.(row)}
+                        disabled={!canRetry}
+                        className="rounded border px-2 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-700"
+                      >
+                        Retry
+                      </button>
+                      <button
+                        onClick={() => onSelect(row)}
+                        className="rounded border px-2 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
+                      >
+                        Details
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

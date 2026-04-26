@@ -12,6 +12,7 @@ import IntegrationConnectionCard from "./IntegrationConnectionCard";
 import IntegrationHealthTable from "./IntegrationHealthTable";
 import IntegrationOperationTable from "./IntegrationOperationTable";
 import IntegrationOperationDrawer from "./IntegrationOperationDrawer";
+import { normalizeErrorCode, parseRetryCount } from "@/lib/integrationsDiagnostics";
 
 export type IntegrationHealthSummary = {
   provider: string;
@@ -23,19 +24,19 @@ export type IntegrationHealthSummary = {
   topNormalizedCodes: string[];
 };
 
+export type IntegrationHealthCards = {
+  connected: number;
+  validationErrors: number;
+  needsReauth: number;
+  recentFailures: number;
+};
+
 const TIME_RANGE_HOURS: Record<string, number> = {
   "24h": 24,
   "72h": 72,
   "7d": 168,
   "30d": 720,
 };
-
-function normalizeErrorCode(operation: IntegrationOperationDiagnostics) {
-  if (operation.error_category) return operation.error_category.toUpperCase();
-  if (operation.error_code) return operation.error_code.toUpperCase();
-  if ((operation.error_message ?? "").toLowerCase().includes("timeout")) return "TIMEOUT";
-  return "NONE";
-}
 
 function isStuck(operation: IntegrationOperationDiagnostics, now: number) {
   if (!["queued", "running", "processing_at_provider"].includes(operation.status)) return false;
@@ -49,6 +50,7 @@ export default function IntegrationSettingsPage() {
   const [selected, setSelected] = useState<IntegrationOperationDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
 
   const [orgFilter, setOrgFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("all");
@@ -113,16 +115,7 @@ export default function IntegrationSettingsPage() {
       const success = rows.filter((row) => ["succeeded", "available", "downloaded"].includes(row.status)).length;
       const timeout = rows.filter((row) => normalizeErrorCode(row) === "TIMEOUT").length;
       const stuckOps = rows.filter((row) => isStuck(row, referenceNow)).length;
-      const retryCount = rows.reduce((sum, row) => {
-        const retryFromResult = row.result_json["retry_count"];
-        const retryFromPayload = row.payload_json["retry_count"];
-        const next = Number(
-          (typeof retryFromResult === "number" ? retryFromResult : undefined) ??
-          (typeof retryFromPayload === "number" ? retryFromPayload : undefined) ??
-          0
-        );
-        return sum + (Number.isNaN(next) ? 0 : next);
-      }, 0);
+      const retryCount = rows.reduce((sum, row) => sum + parseRetryCount(row), 0);
 
       const errorCounts = new Map<string, number>();
       rows.forEach((row) => {
@@ -147,6 +140,20 @@ export default function IntegrationSettingsPage() {
       };
     });
   }, [filteredOperations]);
+
+  const healthCards = useMemo<IntegrationHealthCards>(() => {
+    const connected = connections.filter((connection) => connection.healthy && connection.status === "active").length;
+    const validationErrors = connections.filter((connection) => connection.status === "error").length;
+    const needsReauth = connections.filter((connection) => {
+      const reason = `${connection.reason ?? ""}`.toLowerCase();
+      return reason.includes("reauth") || reason.includes("token") || reason.includes("expired");
+    }).length;
+    const recentFailures = filteredOperations.filter(
+      (operation) => normalizeErrorCode(operation) !== "NONE"
+    ).length;
+
+    return { connected, validationErrors, needsReauth, recentFailures };
+  }, [connections, filteredOperations]);
 
   const visibleConnections = useMemo(
     () =>
@@ -190,19 +197,37 @@ export default function IntegrationSettingsPage() {
           </div>
           {loading && <p className="mt-3 text-xs text-gray-500">Loading integration diagnostics…</p>}
           {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+          {actionNotice && <p className="mt-3 text-xs text-blue-700 dark:text-blue-300">{actionNotice}</p>}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {visibleConnections.map((connection) => (
-            <IntegrationConnectionCard key={connection.integration_id} connection={connection} />
-          ))}
-          {!loading && visibleConnections.length === 0 && (
-            <div className="rounded-lg border border-dashed p-4 text-xs text-gray-500">No integration connections matched these filters.</div>
-          )}
+        <IntegrationHealthTable rows={healthRows} cards={healthCards} />
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-50">Provider connection status</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visibleConnections.map((connection) => (
+              <IntegrationConnectionCard
+                key={connection.integration_id}
+                connection={connection}
+                onAction={(action, current) => {
+                  setActionNotice(`${action} requested for ${current.provider} (${current.domain ?? "all domains"}).`);
+                }}
+              />
+            ))}
+            {!loading && visibleConnections.length === 0 && (
+              <div className="rounded-lg border border-dashed p-4 text-xs text-gray-500">No integration connections matched these filters.</div>
+            )}
+          </div>
         </section>
 
-        <IntegrationHealthTable rows={healthRows} />
-        <IntegrationOperationTable rows={filteredOperations} onSelect={setSelected} />
+        <IntegrationOperationTable
+          rows={filteredOperations}
+          onSelect={setSelected}
+          onRetry={(row) => {
+            setActionNotice(`Retry requested for operation ${row.operation_id}.`);
+            setSelected(row);
+          }}
+        />
       </div>
       <IntegrationOperationDrawer operation={selected} onClose={() => setSelected(null)} />
     </MainLayout>
