@@ -11,7 +11,7 @@ interface ReadinessBlocker {
 }
 
 function readinessTone(state: string) {
-  if (state === "ready_for_export" || state === "exported") return "green";
+  if (state === "ready_for_export" || state === "exported" || state === "closed") return "green";
   if (state === "conditionally_ready") return "yellow";
   return "red";
 }
@@ -22,8 +22,12 @@ export function ExportReadinessBanner({ blockersCount, readinessState, blockers 
     .slice(0, 2)
     .map((blocker) => blocker.message || blocker.code || "Unspecified readiness blocker");
 
-  if (readinessState === "ready_for_export" || readinessState === "exported" || blockersCount === 0) {
+  if (readinessState === "ready_for_export" || readinessState === "exported" || readinessState === "closed") {
     return <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">Ready for export: no blockers detected.</div>;
+  }
+
+  if (readinessState === "conditionally_ready" && blockersCount === 0) {
+    return <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">Conditionally ready: completeness is low but no active blockers detected.</div>;
   }
 
   if (readinessState === "conditionally_ready") {
