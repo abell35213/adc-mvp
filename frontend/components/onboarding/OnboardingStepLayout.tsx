@@ -36,14 +36,24 @@ type OnboardingStepLayoutProps = {
 function HeaderAction({ action, variant }: { action?: FooterAction; variant: "primary" | "secondary" }) {
   if (!action) return null;
 
-  const className =
+  const baseClassName =
     variant === "primary"
-      ? "rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-      : "rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50";
+      ? "rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+      : "rounded border border-gray-300 px-3 py-2 text-sm text-gray-700";
+  const disabledClassName = action.disabled ? " cursor-not-allowed opacity-50 pointer-events-none" : "";
+  const className = `${baseClassName}${disabledClassName}`;
 
   if (action.href) {
+    if (action.disabled) {
+      return (
+        <span aria-disabled="true" className={className}>
+          {action.label}
+        </span>
+      );
+    }
+
     return (
-      <Link aria-disabled={action.disabled} className={className} href={action.disabled ? "#" : action.href}>
+      <Link className={className} href={action.href}>
         {action.label}
       </Link>
     );
