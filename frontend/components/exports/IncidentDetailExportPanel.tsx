@@ -14,9 +14,9 @@ import {
   type ExportType,
   toUserErrorMessage,
 } from "@/lib/api";
-import { getExportStatusBadgeClass, getExportStatusLabel } from "@/lib/exportStatus";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
 import GenerateExportModal from "@/components/exports/GenerateExportModal";
+import ExportListItem from "@/components/exports/ExportListItem";
 import EvidenceStatusPanel, {
   type EvidenceStatusItem,
 } from "@/components/integrations/EvidenceStatusPanel";
@@ -316,40 +316,16 @@ export default function IncidentDetailExportPanel({
       {recentExports.length === 0 ? (
         <p className="text-sm text-gray-400">No exports yet.</p>
       ) : (
-        <ul className="space-y-2">
+        <div className="space-y-2">
           {recentExports.map((item) => (
-            <li key={item.export_id} className="rounded border px-3 py-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-gray-600">{item.export_id.slice(0, 8)}…</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getExportStatusBadgeClass(item.status)}`}>
-                  {getExportStatusLabel(item.status)}
-                </span>
-              </div>
-              <div className="mt-2 flex gap-2">
-                <span className="rounded bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-600">
-                  {item.profile_id}
-                </span>
-                {item.status === "ready" && (
-                  <button
-                    onClick={() => handleDownload(item.export_id)}
-                    className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-                  >
-                    Download
-                  </button>
-                )}
-                {item.status === "failed" && (
-                  <button
-                    onClick={() => handleRetry(item.export_id)}
-                    disabled={submitting}
-                    className="rounded border border-gray-300 px-3 py-1 text-xs"
-                  >
-                    Retry export
-                  </button>
-                )}
-              </div>
-            </li>
+            <ExportListItem
+              key={item.export_id}
+              item={item}
+              onDownload={handleDownload}
+              onRetry={handleRetry}
+            />
           ))}
-        </ul>
+        </div>
       )}
 
       <GenerateExportModal
