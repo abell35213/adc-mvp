@@ -63,10 +63,17 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
   const breadcrumbs = pathname
     .split("/")
     .filter(Boolean)
-    .map((segment, index, all) => {
-      const href = `/${all.slice(0, index + 1).join("/")}`;
-      return { href, label: toTitleCase(segment) };
-    });
+    .reduce<{ href: string; label: string }[]>(
+      (items, segment, index, all) => {
+        if (segment === "admin") {
+          return items;
+        }
+        
+        const href = `/${all.slice(0, index + 1).join("/")}`;
+        return [...items, { href, label: toTitleCase(segment) }];
+      },
+      [],
+    );
 
   return (
     <div className="min-h-screen bg-page text-text-primary">
