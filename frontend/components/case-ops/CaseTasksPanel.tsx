@@ -39,7 +39,16 @@ export default function CaseTasksPanel({ tasks, onAddTask, onCompleteTask }: Cas
               <p className="text-gray-800">{task.title}</p>
               <p className="text-xs text-gray-500">{task.status} · {task.priority}</p>
             </div>
-            <button disabled={task.status === "completed"} onClick={() => void onCompleteTask(task.task_id)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50">Complete</button>
+            <button
+              disabled={task.status !== "open"}
+              onClick={() => {
+                if (task.status !== "open") return;
+                void onCompleteTask(task.task_id);
+              }}
+              className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+            >
+              Complete
+            </button>
           </li>
         ))}
         {tasks.length === 0 ? <li className="text-gray-500">No tasks yet.</li> : null}
