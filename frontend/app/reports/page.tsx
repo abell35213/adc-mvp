@@ -105,6 +105,12 @@ export default function ReportsPage() {
   const activeReport = REPORT_DATA[activeTab];
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  function setTabRef(key: ReportTabKey) {
+    return (el: HTMLButtonElement | null) => {
+      tabRefs.current[key] = el;
+    };
+  }
+
   const maxTrendValue = useMemo(
     () => Math.max(...activeReport.trend.map((point) => point.value), 1),
     [activeReport.trend],
@@ -151,7 +157,7 @@ export default function ReportsPage() {
                   aria-selected={active}
                   aria-controls={`report-panel-${tab.key}`}
                   tabIndex={active ? 0 : -1}
-                  ref={(el) => { tabRefs.current[tab.key] = el; }}
+                  ref={setTabRef(tab.key)}
                   onClick={() => setActiveTab(tab.key)}
                   onKeyDown={(e) => handleTabKeyDown(e, tab.key)}
                   className={[
