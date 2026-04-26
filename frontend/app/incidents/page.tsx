@@ -16,7 +16,13 @@ interface IncidentFilters {
   status: "all" | "capturing" | "ready";
   owner: "all" | "assigned" | "unassigned";
   dateRange: "all" | "today" | "week";
-  readiness: "all" | "ready" | "blocked" | "not_ready";
+  readiness:
+    | "all"
+    | "not_ready"
+    | "conditionally_ready"
+    | "ready_for_export"
+    | "exported"
+    | "closed";
   evidenceState: "all" | "missing" | "partial" | "complete";
 }
 
