@@ -7,9 +7,10 @@ import {
   getDriverProtocolSettings,
   updateDriverProtocolSettings,
   type DriverProtocolSettings,
+  type InstructionSource,
 } from "@/lib/api";
 
-const INSTRUCTION_SOURCES = [
+const INSTRUCTION_SOURCES: ReadonlyArray<{ value: InstructionSource; label: string }> = [
   { value: "default", label: "Default" },
   { value: "company", label: "Company" },
   { value: "insurer", label: "Insurer" },
