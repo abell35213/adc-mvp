@@ -1,12 +1,13 @@
 /* ── Integrations ──────────────────────────────────────────────── */
 
 import { request } from "./core";
+import type { IntegrationConnectionStatus, JsonObject } from "./types";
 
 export interface IntegrationConnectionHealth {
   integration_id: string;
   provider: string;
   domain: string | null;
-  status: "pending" | "active" | "inactive" | "error";
+  status: IntegrationConnectionStatus;
   healthy: boolean;
   reason: string | null;
   last_synced_at_utc: string | null;
@@ -25,8 +26,8 @@ export interface IntegrationOperationDiagnostics {
   correlation_id: string | null;
   external_reference: string | null;
   external_reference_id: string | null;
-  payload_json: Record<string, unknown>;
-  result_json: Record<string, unknown>;
+  payload_json: JsonObject;
+  result_json: JsonObject;
   error_message: string | null;
   error_code: string | null;
   error_category: string | null;

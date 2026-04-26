@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { CaseOpsQueueItem } from "@/lib/api";
+import type { CaseOpsQueueItem, CaseStatus } from "@/lib/api";
 
 type QueueTabKey = "all" | "new" | "in_review" | "awaiting_evidence" | "ready_for_export" | "escalated" | "awaiting_follow_up" | "exported" | "closed";
 
@@ -18,7 +18,7 @@ interface IncidentQueueTableProps {
   onTabChange: (tab: QueueTabKey) => void;
   onOpen: (incidentId: string) => void;
   onAssignMe: (incidentId: string) => void;
-  onCaseStatusChange: (incidentId: string, caseStatus: string) => void;
+  onCaseStatusChange: (incidentId: string, caseStatus: CaseStatus) => void;
 }
 
 const STATUSES = [
@@ -144,7 +144,7 @@ export default function IncidentQueueTable({
                         <button type="button" onClick={() => onAssignMe(item.incident_id)} className="rounded border border-border-default px-2 py-1 text-xs text-text-secondary hover:bg-surface-raised">Assign me</button>
                         <select
                           value={item.case_status}
-                          onChange={(e) => onCaseStatusChange(item.incident_id, e.target.value)}
+                          onChange={(e) => onCaseStatusChange(item.incident_id, e.target.value as CaseStatus)}
                           className="rounded border border-border-default bg-surface px-2 py-1 text-xs"
                         >
                           {STATUSES.map((status) => (

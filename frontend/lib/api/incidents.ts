@@ -5,6 +5,17 @@ import type {
   Incident,
   IncidentDetail,
   CaseOpsQueueSort,
+  CaseStatus,
+  IncidentSeverity,
+  IncidentStatus,
+  ReadinessState,
+  TaskStatus,
+  TaskPriority,
+  TaskType,
+  NoteType,
+  ActivitySource,
+  OwnerOperation,
+  JsonObject,
 } from "./types";
 
 export interface CaseOpsQueueBlockerCounts {
@@ -16,12 +27,12 @@ export interface CaseOpsQueueBlockerCounts {
 
 export interface CaseOpsQueueItem {
   incident_id: string;
-  case_status: string;
+  case_status: CaseStatus;
   owner_user_id?: string | null;
-  readiness_state: string;
+  readiness_state: ReadinessState;
   created_at_utc?: string | null;
   last_activity_at_utc?: string | null;
-  severity?: string | null;
+  severity?: IncidentSeverity | null;
   adc_vehicle_id?: string | null;
   adc_driver_id?: string | null;
   completeness_percent: number;
@@ -56,8 +67,8 @@ export interface CaseTaskWidgetItem {
   task_id: string;
   incident_id: string;
   title: string;
-  status: string;
-  priority: string;
+  status: TaskStatus;
+  priority: TaskPriority;
   due_at_utc?: string | null;
   assigned_to_user_id?: string | null;
   created_at_utc?: string | null;
@@ -98,8 +109,8 @@ export interface CaseWorkspaceEvidenceSummary {
 export interface CaseWorkspaceTaskItem {
   task_id: string;
   title: string;
-  status: string;
-  priority: string;
+  status: TaskStatus;
+  priority: TaskPriority;
   due_at_utc?: string | null;
   assigned_to_user_id?: string | null;
   created_at_utc?: string | null;
@@ -108,7 +119,7 @@ export interface CaseWorkspaceTaskItem {
 export interface CaseWorkspaceNoteItem {
   note_id: string;
   body: string;
-  note_type: "standard" | "tagged" | "decision";
+  note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
   created_at_utc: string;
@@ -116,21 +127,21 @@ export interface CaseWorkspaceNoteItem {
 }
 
 export interface CaseWorkspaceActivityItem {
-  source: "event" | "audit";
+  source: ActivitySource;
   type: string;
   occurred_at_utc: string;
   actor_type: string;
   actor_id: string;
-  detail: Record<string, unknown>;
+  detail: JsonObject;
 }
 
 export interface CaseWorkspaceResponse {
   incident_id: string;
   owner?: CaseWorkspaceOwner | null;
-  case_status: string;
-  readiness_state: string;
+  case_status: CaseStatus;
+  readiness_state: ReadinessState;
   completeness: CaseWorkspaceCompleteness;
-  blockers: Array<Record<string, unknown>>;
+  blockers: JsonObject[];
   evidence_summary: CaseWorkspaceEvidenceSummary;
   missing_items: string[];
   open_tasks: CaseWorkspaceTaskItem[];
@@ -143,9 +154,9 @@ export interface IncidentTaskItem {
   incident_id: string;
   title: string;
   description?: string | null;
-  task_type: "review" | "evidence" | "follow_up" | "export" | "other";
-  status: "open" | "completed" | "cancelled";
-  priority: "low" | "medium" | "high" | "urgent";
+  task_type: TaskType;
+  status: TaskStatus;
+  priority: TaskPriority;
   due_at_utc?: string | null;
   assigned_to_user_id?: string | null;
   assigned_at_utc?: string | null;
@@ -166,7 +177,7 @@ export interface IncidentNoteItem {
   note_id: string;
   incident_id: string;
   body: string;
-  note_type: "standard" | "tagged" | "decision";
+  note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
   created_at_utc: string;
@@ -188,14 +199,14 @@ export function listIncidents() {
 }
 
 export function createIncident(data: {
-  severity: string;
+  severity: IncidentSeverity;
   adc_vehicle_id: string;
   samsara_vehicle_id: string;
   adc_driver_id: string;
   window_start?: string;
   window_end?: string;
 }) {
-  return request<{ incident_id: string; status: string }>("/incidents/", {
+  return request<{ incident_id: string; status: IncidentStatus }>("/incidents/", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -245,7 +256,7 @@ export function getOverdueTasks(params?: { limit?: number }) {
 }
 
 export function patchIncidentOwner(incidentId: string, data: {
-  operation: "assign" | "reassign" | "clear";
+  operation: OwnerOperation;
   owner_user_id?: string | null;
 }) {
   return request<{ incident_id: string; owner_user_id?: string | null }>(`/incidents/${incidentId}/owner`, {
@@ -255,10 +266,10 @@ export function patchIncidentOwner(incidentId: string, data: {
 }
 
 export function patchIncidentStatus(incidentId: string, data: {
-  case_status: string;
+  case_status: CaseStatus;
   reason: string;
 }) {
-  return request<{ incident_id: string; case_status: string }>(`/incidents/${incidentId}/status`, {
+  return request<{ incident_id: string; case_status: CaseStatus }>(`/incidents/${incidentId}/status`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -275,7 +286,7 @@ export function listIncidentNotes(incidentId: string, params?: { includeDeleted?
 
 export function createIncidentNote(incidentId: string, data: {
   body: string;
-  note_type?: "standard" | "tagged" | "decision";
+  note_type?: NoteType;
   tags?: string[];
 }) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
@@ -287,7 +298,7 @@ export function createIncidentNote(incidentId: string, data: {
 export function patchIncidentNote(incidentId: string, data: {
   note_id: string;
   body?: string;
-  note_type?: "standard" | "tagged" | "decision";
+  note_type?: NoteType;
   tags?: string[];
 }) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
@@ -310,8 +321,8 @@ export function listIncidentTasks(incidentId: string) {
 export function createIncidentTask(incidentId: string, data: {
   title: string;
   description?: string;
-  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
-  priority?: "low" | "medium" | "high" | "urgent";
+  task_type?: TaskType;
+  priority?: TaskPriority;
   due_at_utc?: string;
   assigned_to_user_id?: string;
 }) {
@@ -324,11 +335,11 @@ export function createIncidentTask(incidentId: string, data: {
 export function patchTask(taskId: string, data: {
   title?: string;
   description?: string;
-  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
-  priority?: "low" | "medium" | "high" | "urgent";
+  task_type?: TaskType;
+  priority?: TaskPriority;
   due_at_utc?: string;
   assigned_to_user_id?: string;
-  status?: "open" | "completed" | "cancelled";
+  status?: TaskStatus;
 }) {
   return request<IncidentTaskItem>(`/tasks/${taskId}`, {
     method: "PATCH",

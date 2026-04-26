@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CaseStatus } from "@/lib/api";
 
 const CASE_STATUSES = [
   "new",
@@ -11,11 +12,11 @@ const CASE_STATUSES = [
   "exported",
   "escalated",
   "closed",
-] as const;
+] as const satisfies readonly CaseStatus[];
 
 interface CaseStatusControlProps {
-  caseStatus: string;
-  onChange: (nextStatus: string) => Promise<void>;
+  caseStatus: CaseStatus;
+  onChange: (nextStatus: CaseStatus) => Promise<void>;
 }
 
 export default function CaseStatusControl({ caseStatus, onChange }: CaseStatusControlProps) {
@@ -31,7 +32,7 @@ export default function CaseStatusControl({ caseStatus, onChange }: CaseStatusCo
         onChange={async (e) => {
           setBusy(true);
           try {
-            await onChange(e.target.value);
+            await onChange(e.target.value as CaseStatus);
           } finally {
             setBusy(false);
           }

@@ -1,10 +1,17 @@
 /* ── Admin ─────────────────────────────────────────────────────── */
 
 import { request } from "./core";
-import type { ImportJobStatus, ExportType, ExportStatus } from "./types";
+import type {
+  ImportJobStatus,
+  ExportType,
+  ExportStatus,
+  IntegrationHealthStatus,
+  InstructionSource,
+  JsonObject,
+} from "./types";
 
 export interface DriverProtocolSettings {
-  instruction_source: string;
+  instruction_source: InstructionSource;
   require_ack: boolean;
   sms_enabled: boolean;
   voice_enabled: boolean;
@@ -212,7 +219,7 @@ export interface OpsFailedExportItem {
 
 export interface IntegrationHealthItem {
   integration_key: string;
-  status: "healthy" | "degraded";
+  status: IntegrationHealthStatus;
   failure_count: number;
   last_failure_at_utc?: string | null;
   details?: string | null;
@@ -225,7 +232,7 @@ export interface OpsAnomalyItem {
   event_type: string;
   outcome?: string | null;
   actor_id: string;
-  metadata: Record<string, unknown>;
+  metadata: JsonObject;
 }
 
 export interface OpsDashboardResponse {
@@ -248,7 +255,7 @@ export interface AuditSearchResponseItem {
   event_type: string;
   outcome?: string | null;
   occurred_at_utc: string;
-  metadata: Record<string, unknown>;
+  metadata: JsonObject;
 }
 
 export function getOpsDashboard(params?: {

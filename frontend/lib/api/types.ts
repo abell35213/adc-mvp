@@ -166,7 +166,7 @@ export interface ExportSummary {
   profile_id: string;
   requested_by_user_id?: string | null;
   retry_parent_export_id?: string | null;
-  options_json: Record<string, unknown>;
+  options_json: JsonObject;
   status: ExportStatus;
   progress_stage: ExportProgressStage;
   error_message?: string | null;
@@ -210,13 +210,13 @@ export interface EventSummary {
   event_type: string;
   occurred_at_utc: string;
   actor_type: string;
-  payload?: Record<string, unknown> | null;
+  payload?: JsonObject | null;
 }
 
 export interface Incident {
   incident_id: string;
-  status: string;
-  severity: string | null;
+  status: IncidentStatus;
+  severity: IncidentSeverity | null;
   adc_vehicle_id: string | null;
   samsara_vehicle_id: string | null;
   adc_driver_id: string | null;
@@ -225,7 +225,7 @@ export interface Incident {
   evidence_total?: number;
   completeness_percent?: number;
   completeness_status?: string;
-  readiness_state?: string;
+  readiness_state?: ReadinessState;
   blocker_counts?: Record<string, number>;
   driver_response?: DriverResponseSummary | null;
   driver_protocol_summary?: DriverProtocolSummary | null;
@@ -236,7 +236,7 @@ export interface IncidentDetail extends Incident {
   export_status: ExportSummary[];
   timeline: EventSummary[];
   completeness_missing_items?: string[];
-  blockers?: Array<{ code: string; message: string; severity: string }>;
+  blockers?: Array<{ code: string; message: string; severity: BlockerSeverity }>;
 }
 
 export type OnboardingStepStatus =

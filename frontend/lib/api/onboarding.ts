@@ -1,7 +1,14 @@
 /* ── Onboarding ─────────────────────────────────────────────────── */
 
 import { request } from "./core";
-import type { OnboardingStepStatus, OnboardingReadinessStatus } from "./types";
+import type {
+  OnboardingStepStatus,
+  OnboardingReadinessStatus,
+  OnboardingImportJobStatus,
+  BlockerSeverity,
+  InstructionSource,
+  JsonObject,
+} from "./types";
 
 export interface OnboardingReadinessStep {
   key: string;
@@ -16,14 +23,14 @@ export interface OnboardingBlocker {
   code: string;
   title: string;
   detail: string;
-  severity: "critical" | "warning" | "info" | "error";
+  severity: BlockerSeverity;
   blocking_step_key?: string | null;
 }
 
 export interface OnboardingImportJob {
   import_job_id: string;
   provider: string;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: OnboardingImportJobStatus;
   records_total: number;
   records_succeeded: number;
   records_failed: number;
@@ -55,7 +62,7 @@ export interface OnboardingMetricsSnapshot {
 export interface OnboardingAlertCondition {
   code: string;
   title: string;
-  severity: "critical" | "warning" | "info" | "error";
+  severity: BlockerSeverity;
   triggered: boolean;
   detail: string;
 }
@@ -70,7 +77,7 @@ export interface OrgLaunchReadiness {
   latest_export_validation?: ExportValidationRun | null;
   metrics?: OnboardingMetricsSnapshot | null;
   alert_conditions?: OnboardingAlertCondition[];
-  reporting_hooks?: Record<string, unknown>;
+  reporting_hooks?: JsonObject;
   snapshot_created_at_utc?: string | null;
 }
 
@@ -110,7 +117,7 @@ type IntegrationValidationResultCurrentResponse = {
 
 export interface ProtocolSetupStepData {
   instruction_set_selected: boolean;
-  instruction_source: "default" | "company" | "insurer";
+  instruction_source: InstructionSource;
   safety_contact_configured: boolean;
   safety_manager_phone: string | null;
   required_media_prompts_defaulted: boolean;

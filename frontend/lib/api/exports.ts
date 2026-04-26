@@ -8,6 +8,7 @@ import type {
   ExportSummary,
   ExportListItem,
   EventSummary,
+  JsonObject,
 } from "./types";
 
 export type ExportContentsClassification =
@@ -38,7 +39,7 @@ export interface ExportContentsResponse {
 export interface CreateExportRequest {
   incident_id: string;
   export_type: ExportType;
-  options_json?: Record<string, unknown>;
+  options_json?: JsonObject;
 }
 
 export interface CreateExportEnqueueResponse {
@@ -51,7 +52,7 @@ export interface CreateExportEnqueueResponse {
 
 export interface RetryExportRequest {
   export_type?: ExportType;
-  options_json?: Record<string, unknown>;
+  options_json?: JsonObject;
 }
 
 export interface ExportStatusResponse {
