@@ -63,7 +63,7 @@ export default function IncidentsPage() {
     if (s === "open") return "Open";
     if (s === "evidence_capturing") return "Capturing Evidence";
     if (s === "closed") return "Closed";
-    return s.replaceAll("_", " ");
+    return s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   }
 
   function statusTone(s: string): StatusTone {
@@ -71,6 +71,12 @@ export default function IncidentsPage() {
     if (s === "evidence_capturing") return "warning";
     if (s === "closed") return "success";
     return "info";
+  }
+
+  function readinessTone(readiness: string): StatusTone {
+    if (["ready_for_export", "exported", "closed"].includes(readiness)) return "success";
+    if (readiness === "not_ready") return "critical";
+    return "warning";
   }
 
   function formatTime(iso?: string): string {
@@ -353,11 +359,8 @@ export default function IncidentsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={statusBadgeClass(
-                      ["ready_for_export", "exported", "closed"].includes(readiness) ? "success" :
-                      readiness === "not_ready" ? "critical" : "warning"
-                    )}>
-                      {readiness.replaceAll("_", " ")}
+                    <span className={statusBadgeClass(readinessTone(readiness))}>
+                      {readiness.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
                     </span>
                   </td>
                   <td className="px-4 py-3">
