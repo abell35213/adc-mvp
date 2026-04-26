@@ -147,8 +147,7 @@ export default function HelpPage() {
             id={`help-panel-${activeCategory}`}
             role="tabpanel"
             aria-labelledby={`help-tab-${activeCategory}`}
-            tabIndex={0}
-            className="space-y-3 focus:outline-none"
+            className="space-y-3"
           >
             {articles.map((article) => (
               <HelpArticleCard key={article.href} article={article} />
