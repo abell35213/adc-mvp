@@ -95,7 +95,9 @@ export default function IncidentsPage() {
   }
 
   function isReady(incident: Incident): boolean {
-    return ["ready", "closed", "export_ready"].includes(incident.status);
+    return ["ready_for_export", "exported", "closed"].includes(
+      incident.readiness_state ?? "",
+    );
   }
 
   function ownerState(incident: Incident): "assigned" | "unassigned" {
