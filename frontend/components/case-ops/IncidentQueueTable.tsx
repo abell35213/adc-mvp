@@ -95,7 +95,7 @@ export default function IncidentQueueTable({
       </div>
 
       {loading ? <div className="p-4 text-sm text-text-secondary">Loading incident queue…</div> : null}
-      {error ? <div className="m-4 rounded-md border border-status-critical/40 bg-status-critical-soft px-3 py-2 text-sm text-status-critical">{error}</div> : null}
+      {!loading && error ? <div className="m-4 rounded-md border border-status-critical/40 bg-status-critical-soft px-3 py-2 text-sm text-status-critical">{error}</div> : null}
       {!loading && !error && items.length === 0 ? (
         <div className="p-4 text-sm text-text-secondary">No incidents match current filters.</div>
       ) : null}
