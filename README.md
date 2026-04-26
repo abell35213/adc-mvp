@@ -178,6 +178,10 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:8000 npm run start
 - API: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
 
+See [`driver-app/TESTING.md`](driver-app/TESTING.md) for the test
+architecture (unit + RNTL Jest projects), running tests, mocking
+conventions, and coverage thresholds.
+
 ### Docker (from repo root)
 
 ```bash

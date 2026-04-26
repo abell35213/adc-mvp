@@ -77,6 +77,40 @@ jobs:
       - name: Build (next)
         run: npm run build
 
+  driver-app:
+    name: Driver app tests + coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: driver-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: driver-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Tests with coverage (enforces thresholds)
+        # ``test:coverage`` runs both the ``unit`` and ``rntl`` Jest
+        # projects and applies the global coverage thresholds defined in
+        # driver-app/jest.config.js. A drop below those thresholds will
+        # exit non-zero and fail this job.
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-app-coverage
+          path: driver-app/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
   migration-integrity:
     name: Migration integrity checks
     runs-on: ubuntu-latest
@@ -159,6 +193,7 @@ jobs:
     needs:
       - backend
       - frontend
+      - driver-app
       - migration-integrity
       - schema-validation
       - dependency-vulnerability-scan
@@ -167,11 +202,12 @@ jobs:
         env:
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          DRIVER_APP_RESULT: ${{ needs.driver-app.result }}
           MIGRATION_RESULT: ${{ needs.migration-integrity.result }}
           SCHEMA_RESULT: ${{ needs.schema-validation.result }}
           VULN_RESULT: ${{ needs.dependency-vulnerability-scan.result }}
         run: |
-          results=("$BACKEND_RESULT" "$FRONTEND_RESULT" "$MIGRATION_RESULT" "$SCHEMA_RESULT" "$VULN_RESULT")
+          results=("$BACKEND_RESULT" "$FRONTEND_RESULT" "$DRIVER_APP_RESULT" "$MIGRATION_RESULT" "$SCHEMA_RESULT" "$VULN_RESULT")
           for result in "${results[@]}"; do
             if [[ "$result" != "success" ]]; then
               echo "Required CI dependency failed or was skipped: $result"
