@@ -132,7 +132,7 @@ export default function IncidentDetailClient() {
   const acknowledged = Boolean(driverResponse.acknowledged_at_utc);
   const uploadsComplete = Boolean(driverResponse.uploads_complete);
   const waitingOnDriver = Boolean(driverResponse.awaiting_driver_action ?? (notificationSent && (!acknowledged || !uploadsComplete)));
-  const workspaceCaseStatus = workspace?.case_status ?? incident?.status ?? "new";
+  const workspaceCaseStatus = workspace?.case_status ?? "new";
   const workspaceReadiness = workspace?.readiness_state ?? incident?.readiness_state ?? "not_ready";
   const workspaceOwnerUserId = workspace?.owner?.user_id ?? null;
   const workspaceMissingItems = workspace?.missing_items ?? incident?.completeness_missing_items ?? [];
