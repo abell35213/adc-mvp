@@ -217,11 +217,7 @@ export function getIntegrationValidationResults() {
   return requestValidated(
     "/org/integrations/validation-results",
     IntegrationValidationRowsSchema
-  ).then((rows) =>
-    (rows as IntegrationValidationRawResponse[])
-      .map(tagValidationRow)
-      .map(normalizeValidationRow)
-  );
+  ).then((rows) => rows.map(tagValidationRow).map(normalizeValidationRow));
 }
 
 export function getProtocolSetupStepData() {

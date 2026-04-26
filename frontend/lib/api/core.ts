@@ -205,5 +205,5 @@ export async function requestValidated<S extends ZodType>(
   if (!result.success) {
     throw new ApiResponseValidationError(path, result.error.issues);
   }
-  return result.data as ReturnType<S["parse"]>;
+  return result.data;
 }
