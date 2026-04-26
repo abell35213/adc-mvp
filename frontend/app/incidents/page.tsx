@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MainLayout from "@/components/MainLayout";
 import DocumentationCenter from "@/components/commercial/DocumentationCenter";
@@ -44,7 +44,7 @@ const SAVED_VIEW_LABELS: Record<SavedViewKey, string> = {
 
 export default function IncidentsPage() {
   const { user, loading: authLoading } = useAuth();
-  const referenceNow = useRef(0);
+  const [referenceNowMs, setReferenceNowMs] = useState(0);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,7 +52,7 @@ export default function IncidentsPage() {
   const [filters, setFilters] = useState<IncidentFilters>(DEFAULT_FILTERS);
 
   useEffect(() => {
-    referenceNow.current = Date.now();
+    setReferenceNowMs(Date.now());
   }, []);
 
   useEffect(() => {
@@ -128,10 +128,10 @@ export default function IncidentsPage() {
   }
 
   function inDateWindow(incident: Incident, dateRange: IncidentFilters["dateRange"]) {
-    if (dateRange === "all") return true;
+    if (dateRange === "all" || referenceNowMs === 0) return true;
     if (!incident.created_at_utc) return false;
     const created = new Date(incident.created_at_utc).getTime();
-    const ageMs = referenceNow.current - created;
+    const ageMs = referenceNowMs - created;
     if (dateRange === "today") return ageMs <= 24 * 60 * 60 * 1000;
     return ageMs <= 7 * 24 * 60 * 60 * 1000;
   }
