@@ -67,24 +67,15 @@ export default function TrustPage() {
         />
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TrustSectionCard
-            id={TRUST_SECTIONS[0].id}
-            title="Security controls"
-            summary={TRUST_SECTIONS[0].summary}
-            points={TRUST_SECTIONS[0].points}
-          />
-          <TrustSectionCard
-            id={TRUST_SECTIONS[1].id}
-            title="Compliance evidence"
-            summary={TRUST_SECTIONS[1].summary}
-            points={TRUST_SECTIONS[1].points}
-          />
-          <TrustSectionCard
-            id={TRUST_SECTIONS[2].id}
-            title={TRUST_SECTIONS[2].title}
-            summary={TRUST_SECTIONS[2].summary}
-            points={TRUST_SECTIONS[2].points}
-          />
+          {TRUST_SECTIONS.map((section) => (
+            <TrustSectionCard
+              key={section.id}
+              id={section.id}
+              title={section.title}
+              summary={section.summary}
+              points={section.points}
+            />
+          ))}
         </section>
       </div>
     </MainLayout>
