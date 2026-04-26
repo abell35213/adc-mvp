@@ -31,6 +31,7 @@ import {
   type CaseOpsAlerts,
   type CaseOpsQueueItem,
   type CaseOpsSummaryMetrics,
+  type CaseStatus,
   type CaseTaskWidgetItem,
   type IntegrationValidationResult,
   type OrgLaunchReadiness,
@@ -269,7 +270,7 @@ export default function DashboardClient() {
     }
   };
 
-  const onCaseStatusChange = async (incidentId: string, caseStatus: string) => {
+  const onCaseStatusChange = async (incidentId: string, caseStatus: CaseStatus) => {
     try {
       setActionError("");
       await patchIncidentStatus(incidentId, {

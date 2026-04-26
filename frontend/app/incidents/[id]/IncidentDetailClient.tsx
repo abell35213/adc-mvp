@@ -15,6 +15,7 @@ import {
   patchIncidentStatus,
   toUserErrorMessage,
   type CaseWorkspaceResponse,
+  type CaseStatus,
   type DriverProtocolSummary,
   type DriverResponseSummary,
   type IncidentDetail,
@@ -171,7 +172,7 @@ export default function IncidentDetailClient() {
     }
   }, [id, refreshIncident, refreshWorkspacePanels, workspace]);
 
-  const onCaseStatusChange = useCallback(async (nextStatus: string) => {
+  const onCaseStatusChange = useCallback(async (nextStatus: CaseStatus) => {
     const previous = workspace;
     setWorkspace((current) => (current ? { ...current, case_status: nextStatus } : current));
     try {

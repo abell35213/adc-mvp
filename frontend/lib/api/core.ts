@@ -1,5 +1,12 @@
 /** Thin wrapper around fetch for talking to the FastAPI backend. */
 
+import type { ZodType } from "zod";
+
+import {
+  buildQuery as buildQueryImpl,
+  parseApiErrorPayload as parseApiErrorPayloadImpl,
+} from "./queryString.mjs";
+
 const API_BASE =
   typeof window === "undefined"
     ? process.env.API_INTERNAL_BASE_URL ??
@@ -38,18 +45,43 @@ export class ApiRequestError extends Error {
   }
 }
 
-function parseApiErrorPayload(payload: ApiErrorPayload | null | undefined) {
-  const detail = payload?.detail;
-  if (typeof detail === "string") {
-    return { message: detail };
+/** Thrown when the network call itself fails (DNS, offline, CORS, etc.). */
+export class ApiNetworkError extends Error {
+  cause?: unknown;
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = "ApiNetworkError";
+    this.cause = cause;
   }
-  return {
-    message: detail?.message,
-    code: detail?.code,
-    retryHint: detail?.retry_hint,
-    correlationId: detail?.correlation_id,
-  };
 }
+
+/**
+ * Thrown when a successful HTTP response fails runtime schema
+ * validation.  Carries the underlying zod issue for diagnostics while
+ * presenting a stable, user-safe message.
+ */
+export class ApiResponseValidationError extends Error {
+  path: string;
+  issues: unknown;
+
+  constructor(path: string, issues: unknown) {
+    super(`Response from ${path} did not match expected schema`);
+    this.name = "ApiResponseValidationError";
+    this.path = path;
+    this.issues = issues;
+  }
+}
+
+export interface ParsedApiError {
+  message?: string;
+  code?: string;
+  retryHint?: string;
+  correlationId?: string;
+}
+
+export const parseApiErrorPayload = parseApiErrorPayloadImpl as (
+  payload: unknown
+) => ParsedApiError;
 
 export function toUserErrorMessage(error: unknown, fallback = "Request failed"): string {
   if (!(error instanceof ApiRequestError)) {
@@ -73,20 +105,37 @@ export function toUserErrorMessage(error: unknown, fallback = "Request failed"):
   return `${guidance ?? error.message ?? fallback}${hint}${correlation}`.trim();
 }
 
+/**
+ * Merge `HeadersInit` (record, array, or `Headers`) into a single mutable
+ * `Headers` instance, then ensure the JSON `Content-Type` default is set.
+ */
+function mergeHeaders(init: HeadersInit | undefined): Headers {
+  const headers = new Headers(init);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
+  const headers = mergeHeaders(init?.headers);
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    credentials: init?.credentials ?? "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      credentials: init?.credentials ?? "include",
+    });
+  } catch (cause) {
+    throw new ApiNetworkError(
+      cause instanceof Error ? cause.message : "Network request failed",
+      cause
+    );
+  }
 
   if (res.status === 401) {
     const isAuthMutation = path === "/auth/login" || path === "/auth/register";
@@ -97,7 +146,7 @@ export async function request<T>(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as ApiErrorPayload;
+    const body: unknown = await res.json().catch(() => null);
     const parsed = parseApiErrorPayload(body);
     throw new ApiRequestError(parsed.message ?? res.statusText, res.status, parsed);
   }
@@ -111,4 +160,50 @@ export async function request<T>(
     return res.json() as Promise<T>;
   }
   return undefined as T;
+}
+
+/* ── Query-string helper ────────────────────────────────────────── */
+
+/**
+ * Primitive value accepted by {@link buildQuery}.  Values of `undefined`,
+ * `null`, or empty string are skipped so that callers can pass partially
+ * filled `params` objects without having to guard each field.
+ */
+export type QueryValue = string | number | boolean | null | undefined;
+
+/**
+ * Build a URL query-string suffix (including the leading `?`) from a
+ * record of primitives.  Returns `""` when no values are present.
+ *
+ * Skips entries whose value is `undefined`, `null`, or an empty string,
+ * matching the behavior previously hand-rolled in each request helper.
+ */
+export const buildQuery = buildQueryImpl as <
+  T extends { [K in keyof T]: QueryValue }
+>(
+  params?: T | undefined
+) => string;
+
+/* ── Validated request helper ───────────────────────────────────── */
+
+/**
+ * Issue a request and validate the parsed JSON response against a
+ * zod schema.  On schema mismatch, throws {@link ApiResponseValidationError}
+ * so calling code can distinguish "server returned an unexpected shape"
+ * from a normal HTTP error.
+ *
+ * Prefer this over the bare {@link request} helper for endpoints whose
+ * payload shape is security-sensitive or polymorphic.
+ */
+export async function requestValidated<S extends ZodType>(
+  path: string,
+  schema: S,
+  init?: RequestInit
+): Promise<ReturnType<S["parse"]>> {
+  const raw = await request<unknown>(path, init);
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    throw new ApiResponseValidationError(path, result.error.issues);
+  }
+  return result.data;
 }

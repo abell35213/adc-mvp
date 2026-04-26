@@ -1,10 +1,18 @@
 /* ── Admin ─────────────────────────────────────────────────────── */
 
-import { request } from "./core";
-import type { ImportJobStatus, ExportType, ExportStatus } from "./types";
+import { request, buildQuery } from "./core";
+import type {
+  ImportJobStatus,
+  ExportType,
+  ExportStatus,
+  IntegrationHealthStatus,
+  InstructionSource,
+  JsonObject,
+  UtcTimestamp,
+} from "./types";
 
 export interface DriverProtocolSettings {
-  instruction_source: string;
+  instruction_source: InstructionSource;
   require_ack: boolean;
   sms_enabled: boolean;
   voice_enabled: boolean;
@@ -37,16 +45,17 @@ export interface DriverInstructionSet {
 }
 
 export function getDriverProtocolInstructions(scope?: string) {
-  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
   return request<DriverInstructionSet>(
-    `/admin/driver-protocol/instructions${query}`
+    `/admin/driver-protocol/instructions${buildQuery({ scope })}`
   );
 }
 
-export function updateDriverProtocolInstructions(data: {
+export interface UpdateDriverProtocolInstructionsRequest {
   scope: string;
   steps: DriverInstructionStep[];
-}) {
+}
+
+export function updateDriverProtocolInstructions(data: UpdateDriverProtocolInstructionsRequest) {
   return request<DriverInstructionSet>("/admin/driver-protocol/instructions", {
     method: "PUT",
     body: JSON.stringify(data),
@@ -54,9 +63,8 @@ export function updateDriverProtocolInstructions(data: {
 }
 
 export function resetDriverProtocolInstructions(scope?: string) {
-  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
   return request<DriverInstructionSet>(
-    `/admin/driver-protocol/instructions/reset${query}`,
+    `/admin/driver-protocol/instructions/reset${buildQuery({ scope })}`,
     { method: "POST" }
   );
 }
@@ -84,8 +92,8 @@ export interface VehicleImportJobResponse {
   job_id: string;
   provider: string;
   status: ImportJobStatus;
-  started_at_utc?: string | null;
-  completed_at_utc?: string | null;
+  started_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
   records_total: number;
   records_processed: number;
   records_imported: number;
@@ -122,8 +130,8 @@ export interface DriverImportJobResponse {
   job_id: string;
   provider: string;
   status: ImportJobStatus;
-  started_at_utc?: string | null;
-  completed_at_utc?: string | null;
+  started_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
   records_total: number;
   records_processed: number;
   records_imported: number;
@@ -151,13 +159,20 @@ export function getVehicleQrPayload(vehicleId: string) {
   return request<{ deep_link: string }>(`/admin/vehicles/${vehicleId}/qr`);
 }
 
-export function createVehicleImportJob(data: {
+export interface CreateVehicleImportJobRequest {
   provider: string;
   csv_content: string;
   header_mapping: Record<string, string>;
   inactive_unit_numbers: string[];
-}) {
-  return request<{ job_id: string; status: ImportJobStatus }>("/org/vehicles/import", {
+}
+
+export interface CreateImportJobResponse {
+  job_id: string;
+  status: ImportJobStatus;
+}
+
+export function createVehicleImportJob(data: CreateVehicleImportJobRequest) {
+  return request<CreateImportJobResponse>("/org/vehicles/import", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -167,13 +182,15 @@ export function getVehicleImportJob(jobId: string) {
   return request<VehicleImportJobResponse>(`/org/vehicles/import-jobs/${jobId}`);
 }
 
-export function createDriverImportJob(data: {
+export interface CreateDriverImportJobRequest {
   provider: string;
   csv_content: string;
   header_mapping: Record<string, string>;
   inactive_mobile_phones: string[];
-}) {
-  return request<{ job_id: string; status: ImportJobStatus }>("/org/drivers/import", {
+}
+
+export function createDriverImportJob(data: CreateDriverImportJobRequest) {
+  return request<CreateImportJobResponse>("/org/drivers/import", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -186,7 +203,7 @@ export function getDriverImportJob(jobId: string) {
 export interface OpsIncidentItem {
   incident_id: string;
   status: string;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
   adc_vehicle_id?: string | null;
   adc_driver_id?: string | null;
   reason: string;
@@ -198,7 +215,7 @@ export interface OpsFailedNotificationItem {
   retry_count: number;
   max_retries?: number | null;
   last_error?: string | null;
-  updated_at_utc?: string | null;
+  updated_at_utc?: UtcTimestamp | null;
 }
 
 export interface OpsFailedExportItem {
@@ -207,25 +224,25 @@ export interface OpsFailedExportItem {
   export_type: ExportType;
   status: ExportStatus;
   error_message?: string | null;
-  updated_at_utc?: string | null;
+  updated_at_utc?: UtcTimestamp | null;
 }
 
 export interface IntegrationHealthItem {
   integration_key: string;
-  status: "healthy" | "degraded";
+  status: IntegrationHealthStatus;
   failure_count: number;
-  last_failure_at_utc?: string | null;
+  last_failure_at_utc?: UtcTimestamp | null;
   details?: string | null;
 }
 
 export interface OpsAnomalyItem {
   audit_event_id: string;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   action: string;
   event_type: string;
   outcome?: string | null;
   actor_id: string;
-  metadata: Record<string, unknown>;
+  metadata: JsonObject;
 }
 
 export interface OpsDashboardResponse {
@@ -247,26 +264,20 @@ export interface AuditSearchResponseItem {
   action: string;
   event_type: string;
   outcome?: string | null;
-  occurred_at_utc: string;
-  metadata: Record<string, unknown>;
+  occurred_at_utc: UtcTimestamp;
+  metadata: JsonObject;
 }
 
-export function getOpsDashboard(params?: {
+export interface GetOpsDashboardParams {
   stale_after_minutes?: number;
   lookback_hours?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.stale_after_minutes) {
-    query.set("stale_after_minutes", String(params.stale_after_minutes));
-  }
-  if (params?.lookback_hours) {
-    query.set("lookback_hours", String(params.lookback_hours));
-  }
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<OpsDashboardResponse>(`/admin/ops/dashboard${suffix}`);
 }
 
-export function searchOpsAudit(params?: {
+export function getOpsDashboard(params?: GetOpsDashboardParams) {
+  return request<OpsDashboardResponse>(`/admin/ops/dashboard${buildQuery(params)}`);
+}
+
+export interface SearchOpsAuditParams {
   q?: string;
   action?: string;
   event_type?: string;
@@ -274,15 +285,8 @@ export function searchOpsAudit(params?: {
   actor_id?: string;
   lookback_hours?: number;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.q) query.set("q", params.q);
-  if (params?.action) query.set("action", params.action);
-  if (params?.event_type) query.set("event_type", params.event_type);
-  if (params?.outcome) query.set("outcome", params.outcome);
-  if (params?.actor_id) query.set("actor_id", params.actor_id);
-  if (params?.lookback_hours) query.set("lookback_hours", String(params.lookback_hours));
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<AuditSearchResponseItem[]>(`/admin/ops/audit-search${suffix}`);
+}
+
+export function searchOpsAudit(params?: SearchOpsAuditParams) {
+  return request<AuditSearchResponseItem[]>(`/admin/ops/audit-search${buildQuery(params)}`);
 }

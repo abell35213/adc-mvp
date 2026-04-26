@@ -1,10 +1,22 @@
 /* ── Incidents ─────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, buildQuery } from "./core";
 import type {
   Incident,
   IncidentDetail,
   CaseOpsQueueSort,
+  CaseStatus,
+  IncidentSeverity,
+  IncidentStatus,
+  ReadinessState,
+  TaskStatus,
+  TaskPriority,
+  TaskType,
+  NoteType,
+  ActivitySource,
+  OwnerOperation,
+  JsonObject,
+  UtcTimestamp,
 } from "./types";
 
 export interface CaseOpsQueueBlockerCounts {
@@ -16,12 +28,12 @@ export interface CaseOpsQueueBlockerCounts {
 
 export interface CaseOpsQueueItem {
   incident_id: string;
-  case_status: string;
+  case_status: CaseStatus;
   owner_user_id?: string | null;
-  readiness_state: string;
-  created_at_utc?: string | null;
-  last_activity_at_utc?: string | null;
-  severity?: string | null;
+  readiness_state: ReadinessState;
+  created_at_utc?: UtcTimestamp | null;
+  last_activity_at_utc?: UtcTimestamp | null;
+  severity?: IncidentSeverity | null;
   adc_vehicle_id?: string | null;
   adc_driver_id?: string | null;
   completeness_percent: number;
@@ -56,11 +68,11 @@ export interface CaseTaskWidgetItem {
   task_id: string;
   incident_id: string;
   title: string;
-  status: string;
-  priority: string;
-  due_at_utc?: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseTaskWidgetResponse {
@@ -98,39 +110,39 @@ export interface CaseWorkspaceEvidenceSummary {
 export interface CaseWorkspaceTaskItem {
   task_id: string;
   title: string;
-  status: string;
-  priority: string;
-  due_at_utc?: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  created_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseWorkspaceNoteItem {
   note_id: string;
   body: string;
-  note_type: "standard" | "tagged" | "decision";
+  note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
-  created_at_utc: string;
-  edited_at_utc?: string | null;
+  created_at_utc: UtcTimestamp;
+  edited_at_utc?: UtcTimestamp | null;
 }
 
 export interface CaseWorkspaceActivityItem {
-  source: "event" | "audit";
+  source: ActivitySource;
   type: string;
-  occurred_at_utc: string;
+  occurred_at_utc: UtcTimestamp;
   actor_type: string;
   actor_id: string;
-  detail: Record<string, unknown>;
+  detail: JsonObject;
 }
 
 export interface CaseWorkspaceResponse {
   incident_id: string;
   owner?: CaseWorkspaceOwner | null;
-  case_status: string;
-  readiness_state: string;
+  case_status: CaseStatus;
+  readiness_state: ReadinessState;
   completeness: CaseWorkspaceCompleteness;
-  blockers: Array<Record<string, unknown>>;
+  blockers: JsonObject[];
   evidence_summary: CaseWorkspaceEvidenceSummary;
   missing_items: string[];
   open_tasks: CaseWorkspaceTaskItem[];
@@ -143,17 +155,17 @@ export interface IncidentTaskItem {
   incident_id: string;
   title: string;
   description?: string | null;
-  task_type: "review" | "evidence" | "follow_up" | "export" | "other";
-  status: "open" | "completed" | "cancelled";
-  priority: "low" | "medium" | "high" | "urgent";
-  due_at_utc?: string | null;
+  task_type: TaskType;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_at_utc?: UtcTimestamp | null;
   assigned_to_user_id?: string | null;
-  assigned_at_utc?: string | null;
+  assigned_at_utc?: UtcTimestamp | null;
   assigned_by_user_id?: string | null;
   created_by_user_id?: string | null;
-  created_at_utc?: string | null;
-  completed_at_utc?: string | null;
-  canceled_at_utc?: string | null;
+  created_at_utc?: UtcTimestamp | null;
+  completed_at_utc?: UtcTimestamp | null;
+  canceled_at_utc?: UtcTimestamp | null;
   canceled_reason?: string | null;
   overdue: boolean;
 }
@@ -166,17 +178,17 @@ export interface IncidentNoteItem {
   note_id: string;
   incident_id: string;
   body: string;
-  note_type: "standard" | "tagged" | "decision";
+  note_type: NoteType;
   tags: string[];
   created_by_user_id?: string | null;
-  created_at_utc: string;
+  created_at_utc: UtcTimestamp;
   edited: boolean;
   edited_by_user_id?: string | null;
-  edited_at_utc?: string | null;
-  updated_at_utc: string;
+  edited_at_utc?: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp;
   is_deleted: boolean;
   deleted_by_user_id?: string | null;
-  deleted_at_utc?: string | null;
+  deleted_at_utc?: UtcTimestamp | null;
 }
 
 export interface IncidentNotesResponse {
@@ -187,15 +199,22 @@ export function listIncidents() {
   return request<Incident[]>("/incidents/");
 }
 
-export function createIncident(data: {
-  severity: string;
+export interface CreateIncidentRequest {
+  severity: IncidentSeverity;
   adc_vehicle_id: string;
   samsara_vehicle_id: string;
   adc_driver_id: string;
   window_start?: string;
   window_end?: string;
-}) {
-  return request<{ incident_id: string; status: string }>("/incidents/", {
+}
+
+export interface CreateIncidentResponse {
+  incident_id: string;
+  status: IncidentStatus;
+}
+
+export function createIncident(data: CreateIncidentRequest) {
+  return request<CreateIncidentResponse>("/incidents/", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -205,7 +224,7 @@ export function getIncident(id: string) {
   return request<IncidentDetail>(`/incidents/${id}`);
 }
 
-export function getIncidentQueue(params?: {
+export interface GetIncidentQueueParams {
   status?: string;
   readiness_state?: string;
   blockers?: string;
@@ -213,17 +232,10 @@ export function getIncidentQueue(params?: {
   sort?: CaseOpsQueueSort;
   page?: number;
   page_size?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.status) query.set("status", params.status);
-  if (params?.readiness_state) query.set("readiness_state", params.readiness_state);
-  if (params?.blockers) query.set("blockers", params.blockers);
-  if (params?.search) query.set("search", params.search);
-  if (params?.sort) query.set("sort", params.sort);
-  if (params?.page) query.set("page", String(params.page));
-  if (params?.page_size) query.set("page_size", String(params.page_size));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<CaseOpsQueueResponse>(`/incidents/queue${suffix}`);
+}
+
+export function getIncidentQueue(params?: GetIncidentQueueParams) {
+  return request<CaseOpsQueueResponse>(`/incidents/queue${buildQuery(params)}`);
 }
 
 export function getIncidentSummaryMetrics() {
@@ -235,30 +247,42 @@ export function getIncidentAlerts() {
 }
 
 export function getMyOpenTasks(params?: { limit?: number }) {
-  const suffix = params?.limit ? `?limit=${params.limit}` : "";
-  return request<CaseTaskWidgetResponse>(`/tasks/my-open${suffix}`);
+  return request<CaseTaskWidgetResponse>(`/tasks/my-open${buildQuery(params)}`);
 }
 
 export function getOverdueTasks(params?: { limit?: number }) {
-  const suffix = params?.limit ? `?limit=${params.limit}` : "";
-  return request<CaseTaskWidgetResponse>(`/tasks/overdue${suffix}`);
+  return request<CaseTaskWidgetResponse>(`/tasks/overdue${buildQuery(params)}`);
 }
 
-export function patchIncidentOwner(incidentId: string, data: {
-  operation: "assign" | "reassign" | "clear";
+export interface PatchIncidentOwnerRequest {
+  operation: OwnerOperation;
   owner_user_id?: string | null;
-}) {
-  return request<{ incident_id: string; owner_user_id?: string | null }>(`/incidents/${incidentId}/owner`, {
+}
+
+export interface PatchIncidentOwnerResponse {
+  incident_id: string;
+  owner_user_id?: string | null;
+}
+
+export function patchIncidentOwner(incidentId: string, data: PatchIncidentOwnerRequest) {
+  return request<PatchIncidentOwnerResponse>(`/incidents/${incidentId}/owner`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export function patchIncidentStatus(incidentId: string, data: {
-  case_status: string;
+export interface PatchIncidentStatusRequest {
+  case_status: CaseStatus;
   reason: string;
-}) {
-  return request<{ incident_id: string; case_status: string }>(`/incidents/${incidentId}/status`, {
+}
+
+export interface PatchIncidentStatusResponse {
+  incident_id: string;
+  case_status: CaseStatus;
+}
+
+export function patchIncidentStatus(incidentId: string, data: PatchIncidentStatusRequest) {
+  return request<PatchIncidentStatusResponse>(`/incidents/${incidentId}/status`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -269,34 +293,43 @@ export function getIncidentWorkspace(incidentId: string) {
 }
 
 export function listIncidentNotes(incidentId: string, params?: { includeDeleted?: boolean }) {
-  const suffix = params?.includeDeleted ? "?include_deleted=true" : "";
-  return request<IncidentNotesResponse>(`/incidents/${incidentId}/notes${suffix}`);
+  return request<IncidentNotesResponse>(
+    `/incidents/${incidentId}/notes${buildQuery({ include_deleted: params?.includeDeleted ? true : undefined })}`
+  );
 }
 
-export function createIncidentNote(incidentId: string, data: {
+export interface CreateIncidentNoteRequest {
   body: string;
-  note_type?: "standard" | "tagged" | "decision";
+  note_type?: NoteType;
   tags?: string[];
-}) {
+}
+
+export function createIncidentNote(incidentId: string, data: CreateIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export function patchIncidentNote(incidentId: string, data: {
+export interface PatchIncidentNoteRequest {
   note_id: string;
   body?: string;
-  note_type?: "standard" | "tagged" | "decision";
+  note_type?: NoteType;
   tags?: string[];
-}) {
+}
+
+export function patchIncidentNote(incidentId: string, data: PatchIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export function deleteIncidentNote(incidentId: string, data: { note_id: string }) {
+export interface DeleteIncidentNoteRequest {
+  note_id: string;
+}
+
+export function deleteIncidentNote(incidentId: string, data: DeleteIncidentNoteRequest) {
   return request<IncidentNoteItem>(`/incidents/${incidentId}/notes`, {
     method: "DELETE",
     body: JSON.stringify(data),
@@ -307,29 +340,33 @@ export function listIncidentTasks(incidentId: string) {
   return request<IncidentTaskListResponse>(`/incidents/${incidentId}/tasks`);
 }
 
-export function createIncidentTask(incidentId: string, data: {
+export interface CreateIncidentTaskRequest {
   title: string;
   description?: string;
-  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
-  priority?: "low" | "medium" | "high" | "urgent";
-  due_at_utc?: string;
+  task_type?: TaskType;
+  priority?: TaskPriority;
+  due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
-}) {
+}
+
+export function createIncidentTask(incidentId: string, data: CreateIncidentTaskRequest) {
   return request<IncidentTaskItem>(`/incidents/${incidentId}/tasks`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export function patchTask(taskId: string, data: {
+export interface PatchTaskRequest {
   title?: string;
   description?: string;
-  task_type?: "review" | "evidence" | "follow_up" | "export" | "other";
-  priority?: "low" | "medium" | "high" | "urgent";
-  due_at_utc?: string;
+  task_type?: TaskType;
+  priority?: TaskPriority;
+  due_at_utc?: UtcTimestamp;
   assigned_to_user_id?: string;
-  status?: "open" | "completed" | "cancelled";
-}) {
+  status?: TaskStatus;
+}
+
+export function patchTask(taskId: string, data: PatchTaskRequest) {
   return request<IncidentTaskItem>(`/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -342,7 +379,11 @@ export function completeTask(taskId: string) {
   });
 }
 
-export function cancelTask(taskId: string, data?: { reason?: string }) {
+export interface CancelTaskRequest {
+  reason?: string;
+}
+
+export function cancelTask(taskId: string, data?: CancelTaskRequest) {
   return request<IncidentTaskItem>(`/tasks/${taskId}/cancel`, {
     method: "POST",
     body: JSON.stringify(data ?? {}),

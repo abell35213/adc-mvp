@@ -1,16 +1,17 @@
 /* ── Integrations ──────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, buildQuery } from "./core";
+import type { IntegrationConnectionStatus, JsonObject, UtcTimestamp } from "./types";
 
 export interface IntegrationConnectionHealth {
   integration_id: string;
   provider: string;
   domain: string | null;
-  status: "pending" | "active" | "inactive" | "error";
+  status: IntegrationConnectionStatus;
   healthy: boolean;
   reason: string | null;
-  last_synced_at_utc: string | null;
-  updated_at_utc: string | null;
+  last_synced_at_utc: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp | null;
 }
 
 export interface IntegrationOperationDiagnostics {
@@ -25,8 +26,8 @@ export interface IntegrationOperationDiagnostics {
   correlation_id: string | null;
   external_reference: string | null;
   external_reference_id: string | null;
-  payload_json: Record<string, unknown>;
-  result_json: Record<string, unknown>;
+  payload_json: JsonObject;
+  result_json: JsonObject;
   error_message: string | null;
   error_code: string | null;
   error_category: string | null;
@@ -34,10 +35,10 @@ export interface IntegrationOperationDiagnostics {
   error_retryable: boolean | null;
   error_user_facing_message: string | null;
   error_operator_message: string | null;
-  requested_at_utc: string | null;
-  started_at_utc: string | null;
-  completed_at_utc: string | null;
-  updated_at_utc: string | null;
+  requested_at_utc: UtcTimestamp | null;
+  started_at_utc: UtcTimestamp | null;
+  completed_at_utc: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp | null;
 }
 
 export interface ProviderWebhookEvent {
@@ -45,7 +46,7 @@ export interface ProviderWebhookEvent {
   provider: string;
   domain: string | null;
   status: string;
-  received_at_utc: string;
+  received_at_utc: UtcTimestamp;
   correlation_id: string | null;
   processing_latency_ms: number | null;
   retry_count: number | null;
@@ -56,30 +57,27 @@ export function getIntegrationConnections() {
   return request<IntegrationConnectionHealth[]>("/org/integrations");
 }
 
-export function getIntegrationOperations(params?: {
+export interface GetIntegrationOperationsParams {
   provider?: string;
   status?: string;
   incident_id?: string;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.provider) query.set("provider", params.provider);
-  if (params?.status) query.set("status", params.status);
-  if (params?.incident_id) query.set("incident_id", params.incident_id);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<IntegrationOperationDiagnostics[]>(`/integration-operations${suffix}`);
 }
 
-export function getWebhookDiagnostics(params?: {
+export function getIntegrationOperations(params?: GetIntegrationOperationsParams) {
+  return request<IntegrationOperationDiagnostics[]>(
+    `/integration-operations${buildQuery(params)}`
+  );
+}
+
+export interface GetWebhookDiagnosticsParams {
   provider?: string;
   status?: string;
   limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.provider) query.set("provider", params.provider);
-  if (params?.status) query.set("status", params.status);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<ProviderWebhookEvent[]>(`/admin/ops/webhook-events${suffix}`);
+}
+
+export function getWebhookDiagnostics(params?: GetWebhookDiagnosticsParams) {
+  return request<ProviderWebhookEvent[]>(
+    `/admin/ops/webhook-events${buildQuery(params)}`
+  );
 }

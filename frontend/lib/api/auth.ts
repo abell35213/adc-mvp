@@ -1,6 +1,7 @@
 /* ── Auth ──────────────────────────────────────────────────────── */
 
-import { request } from "./core";
+import { request, requestValidated } from "./core";
+import { MeResponseSchema } from "./schemas";
 
 export interface MeResponse {
   user_id: string;
@@ -10,20 +11,32 @@ export interface MeResponse {
 }
 
 export function getMe() {
-  return request<MeResponse>("/auth/me");
+  return requestValidated("/auth/me", MeResponseSchema) as Promise<MeResponse>;
 }
 
 export interface LoginResponse {
   user: MeResponse;
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
 export async function login(email: string, password: string) {
   await request<void>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password } satisfies LoginRequest),
   });
   const user = await getMe();
   return { user } satisfies LoginResponse;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  role: string;
+  org_name: string;
 }
 
 export interface RegisterResponse {
@@ -42,7 +55,7 @@ export async function register(
 ) {
   const data = await request<RegisterResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, role, org_name: orgName }),
+    body: JSON.stringify({ email, password, role, org_name: orgName } satisfies RegisterRequest),
   });
   const user = await getMe();
   return { ...data, user };
