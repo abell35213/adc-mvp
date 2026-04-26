@@ -133,7 +133,7 @@ export default function OnboardingProgressDashboard({
         status={readiness?.status ?? "not_started"}
         recommendation={toBadgeRecommendation(readiness)}
         blockersCount={blockers.length}
-        blockersHref="/dashboard?blockers=critical"
+        blockersHref={blockers.length > 0 ? "/dashboard?blockers=critical" : "/dashboard"}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
