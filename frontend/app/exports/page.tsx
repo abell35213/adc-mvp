@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MainLayout from "@/components/MainLayout";
 import ExportListItem from "@/components/exports/ExportListItem";
-import { downloadExport, listExports, type ExportListItem as ExportItem, type ExportStatus, toUserErrorMessage } from "@/lib/api";
+import { downloadExport, listExports, retryExport, type ExportListItem as ExportItem, type ExportStatus, toUserErrorMessage } from "@/lib/api";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
 import { designTokens } from "@/lib/design/tokens";
 
@@ -48,6 +48,16 @@ export default function ExportsPage() {
       return `Download URL from unrecognized host "${host}" was blocked. Verify the export download configuration or contact support if this host should be allowed.`;
     } catch {
       return "Download URL from an unrecognized host was blocked. Verify the export download configuration or contact support if this URL should be allowed.";
+    }
+  }
+
+  async function handleRetry(exportId: string) {
+    try {
+      await retryExport(exportId);
+      const updated = await listExports();
+      setExports(updated);
+    } catch (err: unknown) {
+      setError(toUserErrorMessage(err, "Retry failed"));
     }
   }
 
@@ -109,7 +119,7 @@ export default function ExportsPage() {
         ) : (
           <div className="space-y-3">
             {filtered.map((item) => (
-              <ExportListItem key={item.export_id} item={item} showIncident onDownload={handleDownload} />
+              <ExportListItem key={item.export_id} item={item} showIncident onDownload={handleDownload} onRetry={handleRetry} />
             ))}
           </div>
         )}
