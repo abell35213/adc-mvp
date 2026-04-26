@@ -108,7 +108,7 @@ export default function HelpPage() {
 
           <div className="space-y-3">
             {articles.map((article) => (
-              <HelpArticleCard key={article.title} article={article} />
+              <HelpArticleCard key={article.href} article={article} />
             ))}
           </div>
         </section>
