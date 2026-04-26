@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import MainLayout from "@/components/MainLayout";
 import HelpArticleCard, { type HelpArticle } from "@/components/support/HelpArticleCard";
 
@@ -74,6 +74,36 @@ const RELATED_TOPICS = ["Trust Center", "Deployment coverage", "Integration heal
 export default function HelpPage() {
   const [activeCategory, setActiveCategory] = useState<HelpCategoryKey>("getting_started");
   const articles = ARTICLE_MAP[activeCategory];
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  function setTabRef(key: HelpCategoryKey) {
+    return (el: HTMLButtonElement | null) => {
+      tabRefs.current[key] = el;
+    };
+  }
+
+  function handleTabKeyDown(event: React.KeyboardEvent, currentKey: HelpCategoryKey) {
+    const keys = CATEGORY_TABS.map((t) => t.key);
+    const currentIndex = keys.indexOf(currentKey);
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % keys.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + keys.length) % keys.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = keys.length - 1;
+    }
+
+    if (nextIndex !== null) {
+      event.preventDefault();
+      const nextKey = keys[nextIndex];
+      setActiveCategory(nextKey);
+      tabRefs.current[nextKey]?.focus();
+    }
+  }
 
   return (
     <MainLayout title="Help Center">
@@ -84,14 +114,21 @@ export default function HelpPage() {
             <p className="mt-1 text-sm text-text-secondary">
               Find focused guidance by workflow stage, then take the clearest next action.
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div role="tablist" aria-label="Help categories" className="mt-3 flex flex-wrap gap-2">
               {CATEGORY_TABS.map((tab) => {
                 const active = activeCategory === tab.key;
                 return (
                   <button
                     key={tab.key}
+                    id={`help-tab-${tab.key}`}
+                    role="tab"
                     type="button"
+                    aria-selected={active}
+                    aria-controls={`help-panel-${tab.key}`}
+                    tabIndex={active ? 0 : -1}
+                    ref={setTabRef(tab.key)}
                     onClick={() => setActiveCategory(tab.key)}
+                    onKeyDown={(e) => handleTabKeyDown(e, tab.key)}
                     className={[
                       "rounded-md px-3 py-1.5 text-sm font-medium transition",
                       active
@@ -106,7 +143,13 @@ export default function HelpPage() {
             </div>
           </article>
 
-          <div className="space-y-3">
+          <div
+            id={`help-panel-${activeCategory}`}
+            role="tabpanel"
+            aria-labelledby={`help-tab-${activeCategory}`}
+            tabIndex={0}
+            className="space-y-3 focus:outline-none"
+          >
             {articles.map((article) => (
               <HelpArticleCard key={article.href} article={article} />
             ))}

@@ -1,4 +1,5 @@
 interface ReportSummaryItem {
+  id: string;
   label: string;
   value: string;
   detail: string;
@@ -23,7 +24,7 @@ export default function ReportSummaryCards({ items }: ReportSummaryCardsProps) {
         const tone = item.tone ?? "neutral";
         return (
           <article
-            key={item.label}
+            key={item.id}
             className={`rounded-lg border bg-surface p-4 shadow-card ${TONE_STYLES[tone]}`}
           >
             <p className="text-xs uppercase tracking-wide text-text-muted">{item.label}</p>

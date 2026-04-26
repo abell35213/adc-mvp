@@ -30,7 +30,7 @@ const REPORT_DATA: Record<
   ReportTabKey,
   {
     subtitle: string;
-    cards: Array<{ label: string; value: string; detail: string; tone?: "success" | "warning" | "critical" }>;
+    cards: Array<{ id: string; label: string; value: string; detail: string; tone?: "success" | "warning" | "critical" }>;
     trend: TrendPoint[];
     rows: ReportRow[];
   }
@@ -38,10 +38,10 @@ const REPORT_DATA: Record<
   attention: {
     subtitle: "Track where operators should focus first, which queues are blocked, and what can wait.",
     cards: [
-      { label: "Needs action now", value: "28", detail: "+5 since yesterday", tone: "critical" },
-      { label: "Unassigned incidents", value: "9", detail: "Owner reassignment pending", tone: "warning" },
-      { label: "Awaiting driver response", value: "14", detail: "Median wait: 3.1h" },
-      { label: "Resolved today", value: "31", detail: "Outpaced intake by 12%", tone: "success" },
+      { id: "attention-needs-action", label: "Needs action now", value: "28", detail: "+5 since yesterday", tone: "critical" },
+      { id: "attention-unassigned", label: "Unassigned incidents", value: "9", detail: "Owner reassignment pending", tone: "warning" },
+      { id: "attention-awaiting", label: "Awaiting driver response", value: "14", detail: "Median wait: 3.1h" },
+      { id: "attention-resolved", label: "Resolved today", value: "31", detail: "Outpaced intake by 12%", tone: "success" },
     ],
     trend: [
       { label: "Mon", value: 18 },
@@ -59,10 +59,10 @@ const REPORT_DATA: Record<
   readiness: {
     subtitle: "Show what is export-ready, what is blocked, and exactly where evidence is incomplete.",
     cards: [
-      { label: "Ready for export", value: "64%", detail: "+4 points week-over-week", tone: "success" },
-      { label: "Blocked by missing media", value: "12", detail: "Mostly witness uploads", tone: "critical" },
-      { label: "Conditionally ready", value: "17", detail: "Require owner sign-off", tone: "warning" },
-      { label: "Avg readiness time", value: "19.4h", detail: "From incident open to ready" },
+      { id: "readiness-ready", label: "Ready for export", value: "64%", detail: "+4 points week-over-week", tone: "success" },
+      { id: "readiness-blocked", label: "Blocked by missing media", value: "12", detail: "Mostly witness uploads", tone: "critical" },
+      { id: "readiness-conditional", label: "Conditionally ready", value: "17", detail: "Require owner sign-off", tone: "warning" },
+      { id: "readiness-avg-time", label: "Avg readiness time", value: "19.4h", detail: "From incident open to ready" },
     ],
     trend: [
       { label: "Mon", value: 52 },
@@ -80,10 +80,10 @@ const REPORT_DATA: Record<
   sla: {
     subtitle: "Monitor response performance and identify queues at risk of breaching support commitments.",
     cards: [
-      { label: "SLA attainment", value: "98.9%", detail: "30-day rolling window", tone: "success" },
-      { label: "At-risk queues", value: "3", detail: "2 due to staffing gaps", tone: "warning" },
-      { label: "SLA breaches", value: "2", detail: "Both recovered under 1 hour", tone: "critical" },
-      { label: "Median first response", value: "11m", detail: "Down from 14m last week" },
+      { id: "sla-attainment", label: "SLA attainment", value: "98.9%", detail: "30-day rolling window", tone: "success" },
+      { id: "sla-at-risk", label: "At-risk queues", value: "3", detail: "2 due to staffing gaps", tone: "warning" },
+      { id: "sla-breaches", label: "SLA breaches", value: "2", detail: "Both recovered under 1 hour", tone: "critical" },
+      { id: "sla-first-response", label: "Median first response", value: "11m", detail: "Down from 14m last week" },
     ],
     trend: [
       { label: "Mon", value: 97 },
