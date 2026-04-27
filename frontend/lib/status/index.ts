@@ -83,20 +83,20 @@ export const READINESS_STATUS_OPTIONS: StatusOption<ReadinessState>[] = READINES
 }));
 
 export function getCaseStatusMeta(status: string): StatusMeta {
-  if (status in CASE_STATUS_META) return CASE_STATUS_META[status as CaseStatus];
-  if (status in INCIDENT_STATUS_META) return INCIDENT_STATUS_META[status as IncidentStatus];
+  if (Object.prototype.hasOwnProperty.call(CASE_STATUS_META, status)) return CASE_STATUS_META[status as CaseStatus];
+  if (Object.prototype.hasOwnProperty.call(INCIDENT_STATUS_META, status)) return INCIDENT_STATUS_META[status as IncidentStatus];
   if (!status) return UNKNOWN_STATUS_META;
   return { label: titleize(status), tone: "neutral" };
 }
 
 export function getReadinessMeta(state: string): StatusMeta {
-  if (state in READINESS_META) return READINESS_META[state as ReadinessState];
+  if (Object.prototype.hasOwnProperty.call(READINESS_META, state)) return READINESS_META[state as ReadinessState];
   if (!state) return UNKNOWN_STATUS_META;
   return { label: titleize(state), tone: "neutral" };
 }
 
 export function getEvidenceMeta(state: string): StatusMeta {
-  if (state in EVIDENCE_META) return EVIDENCE_META[state as EvidenceState];
+  if (Object.prototype.hasOwnProperty.call(EVIDENCE_META, state)) return EVIDENCE_META[state as EvidenceState];
   if (!state) return UNKNOWN_STATUS_META;
   return { label: titleize(state), tone: "neutral" };
 }
