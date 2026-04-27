@@ -8,7 +8,7 @@ import DataTableShell from "@/components/data-display/DataTableShell";
 import PageHeader from "@/components/layout/PageHeader";
 import { listIncidents, type Incident } from "@/lib/api";
 import { statusBadgeClass, designTokens } from "@/lib/design/tokens";
-import { getCaseStatusMeta, getReadinessMeta, READINESS_STATUS_OPTIONS } from "@/lib/status";
+import { getIncidentStatusMeta, getReadinessMeta, READINESS_STATUS_OPTIONS } from "@/lib/status";
 import { useAuth } from "@/lib/useAuth";
 
 type SavedViewKey = "all" | "attention" | "driver_wait" | "ready";
@@ -334,7 +334,7 @@ export default function IncidentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={statusBadgeClass(getCaseStatusMeta(incident.status).tone)}>{getCaseStatusMeta(incident.status).label}</span>
+                      <span className={statusBadgeClass(getIncidentStatusMeta(incident.status).tone)}>{getIncidentStatusMeta(incident.status).label}</span>
                       {waitingOnDriver ? <span className={statusBadgeClass("warning")}>Waiting on driver</span> : null}
                     </div>
                   </td>

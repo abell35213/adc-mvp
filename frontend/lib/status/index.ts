@@ -82,23 +82,29 @@ export const READINESS_STATUS_OPTIONS: StatusOption<ReadinessState>[] = READINES
   label: READINESS_META[value].label,
 }));
 
-export function getCaseStatusMeta(status: string): StatusMeta {
-  if (Object.prototype.hasOwnProperty.call(CASE_STATUS_META, status)) return CASE_STATUS_META[status as CaseStatus];
-  if (Object.prototype.hasOwnProperty.call(INCIDENT_STATUS_META, status)) return INCIDENT_STATUS_META[status as IncidentStatus];
+function fallbackStatusMeta(status: string): StatusMeta {
   if (!status) return UNKNOWN_STATUS_META;
   return { label: titleize(status), tone: "neutral" };
 }
 
+export function getCaseStatusMeta(status: string): StatusMeta {
+  if (Object.prototype.hasOwnProperty.call(CASE_STATUS_META, status)) return CASE_STATUS_META[status as CaseStatus];
+  return fallbackStatusMeta(status);
+}
+
+export function getIncidentStatusMeta(status: string): StatusMeta {
+  if (Object.prototype.hasOwnProperty.call(INCIDENT_STATUS_META, status)) return INCIDENT_STATUS_META[status as IncidentStatus];
+  return fallbackStatusMeta(status);
+}
+
 export function getReadinessMeta(state: string): StatusMeta {
   if (Object.prototype.hasOwnProperty.call(READINESS_META, state)) return READINESS_META[state as ReadinessState];
-  if (!state) return UNKNOWN_STATUS_META;
-  return { label: titleize(state), tone: "neutral" };
+  return fallbackStatusMeta(state);
 }
 
 export function getEvidenceMeta(state: string): StatusMeta {
   if (Object.prototype.hasOwnProperty.call(EVIDENCE_META, state)) return EVIDENCE_META[state as EvidenceState];
-  if (!state) return UNKNOWN_STATUS_META;
-  return { label: titleize(state), tone: "neutral" };
+  return fallbackStatusMeta(state);
 }
 
 export function getExportStateMeta(state: ExportStatus): StatusMeta {

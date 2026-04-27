@@ -104,6 +104,7 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
           {EVIDENCE_TYPES.map(({ type, label }) => {
             const art = artifactMap.get(type);
             const status = art?.status ?? "pending";
+            const evidenceMeta = getEvidenceMeta(status);
             return (
               <tr
                 key={type}
@@ -113,8 +114,8 @@ export default function EvidenceTable({ artifacts }: EvidenceTableProps) {
                   {label}
                 </td>
                 <td className="px-4 py-2">
-                  <span className={getStatusBadgeClass(getEvidenceMeta(status).tone)}>
-                    {getEvidenceMeta(status).label}
+                  <span className={getStatusBadgeClass(evidenceMeta.tone)}>
+                    {evidenceMeta.label}
                   </span>
                 </td>
                 <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
