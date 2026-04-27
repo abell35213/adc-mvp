@@ -130,8 +130,8 @@ export default function IncidentQueueTable({
                       </Link>
                       <div className="text-text-secondary">{item.adc_vehicle_id ?? "—"} / {item.adc_driver_id ?? "—"}</div>
                     </td>
-                    <td className="px-3 py-3 capitalize text-text-primary">{getCaseStatusMeta(item.case_status).label}</td>
-                    <td className="px-3 py-3 capitalize text-text-primary">{getReadinessMeta(item.readiness_state).label}</td>
+                    <td className="px-3 py-3 text-text-primary">{getCaseStatusMeta(item.case_status).label}</td>
+                    <td className="px-3 py-3 text-text-primary">{getReadinessMeta(item.readiness_state).label}</td>
                     <td className="px-3 py-3 font-mono text-xs text-text-primary">{item.owner_user_id ? item.owner_user_id.slice(0, 8) : "Unassigned"}</td>
                     <td className="px-3 py-3 text-text-primary">{item.blockers.critical} critical · {item.blockers.important} important</td>
                     <td className="px-3 py-3 text-text-primary">{Math.round(item.completeness_percent)}%</td>
