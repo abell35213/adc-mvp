@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CaseOpsQueueItem, CaseStatus } from "@/lib/api";
+import { CASE_STATUS_META, getCaseStatusMeta, getReadinessMeta } from "@/lib/status";
 
 type QueueTabKey = "all" | "new" | "in_review" | "awaiting_evidence" | "ready_for_export" | "escalated" | "awaiting_follow_up" | "exported" | "closed";
 
@@ -21,7 +22,7 @@ interface IncidentQueueTableProps {
   onCaseStatusChange: (incidentId: string, caseStatus: CaseStatus) => void;
 }
 
-const STATUSES = [
+const STATUSES: CaseStatus[] = [
   "new",
   "awaiting_evidence",
   "in_review",
@@ -31,10 +32,6 @@ const STATUSES = [
   "exported",
   "closed",
 ];
-
-function statusLabel(value: string) {
-  return value.replaceAll("_", " ");
-}
 
 function getUrgencyTone(item: CaseOpsQueueItem) {
   if (item.blockers.critical > 0 || item.case_status === "escalated") {
@@ -133,8 +130,8 @@ export default function IncidentQueueTable({
                       </Link>
                       <div className="text-text-secondary">{item.adc_vehicle_id ?? "—"} / {item.adc_driver_id ?? "—"}</div>
                     </td>
-                    <td className="px-3 py-3 capitalize text-text-primary">{statusLabel(item.case_status)}</td>
-                    <td className="px-3 py-3 capitalize text-text-primary">{statusLabel(item.readiness_state)}</td>
+                    <td className="px-3 py-3 text-text-primary">{getCaseStatusMeta(item.case_status).label}</td>
+                    <td className="px-3 py-3 text-text-primary">{getReadinessMeta(item.readiness_state).label}</td>
                     <td className="px-3 py-3 font-mono text-xs text-text-primary">{item.owner_user_id ? item.owner_user_id.slice(0, 8) : "Unassigned"}</td>
                     <td className="px-3 py-3 text-text-primary">{item.blockers.critical} critical · {item.blockers.important} important</td>
                     <td className="px-3 py-3 text-text-primary">{Math.round(item.completeness_percent)}%</td>
@@ -148,7 +145,7 @@ export default function IncidentQueueTable({
                           className="rounded border border-border-default bg-surface px-2 py-1 text-xs"
                         >
                           {STATUSES.map((status) => (
-                            <option key={status} value={status}>{statusLabel(status)}</option>
+                            <option key={status} value={status}>{CASE_STATUS_META[status].label}</option>
                           ))}
                         </select>
                       </div>

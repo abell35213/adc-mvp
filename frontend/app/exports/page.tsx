@@ -6,6 +6,7 @@ import ExportListItem from "@/components/exports/ExportListItem";
 import { downloadExport, getExport, getExportContents, getExportDownloadHistory, listExports, retryExport, type ExportContentsItem, type ExportDownloadAuditResponse, type ExportListItem as ExportItem, type ExportStatus, type ExportSummary, toUserErrorMessage } from "@/lib/api";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
 import { designTokens } from "@/lib/design/tokens";
+import { EXPORT_STATUS_OPTIONS } from "@/lib/status";
 
 export default function ExportsPage() {
   const [exports, setExports] = useState<ExportItem[]>([]);
@@ -144,12 +145,9 @@ export default function ExportsPage() {
           />
           <select className={designTokens.control.input} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
             <option value="all">All statuses</option>
-            <option value="requested">Requested</option>
-            <option value="queued">Queued</option>
-            <option value="processing">Processing</option>
-            <option value="ready">Ready</option>
-            <option value="failed">Failed</option>
-            <option value="expired">Expired</option>
+            {EXPORT_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
         </div>
 

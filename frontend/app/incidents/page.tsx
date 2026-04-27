@@ -7,7 +7,8 @@ import DocumentationCenter from "@/components/commercial/DocumentationCenter";
 import DataTableShell from "@/components/data-display/DataTableShell";
 import PageHeader from "@/components/layout/PageHeader";
 import { listIncidents, type Incident } from "@/lib/api";
-import { statusBadgeClass, type StatusTone, designTokens } from "@/lib/design/tokens";
+import { statusBadgeClass, designTokens } from "@/lib/design/tokens";
+import { getIncidentStatusMeta, getReadinessMeta, READINESS_STATUS_OPTIONS } from "@/lib/status";
 import { useAuth } from "@/lib/useAuth";
 
 type SavedViewKey = "all" | "attention" | "driver_wait" | "ready";
@@ -59,25 +60,6 @@ export default function IncidentsPage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  function friendlyStatus(s: string): string {
-    if (s === "open") return "Open";
-    if (s === "evidence_capturing") return "Capturing Evidence";
-    if (s === "closed") return "Closed";
-    return s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-  }
-
-  function statusTone(s: string): StatusTone {
-    if (s === "open") return "info";
-    if (s === "evidence_capturing") return "warning";
-    if (s === "closed") return "success";
-    return "info";
-  }
-
-  function readinessTone(readiness: string): StatusTone {
-    if (["ready_for_export", "exported", "closed"].includes(readiness)) return "success";
-    if (readiness === "not_ready") return "critical";
-    return "warning";
-  }
 
   function formatTime(iso?: string): string {
     if (!iso) return "—";
@@ -270,11 +252,9 @@ export default function IncidentsPage() {
               className="rounded border border-border-default bg-surface px-3 py-2 text-sm"
             >
               <option value="all">Readiness: all</option>
-              <option value="not_ready">Not ready</option>
-              <option value="conditionally_ready">Conditionally ready</option>
-              <option value="ready_for_export">Ready for export</option>
-              <option value="exported">Exported</option>
-              <option value="closed">Closed</option>
+              {READINESS_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
             <select
               value={filters.evidenceState}
@@ -354,13 +334,13 @@ export default function IncidentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={statusBadgeClass(statusTone(incident.status))}>{friendlyStatus(incident.status)}</span>
+                      <span className={statusBadgeClass(getIncidentStatusMeta(incident.status).tone)}>{getIncidentStatusMeta(incident.status).label}</span>
                       {waitingOnDriver ? <span className={statusBadgeClass("warning")}>Waiting on driver</span> : null}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={statusBadgeClass(readinessTone(readiness))}>
-                      {readiness.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                    <span className={statusBadgeClass(getReadinessMeta(readiness).tone)}>
+                      {getReadinessMeta(readiness).label}
                     </span>
                   </td>
                   <td className="px-4 py-3">
