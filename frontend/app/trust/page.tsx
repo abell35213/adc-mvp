@@ -59,10 +59,10 @@ export default function TrustPage() {
 
         <ReportSummaryCards
           items={[
-            { label: "Control coverage", value: "96%", detail: "Core controls documented", tone: "success" },
-            { label: "Open trust follow-ups", value: "4", detail: "2 require policy sign-off", tone: "warning" },
-            { label: "Audit blockers", value: "1", detail: "Pending vendor attestation", tone: "critical" },
-            { label: "Latest review", value: "Apr 22", detail: "Quarterly trust review completed" },
+            { id: "trust-control-coverage", label: "Control coverage", value: "96%", detail: "Core controls documented", tone: "success" },
+            { id: "trust-open-followups", label: "Open trust follow-ups", value: "4", detail: "2 require policy sign-off", tone: "warning" },
+            { id: "trust-audit-blockers", label: "Audit blockers", value: "1", detail: "Pending vendor attestation", tone: "critical" },
+            { id: "trust-latest-review", label: "Latest review", value: "Apr 22", detail: "Quarterly trust review completed" },
           ]}
         />
 
