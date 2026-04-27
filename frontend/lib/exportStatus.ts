@@ -1,13 +1,13 @@
 import type { ExportStatus } from "@/lib/api";
-import { statusBadgeClass } from "@/lib/design/tokens";
+import { getExportStateMeta, getStatusBadgeClass } from "@/lib/status";
 
 export const EXPORT_STATUS_LABELS: Record<ExportStatus, string> = {
-  requested: "Requested",
-  queued: "Queued",
-  processing: "Processing",
-  ready: "Ready",
-  failed: "Failed",
-  expired: "Expired",
+  requested: getExportStateMeta("requested").label,
+  queued: getExportStateMeta("queued").label,
+  processing: getExportStateMeta("processing").label,
+  ready: getExportStateMeta("ready").label,
+  failed: getExportStateMeta("failed").label,
+  expired: getExportStateMeta("expired").label,
 };
 
 export function getExportStatusLabel(status: ExportStatus): string {
@@ -15,7 +15,5 @@ export function getExportStatusLabel(status: ExportStatus): string {
 }
 
 export function getExportStatusBadgeClass(status: ExportStatus): string {
-  if (status === "ready") return statusBadgeClass("success");
-  if (status === "failed" || status === "expired") return statusBadgeClass("critical");
-  return statusBadgeClass("warning");
+  return getStatusBadgeClass(getExportStateMeta(status).tone);
 }
