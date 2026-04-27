@@ -103,7 +103,7 @@ def _get_admin_org(db: Session, admin_org_id: uuid.UUID) -> Org:
 def _normalize_instruction_scope(scope: str) -> str:
     if scope not in INSTRUCTION_SCOPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid instruction scope",
         )
     return scope

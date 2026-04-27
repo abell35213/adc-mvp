@@ -21,6 +21,7 @@ import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ProtocolFlowProvider } from '../../../navigation/ProtocolFlowContext';
+import { paperSettings } from '../../../theme/paperIcon';
 
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   /** Wrap in {@link PaperProvider}. Default `true`. */
@@ -61,7 +62,7 @@ const buildWrapper = (options: RenderWithProvidersOptions) => {
       node = <SafeAreaProvider>{node}</SafeAreaProvider>;
     }
     if (flags.withPaper) {
-      node = <PaperProvider>{node}</PaperProvider>;
+      node = <PaperProvider settings={paperSettings}>{node}</PaperProvider>;
     }
     return <>{node}</>;
   };

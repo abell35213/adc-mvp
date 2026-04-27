@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { getStoredToken } from './src/auth';
 import { ProtocolFlowProvider } from './src/navigation/ProtocolFlowContext';
+import { paperSettings } from './src/theme/paperIcon';
 import { RootStackParamList } from './src/navigation/types';
 import DriverHomeScreen from './src/screens/DriverHomeScreen';
 import IncidentConfirmScreen from './src/screens/IncidentConfirmScreen';
@@ -45,7 +46,7 @@ export default function App() {
 
   if (!initialRoute) {
     return (
-      <PaperProvider>
+      <PaperProvider settings={paperSettings}>
         <SafeAreaProvider>
           <View style={styles.loading}>
             <ActivityIndicator animating />
@@ -56,7 +57,7 @@ export default function App() {
   }
 
   return (
-    <PaperProvider>
+    <PaperProvider settings={paperSettings}>
       <SafeAreaProvider>
         <ProtocolFlowProvider>
           <NavigationContainer>
