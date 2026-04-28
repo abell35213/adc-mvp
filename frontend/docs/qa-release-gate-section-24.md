@@ -17,7 +17,7 @@ Scope:
 - ✅ `ErrorStateBanner` supports retry/remediation actions through an action slot and inline runbook hints.
 
 ## Responsive criteria
-- ✅ Desktop: dual-column rails implemented via `xl:grid-cols-[minmax(0,1fr)_*]` split in all three components.
+- ✅ Desktop: all three components use an extra-large dual-column grid with a flexible primary content area and a fixed-width secondary rail.
 - ✅ Tablet: rails stack/reorder using `md:order-first xl:order-none`; filters use `md:flex-wrap`; table region supports horizontal scroll via `overflow-x-auto` with wide `min-w-*` table.
 - ✅ Mobile: KPI carousel implemented with horizontal snap container; table-to-card transform uses `md:hidden` cards + `md:block` table; filter drawer affordance included through mobile-only “Open filters” controls.
 
