@@ -54,14 +54,12 @@ export default function SkeletonTable({
             ))}
           </div>
 
-          <button
-            type="button"
-            aria-label="Open filters"
-            aria-controls="mobile-filter-drawer"
-            className="mt-3 w-full rounded-md border border-border-default px-3 py-2 text-left text-sm font-medium text-text-secondary"
+          <div
+            aria-hidden="true"
+            className="mt-3 w-full rounded-md border border-border-default px-3 py-2"
           >
-            Open filters
-          </button>
+            <SkeletonBlock className="h-4 w-24" />
+          </div>
         </div>
 
         <div className="hidden items-center gap-2 md:flex md:flex-wrap">
