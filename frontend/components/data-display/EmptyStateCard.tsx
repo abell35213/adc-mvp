@@ -9,6 +9,7 @@ export interface EmptyStateCardProps {
   secondaryAction?: ReactNode;
   icon?: ReactNode;
   className?: string;
+  onOpenFilters?: () => void;
 }
 
 export default function EmptyStateCard({
@@ -19,6 +20,7 @@ export default function EmptyStateCard({
   secondaryAction,
   icon,
   className,
+  onOpenFilters,
 }: EmptyStateCardProps) {
   return (
     <section
@@ -68,13 +70,16 @@ export default function EmptyStateCard({
         <aside className="space-y-2 rounded-md border border-border-subtle bg-surface-raised p-3 md:order-first xl:order-none">
           <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Filter controls</p>
           <p className="text-xs text-text-muted">Use filters to broaden the queue, or open drawer controls on mobile.</p>
-          <button
-            type="button"
-            aria-label="Open filter drawer"
-            className="inline-flex rounded border border-border-default px-2.5 py-1.5 text-xs font-medium text-text-secondary md:hidden"
-          >
-            Open filters
-          </button>
+          {onOpenFilters ? (
+            <button
+              type="button"
+              onClick={onOpenFilters}
+              aria-label="Open filter drawer"
+              className="inline-flex rounded border border-border-default px-2.5 py-1.5 text-xs font-medium text-text-secondary md:hidden"
+            >
+              Open filters
+            </button>
+          ) : null}
         </aside>
       </div>
     </section>
