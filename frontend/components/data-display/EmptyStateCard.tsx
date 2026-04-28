@@ -71,7 +71,6 @@ export default function EmptyStateCard({
           <button
             type="button"
             aria-label="Open filter drawer"
-            aria-controls="mobile-filter-drawer"
             className="inline-flex rounded border border-border-default px-2.5 py-1.5 text-xs font-medium text-text-secondary md:hidden"
           >
             Open filters
