@@ -71,7 +71,7 @@ export default function SkeletonTable({
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="space-y-3">
             {leftRail}
-            <div className="hidden overflow-x-auto rounded-lg border border-border-subtle md:block">
+            <div className="hidden overflow-x-auto rounded-lg border border-border-subtle md:block" aria-hidden="true">
               <table className="min-w-[48rem] w-full">
                 <thead className="bg-surface-muted">
                   <tr>
