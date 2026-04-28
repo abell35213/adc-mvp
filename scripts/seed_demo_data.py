@@ -55,18 +55,15 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
         # Self-heal stale seeds from previous versions of this script that
         # provisioned the demo admin as SYSTEM_ADMIN, and refresh the password
         # hash so the documented demo credentials always work after re-seed.
-        changed = False
         if user.role != Role.ORG_ADMIN.value:
             user.role = Role.ORG_ADMIN.value
-            changed = True
         if not user.is_active:
             user.is_active = True
-            changed = True
+        # Always rehash so the documented password works regardless of what a
+        # prior run used; bcrypt salts make this a no-op for clients.
         user.password_hash = hash_password(admin_password)
-        changed = True
-        if changed:
-            db.commit()
-            db.refresh(user)
+        db.commit()
+        db.refresh(user)
     if (
         db.query(UserOrg)
         .filter(UserOrg.user_id == user.id, UserOrg.org_id == org.id)

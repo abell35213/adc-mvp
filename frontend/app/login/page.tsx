@@ -34,8 +34,8 @@ export default function LoginPage() {
     const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? DEMO_EMAIL_FALLBACK;
     const demoPassword =
       process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? DEMO_PASSWORD_FALLBACK;
-    setEmail((current) => (current ? current : demoEmail));
-    setPassword((current) => (current ? current : demoPassword));
+    setEmail((current) => current || demoEmail);
+    setPassword((current) => current || demoPassword);
   }, [isDemoMode]);
 
   async function handleSubmit(e: FormEvent) {

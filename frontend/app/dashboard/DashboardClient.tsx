@@ -113,7 +113,6 @@ export default function DashboardClient() {
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
   const [demoTourDismissed, setDemoTourDismissed] = useState(false);
   const [showDemoTour, setShowDemoTour] = useState(false);
-  const [firstDemoIncidentId, setFirstDemoIncidentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -231,12 +230,10 @@ export default function DashboardClient() {
   }, [queueAll]);
 
   const firstPriority = useMemo(() => getFirstPriority(queue), [queue]);
-  useEffect(() => {
-    if (firstPriority?.incident_id) {
-      setFirstDemoIncidentId(firstPriority.incident_id);
-    } else if (queueAll.length > 0) {
-      setFirstDemoIncidentId(queueAll[0].incident_id);
-    }
+  const firstDemoIncidentId = useMemo<string | null>(() => {
+    if (firstPriority?.incident_id) return firstPriority.incident_id;
+    if (queueAll.length > 0) return queueAll[0].incident_id;
+    return null;
   }, [firstPriority, queueAll]);
   const integrationIssues = integrationValidationResults.filter(
     (result) =>
