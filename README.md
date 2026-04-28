@@ -121,6 +121,39 @@ make test
 make fmt
 ```
 
+### Try the demo locally
+
+After the stack is running you can walk through the seeded demo workflow:
+
+```bash
+# 1. Bring the stack up
+make dev
+
+# 2. Seed the demo org, ORG_ADMIN user, driver, vehicle, and a scenario
+python scripts/seed_demo_data.py
+
+# 3. Open the marketing site and click "Try the demo" in the top nav
+#    (or go directly to http://localhost:3000/login?demo=1)
+```
+
+The login form is prefilled with the seeded credentials and a sandbox banner
+confirms you are entering the demo tenant. After signing in you land on the
+dashboard, where a one-time tour banner deep-links into the seeded incident,
+the Exports page, and the `/demo` workspace where additional scenarios can
+be launched.
+
+Default demo credentials (override via env before running the seed script):
+
+| Variable               | Default                  |
+|------------------------|--------------------------|
+| `DEMO_ADMIN_EMAIL`     | `demo-admin@adc.local`   |
+| `DEMO_ADMIN_PASSWORD`  | `DemoAdmin!2345`         |
+| `DEMO_ORG`             | `ADC Demo Org`           |
+
+The frontend reads `NEXT_PUBLIC_DEMO_EMAIL` / `NEXT_PUBLIC_DEMO_PASSWORD`
+to prefill the login form (see `.env.example`). These credentials are for
+**local development only** — never enable them in staging or production.
+
 ### Manual Development (from repo root)
 
 Open four terminals and run each command:

@@ -111,6 +111,17 @@ export default function DashboardClient() {
   const [onboarding, setOnboarding] = useState<OrgLaunchReadiness | null>(null);
   const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
+  const [demoTourDismissed, setDemoTourDismissed] = useState(false);
+  const [showDemoTour, setShowDemoTour] = useState(false);
+  const [firstDemoIncidentId, setFirstDemoIncidentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+      setShowDemoTour(true);
+    }
+  }, []);
 
   const activeTab = (Object.keys(TAB_TO_STATUS).find(
     (key) => TAB_TO_STATUS[key as QueueTabKey] === filters.status
@@ -220,6 +231,13 @@ export default function DashboardClient() {
   }, [queueAll]);
 
   const firstPriority = useMemo(() => getFirstPriority(queue), [queue]);
+  useEffect(() => {
+    if (firstPriority?.incident_id) {
+      setFirstDemoIncidentId(firstPriority.incident_id);
+    } else if (queueAll.length > 0) {
+      setFirstDemoIncidentId(queueAll[0].incident_id);
+    }
+  }, [firstPriority, queueAll]);
   const integrationIssues = integrationValidationResults.filter(
     (result) =>
       result.credentialStatus !== "completed" ||
@@ -309,6 +327,69 @@ export default function DashboardClient() {
             )
           }
         />
+
+        {showDemoTour && !demoTourDismissed ? (
+          <div
+            data-testid="demo-tour-banner"
+            className="rounded-lg border border-status-info/40 bg-status-info-soft p-4"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-status-info">
+                  Welcome to the ADC demo sandbox
+                </p>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Walk the workflow end-to-end:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text-secondary">
+                  <li>
+                    Open the seeded incident in the queue below
+                    {firstDemoIncidentId ? (
+                      <>
+                        {" "}—{" "}
+                        <button
+                          type="button"
+                          className="underline hover:text-status-info"
+                          onClick={() => router.push(`/incidents/${firstDemoIncidentId}`)}
+                        >
+                          go to incident
+                        </button>
+                      </>
+                    ) : null}
+                  </li>
+                  <li>
+                    Review export packages on the{" "}
+                    <button
+                      type="button"
+                      className="underline hover:text-status-info"
+                      onClick={() => router.push("/exports")}
+                    >
+                      Exports page
+                    </button>
+                  </li>
+                  <li>
+                    Trigger a scenario from the{" "}
+                    <button
+                      type="button"
+                      className="underline hover:text-status-info"
+                      onClick={() => router.push("/demo")}
+                    >
+                      Demo Workspace
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss demo tour"
+                className="text-sm text-text-secondary hover:text-text-primary"
+                onClick={() => setDemoTourDismissed(true)}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {overviewError ? <p className="text-sm text-status-critical">{overviewError}</p> : null}
         {actionError ? <p className="text-sm text-status-critical">{actionError}</p> : null}

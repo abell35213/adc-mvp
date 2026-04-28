@@ -1,21 +1,42 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { login } from "@/lib/api";
+
+const DEMO_EMAIL_FALLBACK = "demo-admin@adc.local";
+const DEMO_PASSWORD_FALLBACK = "DemoAdmin!2345";
 
 /**
  * Login page.  Provides a simple email and password form for users to
  * authenticate.  Upon successful login the user is redirected to the
  * dashboard.  Any errors are displayed to the user.  Styling
  * matches the overall dashboard aesthetic.
+ *
+ * When the URL carries `?demo=1` the form is prefilled with the seeded
+ * demo-tenant credentials (sourced from NEXT_PUBLIC_DEMO_EMAIL /
+ * NEXT_PUBLIC_DEMO_PASSWORD, with safe local-dev fallbacks) and a
+ * sandbox banner is rendered above the form.  This is the entry point
+ * used by the marketing-site "Try the demo" CTAs.
  */
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDemoMode = searchParams?.get("demo") === "1";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isDemoMode) return;
+    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? DEMO_EMAIL_FALLBACK;
+    const demoPassword =
+      process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? DEMO_PASSWORD_FALLBACK;
+    setEmail((current) => (current ? current : demoEmail));
+    setPassword((current) => (current ? current : demoPassword));
+  }, [isDemoMode]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -23,7 +44,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/dashboard");
+      router.push(isDemoMode ? "/dashboard?demo=1" : "/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -40,6 +61,20 @@ export default function LoginPage() {
         <h1 className="mb-6 text-2xl font-bold text-gray-900 dark:text-white">
           ADC Dashboard
         </h1>
+
+        {isDemoMode && (
+          <div
+            role="status"
+            data-testid="demo-sandbox-banner"
+            className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"
+          >
+            <p className="font-semibold">You&apos;re entering the ADC demo sandbox.</p>
+            <p className="mt-1">
+              Credentials are prefilled. Data is seeded for demonstration only and
+              may be reset periodically.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
