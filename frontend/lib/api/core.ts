@@ -14,17 +14,6 @@ const API_BASE =
       "http://localhost:8000"
     : process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-type ApiErrorDetail = {
-  message?: string;
-  code?: string;
-  retry_hint?: string;
-  correlation_id?: string;
-};
-
-type ApiErrorPayload = {
-  detail?: string | ApiErrorDetail;
-};
-
 export class ApiRequestError extends Error {
   status: number;
   code?: string;

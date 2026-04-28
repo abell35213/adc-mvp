@@ -81,20 +81,20 @@ def issue_driver_artifact_upload_url(
     normalized_artifact_type = artifact_type.strip().lower()
     if normalized_artifact_type not in ALLOWED_ARTIFACT_CONTENT_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Unsupported artifact type",
         )
 
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Unsupported content type",
         )
 
     allowed_for_type = ALLOWED_ARTIFACT_CONTENT_TYPES[normalized_artifact_type]
     if content_type not in allowed_for_type:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Content type is not allowed for artifact type",
         )
 

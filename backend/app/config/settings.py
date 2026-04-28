@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 import boto3
 from pydantic import model_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 INSECURE_DEFAULT_SENTINEL = "change-me-in-production"
 # Additional well-known placeholder strings published in the various .env.example
@@ -243,8 +243,7 @@ class AppSettings(BaseSettings):
 
         return self
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 
 class LocalSettings(AppSettings):

@@ -75,7 +75,7 @@ def patch_report_sections(
 
     if not updated_sections:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one report section must be provided",
         )
 

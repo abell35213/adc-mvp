@@ -46,10 +46,11 @@ def db_session(monkeypatch):
     # naive UTC datetimes for the duration of these tests; behavior under
     # Postgres in production is unchanged.
     from datetime import datetime as _dt
+    from datetime import timezone as _tz
 
     monkeypatch.setattr(
         "app.security.session._utcnow",
-        lambda: _dt.utcnow(),
+        lambda: _dt.now(_tz.utc).replace(tzinfo=None),
     )
 
     engine = create_engine(

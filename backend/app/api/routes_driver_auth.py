@@ -130,7 +130,7 @@ def request_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
         phone_e164 = normalize_phone(body.phone_e164)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid phone number",
         )
     _enforce_rate_limit("request", phone_e164, _REQUEST_LIMIT)
@@ -187,7 +187,7 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
         phone_e164 = normalize_phone(body.phone_e164)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid phone number",
         )
     _enforce_rate_limit("verify", phone_e164, _VERIFY_LIMIT)

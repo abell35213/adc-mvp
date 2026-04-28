@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +39,26 @@ from app.observability.logging import RequestContextMiddleware, setup_logging
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ADC MVP", version="0.1.0", debug=settings.DEBUG)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    """Validate startup invariants once before serving requests."""
+
+    validate_startup_config(settings)
+    init_sentry(service="api")
+    logger.info(
+        "startup_complete",
+        extra={"deploy_version": settings.RELEASE, "app_env": settings.APP_ENV},
+    )
+    yield
+
+
+app = FastAPI(
+    title="ADC MVP",
+    version="0.1.0",
+    debug=settings.DEBUG,
+    lifespan=_lifespan,
+)
 
 setup_logging(settings.LOG_LEVEL)
 
@@ -79,15 +99,3 @@ app.include_router(driver_imports_router)
 app.include_router(qr_deployment_router)
 app.include_router(integrations_router, tags=["integrations"])
 app.include_router(health_router)
-
-
-@app.on_event("startup")
-async def validate_startup_configuration() -> None:
-    """Fail fast if environment invariants are broken."""
-
-    validate_startup_config(settings)
-    init_sentry(service="api")
-    logger.info(
-        "startup_complete",
-        extra={"deploy_version": settings.RELEASE, "app_env": settings.APP_ENV},
-    )

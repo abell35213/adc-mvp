@@ -22,6 +22,12 @@ const sharedModuleNameMapper = {
   '^@react-native-async-storage/async-storage$':
     '<rootDir>/src/__tests__/mocks/asyncStorage.ts',
   '^expo-secure-store$': '<rootDir>/src/__tests__/mocks/secureStore.ts',
+  // `@expo/vector-icons/MaterialCommunityIcons` transitively pulls in
+  // `expo-font`/`expo-asset`/`expo-modules-core`, which don't resolve under
+  // the `jest-expo` jsdom environment. Stub it with a Text-only renderer so
+  // Paper components can inject icons during tests without warnings.
+  '^@expo/vector-icons/MaterialCommunityIcons$':
+    '<rootDir>/src/__tests__/mocks/materialCommunityIcons.tsx',
 };
 
 /** @type {import('jest').Config} */

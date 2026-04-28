@@ -30,3 +30,31 @@ Customer production onboarding is permitted only when all conditions below are t
 3. Release checklist sign-off is recorded with no unresolved No-Go owner.
 
 If any condition is unmet, onboarding remains blocked.
+
+## 4) Accepted residual dependency advisories
+
+These advisories are accepted with explicit risk justification and tracked to the next ecosystem upgrade window. Required CI gates (`pip-audit`, `npm audit --audit-level=high`) remain enforced — these residuals are at `low`/`moderate` severity only.
+
+### 4.1 `frontend/` (Next.js 16)
+
+| Package | Severity | Source / advisory | Justification | Tracked remediation |
+| --- | --- | --- | --- | --- |
+| `postcss@8.4.31` | moderate | [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93) | Bundled by `next@16.2.4` under `node_modules/next/node_modules/postcss`; not exposed in `frontend/`'s own build pipeline (top-level `postcss` is `>=8.5.10`). No high/critical exposure surface in our SSR/SSG output. | Tracked to next Next.js minor that bumps the bundled `postcss`. |
+
+### 4.2 `driver-app/` (Expo SDK 54)
+
+After `npm audit fix`, **0 high / 0 critical** advisories remain. The residual `low`/`moderate` advisories below all ride along Expo CLI / build-time tooling and cannot be patched without an Expo SDK upgrade.
+
+| Package | Severity | Reaches runtime? | Justification |
+| --- | --- | --- | --- |
+| `@tootallnate/once`, `http-proxy-agent`, `jest-environment-jsdom`, `jsdom` | low | No (test/dev only) | Pulled in by `jest-environment-jsdom` for the rntl Jest project; not bundled into the production driver app. |
+| `@expo/cli`, `@expo/config`, `@expo/config-plugins`, `@expo/metro-config`, `@expo/prebuild-config`, `xcode` | moderate | No (build-time only) | Expo CLI build chain. Used during `expo start` / `expo prebuild` on developer machines and CI build agents; never shipped to devices. |
+| `brace-expansion` ([GHSA-f886-m6hf-6m8v](https://github.com/advisories/GHSA-f886-m6hf-6m8v)) | moderate | No | Transitive of `glob`/`minimatch` under Expo CLI; not on the runtime path. |
+| `expo`, `expo-asset`, `expo-constants` | moderate | Yes (limited) | Pinned by Expo SDK 54 bundledNativeModules. Mitigated by upcoming Expo SDK upgrade window; advisories are denial-of-service / parsing edge cases, not RCE/credential paths. |
+| `jest-expo` | moderate | No (test only) | Test runner preset. |
+| `postcss` ([GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93)) | moderate | No | Build-time CSS pipeline used by Expo web preview only. |
+| `uuid` ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)) | moderate | Yes (indirect) | Used by Expo internals; advisory is around predictable RNG seeding for v4 in obsolete versions. Driver app does not rely on `uuid` for any security-relevant identifier (sessions/tokens are server-issued). |
+
+**Tracked remediation:** all `driver-app` Expo-CLI residuals close on the next Expo SDK upgrade. A reminder issue is filed against each Expo SDK release window.
+
+**Re-validation cadence:** `dependency-vulnerability-scan` job in `.github/workflows/ci.yml` runs on every PR and main push at `--audit-level=critical`; the Phase 1 exit criterion (`--audit-level=high` clean for both `frontend` and `driver-app`) is currently met.
