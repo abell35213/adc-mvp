@@ -92,3 +92,17 @@ A UI PR is not review-ready until each applicable item below is checked.
 - Treat this document as the **design contract** for Sprints 1–5.
 - UI PR templates/reviews should link to this file and mark checklist completion.
 - If a PR intentionally deviates, include a short rationale and design sign-off in the PR description.
+
+## 24) Definition of Done release gate (visual + functional + responsive + accessibility)
+
+Every UI task introducing or updating reusable components must include a QA report stored in `frontend/docs/` (or this file) that records results for:
+
+- Visual contract checks (dark shell / light surfaces / semantic statuses / anti-pattern avoidance).
+- Functional checks (loading, empty, and error behavior; operator next action clarity).
+- Responsive checks:
+  - Desktop: dual-column rails.
+  - Tablet: stacked rails, wrapped filters, horizontal table scroll.
+  - Mobile: KPI carousel behavior, table-to-card transforms, filter drawer affordance.
+- Accessibility checks (semantic landmarks, keyboard navigation, contrast, screen-reader announcements, and non-color status cues).
+
+A UI PR is **not done** until this checklist is completed and linked in the PR description.
