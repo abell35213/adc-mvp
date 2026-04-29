@@ -138,9 +138,9 @@ python scripts/seed_demo_data.py
 
 The login form is prefilled with the seeded credentials and a sandbox banner
 confirms you are entering the demo tenant. After signing in you land on the
-dashboard, where a one-time tour banner deep-links into the seeded incident,
-the Exports page, and the `/demo` workspace where additional scenarios can
-be launched.
+dashboard, where a dismissible tour banner shown on load deep-links into the
+seeded incident, the Exports page, and the `/demo` workspace where additional
+scenarios can be launched.
 
 Default demo credentials (override via env before running the seed script):
 
