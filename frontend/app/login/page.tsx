@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { Suspense, useEffect, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { login } from "@/lib/api";
 
@@ -30,6 +30,17 @@ const DEMO_PREFILL_ENABLED =
  * never render the demo affordances, even with `?demo=1`.
  */
 export default function LoginPage() {
+  // useSearchParams() requires a Suspense boundary at static-render time
+  // (Next.js bails out of prerender otherwise). Keep the form as an inner
+  // component and render it inside <Suspense> so `next build` can succeed.
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isDemoRequest = searchParams?.get("demo") === "1";
