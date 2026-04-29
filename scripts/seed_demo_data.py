@@ -52,18 +52,30 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
         db.commit()
         db.refresh(user)
     else:
-        # Self-heal stale seeds from previous versions of this script that
-        # provisioned the demo admin as SYSTEM_ADMIN, and refresh the password
-        # hash so the documented demo credentials always work after re-seed.
-        if user.role != Role.ORG_ADMIN.value:
-            user.role = Role.ORG_ADMIN.value
-        if not user.is_active:
-            user.is_active = True
-        # Always rehash so the documented password works regardless of what a
-        # prior run used; bcrypt salts make this a no-op for clients.
-        user.password_hash = hash_password(admin_password)
-        db.commit()
-        db.refresh(user)
+        existing_demo_membership = (
+            db.query(UserOrg)
+            .filter(UserOrg.user_id == user.id, UserOrg.org_id == org.id)
+            .first()
+            is not None
+        )
+        is_stale_demo_seed = user.role == Role.SYSTEM_ADMIN.value or existing_demo_membership
+
+        # Only self-heal known stale demo seeds. Do not mutate unrelated local
+        # accounts that happen to share the configured demo admin email.
+        if is_stale_demo_seed:
+            if user.role != Role.ORG_ADMIN.value:
+                user.role = Role.ORG_ADMIN.value
+            if not user.is_active:
+                user.is_active = True
+            # Refresh the password only for known demo-seed accounts so the
+            # documented demo credentials work after re-seed.
+            user.password_hash = hash_password(admin_password)
+            db.commit()
+            db.refresh(user)
+        elif user.role != Role.ORG_ADMIN.value:
+            raise ValueError(
+                f"Refusing to modify existing non-demo user for demo admin email: {admin_email}"
+            )
     if (
         db.query(UserOrg)
         .filter(UserOrg.user_id == user.id, UserOrg.org_id == org.id)
