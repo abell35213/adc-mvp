@@ -1,5 +1,12 @@
+import { Suspense } from "react";
 import DashboardClient from "./DashboardClient";
 
 export default function DashboardPage() {
-  return <DashboardClient />;
+  // DashboardClient uses useSearchParams() which requires a Suspense
+  // boundary during static prerender.
+  return (
+    <Suspense fallback={null}>
+      <DashboardClient />
+    </Suspense>
+  );
 }

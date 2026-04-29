@@ -81,9 +81,10 @@ export function DemoSection() {
         {/* CTA overlay button */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <Link
-            href="/company/contact"
+            href="/login?demo=1"
             className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[#1B6EF3] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-[#1558c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             aria-label="Explore interactive demo"
+            data-testid="demo-section-cta"
           >
             Explore interactive demo
             <span aria-hidden="true" className="rounded-full bg-white/20 h-6 w-6 flex items-center justify-center text-xs">↗</span>

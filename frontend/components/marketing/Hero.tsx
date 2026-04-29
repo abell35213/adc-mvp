@@ -71,6 +71,13 @@ export function Hero() {
             <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
               Login
             </Link>
+            <Link
+              href="/login?demo=1"
+              className={marketingTokens.buttonVariants.secondary}
+              data-testid="hero-try-demo"
+            >
+              Try the demo
+            </Link>
             <Link href="/company/contact" className={marketingTokens.buttonVariants.primary}>
               Book demo
             </Link>

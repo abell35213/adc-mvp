@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Seed deterministic demo entities for incidents/evidence/exports/onboarding."""
+"""Seed deterministic demo entities for incidents/evidence/exports/onboarding.
+
+Creates (or updates) a demo org, an ORG_ADMIN user, a driver, and a vehicle
+QR token, then seeds a scenario via app.commercial.demo. Safe to re-run.
+
+Default demo credentials (override via env):
+    DEMO_ORG            = "ADC Demo Org"
+    DEMO_ADMIN_EMAIL    = "demo-admin@adc.local"
+    DEMO_ADMIN_PASSWORD = "DemoAdmin!2345"     # local dev only
+    DEMO_DRIVER_PHONE   = "+15551234567"
+    DEMO_VEHICLE_ID     = "veh-demo-001"
+
+The demo admin is provisioned as ORG_ADMIN (not SYSTEM_ADMIN) so the seeded
+password works against POST /auth/login without MFA enrolment. Do NOT run
+this script against staging or production.
+"""
 
 from __future__ import annotations
 
@@ -24,14 +39,43 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
 
     user = db.query(User).filter_by(email=admin_email).first()
     if user is None:
+        # Demo admin is provisioned as ORG_ADMIN (not SYSTEM_ADMIN) so that
+        # password-only login works out of the box. SYSTEM_ADMIN trips the
+        # MFA gate in routes_auth._is_mfa_required and the login UI has no
+        # MFA field — making the seeded credentials unusable.
         user = User(
             email=admin_email,
             password_hash=hash_password(admin_password),
-            role=Role.SYSTEM_ADMIN.value,
+            role=Role.ORG_ADMIN.value,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+    else:
+        existing_demo_membership = (
+            db.query(UserOrg)
+            .filter(UserOrg.user_id == user.id, UserOrg.org_id == org.id)
+            .first()
+            is not None
+        )
+        is_stale_demo_seed = user.role == Role.SYSTEM_ADMIN.value or existing_demo_membership
+
+        # Only self-heal known stale demo seeds. Do not mutate unrelated local
+        # accounts that happen to share the configured demo admin email.
+        if is_stale_demo_seed:
+            if user.role != Role.ORG_ADMIN.value:
+                user.role = Role.ORG_ADMIN.value
+            if not user.is_active:
+                user.is_active = True
+            # Refresh the password only for known demo-seed accounts so the
+            # documented demo credentials work after re-seed.
+            user.password_hash = hash_password(admin_password)
+            db.commit()
+            db.refresh(user)
+        elif user.role != Role.ORG_ADMIN.value:
+            raise ValueError(
+                f"Refusing to modify existing non-demo user for demo admin email: {admin_email}"
+            )
     if (
         db.query(UserOrg)
         .filter(UserOrg.user_id == user.id, UserOrg.org_id == org.id)
@@ -77,7 +121,7 @@ def main() -> None:
 
     org_name = os.environ.get("DEMO_ORG", "ADC Demo Org")
     admin_email = os.environ.get("DEMO_ADMIN_EMAIL", "demo-admin@adc.local")
-    admin_password = os.environ.get("DEMO_ADMIN_PASSWORD", "demo-admin")
+    admin_password = os.environ.get("DEMO_ADMIN_PASSWORD", "DemoAdmin!2345")
     driver_phone = os.environ.get("DEMO_DRIVER_PHONE", "+15551234567")
     vehicle_id = os.environ.get("DEMO_VEHICLE_ID", "veh-demo-001")
 

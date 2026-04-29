@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import MainLayout from "@/components/MainLayout";
 import AlertsPanel from "@/components/case-ops/AlertsPanel";
 import ExportReadyList from "@/components/case-ops/ExportReadyList";
@@ -85,6 +85,11 @@ function getFirstPriority(queue: CaseOpsQueueItem[]) {
 export default function DashboardClient() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Reactive demo-mode flag: re-evaluates whenever the URL changes (e.g. when
+  // updateFilters() calls router.replace) so that the banner stays consistent
+  // with what's actually in the URL bar across reloads and navigation.
+  const isDemoMode = searchParams?.get("demo") === "1";
   const [filters, setFilters] = useState<IncidentFilters>(() => {
     if (typeof window === "undefined") return DEFAULT_FILTERS;
     const params = new URLSearchParams(window.location.search);
@@ -111,6 +116,7 @@ export default function DashboardClient() {
   const [onboarding, setOnboarding] = useState<OrgLaunchReadiness | null>(null);
   const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
+  const [demoTourDismissed, setDemoTourDismissed] = useState(false);
 
   const activeTab = (Object.keys(TAB_TO_STATUS).find(
     (key) => TAB_TO_STATUS[key as QueueTabKey] === filters.status
@@ -220,6 +226,11 @@ export default function DashboardClient() {
   }, [queueAll]);
 
   const firstPriority = useMemo(() => getFirstPriority(queue), [queue]);
+  const firstDemoIncidentId = useMemo<string | null>(() => {
+    if (firstPriority?.incident_id) return firstPriority.incident_id;
+    if (queueAll.length > 0) return queueAll[0].incident_id;
+    return null;
+  }, [firstPriority, queueAll]);
   const integrationIssues = integrationValidationResults.filter(
     (result) =>
       result.credentialStatus !== "completed" ||
@@ -237,6 +248,10 @@ export default function DashboardClient() {
     if (next.blockers) query.set("blockers", next.blockers);
     if (next.search) query.set("search", next.search);
     if (next.sort) query.set("sort", next.sort);
+    // Preserve the demo flag across in-page URL updates so the tour banner
+    // (and any other demo-mode affordances derived from useSearchParams) do
+    // not get silently dropped when filters/tabs change.
+    if (isDemoMode) query.set("demo", "1");
     const nextUrl = query.toString() ? `/dashboard?${query.toString()}` : "/dashboard";
     router.replace(nextUrl);
   };
@@ -309,6 +324,69 @@ export default function DashboardClient() {
             )
           }
         />
+
+        {isDemoMode && !demoTourDismissed ? (
+          <div
+            data-testid="demo-tour-banner"
+            className="rounded-lg border border-status-info/40 bg-status-info-soft p-4"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-status-info">
+                  Welcome to the ADC demo sandbox
+                </p>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Walk the workflow end-to-end:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text-secondary">
+                  <li>
+                    Open the seeded incident in the queue below
+                    {firstDemoIncidentId ? (
+                      <>
+                        {" "}—{" "}
+                        <button
+                          type="button"
+                          className="underline hover:text-status-info"
+                          onClick={() => router.push(`/incidents/${firstDemoIncidentId}`)}
+                        >
+                          go to incident
+                        </button>
+                      </>
+                    ) : null}
+                  </li>
+                  <li>
+                    Review export packages on the{" "}
+                    <button
+                      type="button"
+                      className="underline hover:text-status-info"
+                      onClick={() => router.push("/exports")}
+                    >
+                      Exports page
+                    </button>
+                  </li>
+                  <li>
+                    Trigger a scenario from the{" "}
+                    <button
+                      type="button"
+                      className="underline hover:text-status-info"
+                      onClick={() => router.push("/demo")}
+                    >
+                      Demo Workspace
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss demo tour"
+                className="text-sm text-text-secondary hover:text-text-primary"
+                onClick={() => setDemoTourDismissed(true)}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {overviewError ? <p className="text-sm text-status-critical">{overviewError}</p> : null}
         {actionError ? <p className="text-sm text-status-critical">{actionError}</p> : null}
