@@ -69,7 +69,12 @@ test('DemoSection "Explore interactive demo" CTA points at the demo login flow',
 
 test('Dashboard renders a dismissible demo tour banner when ?demo=1 is present', () => {
   assert.match(dashboardClient, /data-testid="demo-tour-banner"/);
-  assert.match(dashboardClient, /params\.get\("demo"\) === "1"/);
+  // Demo mode is derived reactively from Next's useSearchParams hook so the
+  // banner stays in sync with URL changes (filter/tab navigation).
+  assert.match(dashboardClient, /useSearchParams/);
+  assert.match(dashboardClient, /searchParams\?\.get\("demo"\) === "1"/);
+  // updateFilters preserves the demo flag when rewriting the URL.
+  assert.match(dashboardClient, /if \(isDemoMode\) query\.set\("demo", "1"\)/);
   // Deep links into the three demo destinations.
   assert.match(dashboardClient, /\/incidents\/\$\{firstDemoIncidentId\}/);
   assert.match(dashboardClient, /router\.push\("\/exports"\)/);

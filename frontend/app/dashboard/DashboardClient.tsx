@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import MainLayout from "@/components/MainLayout";
 import AlertsPanel from "@/components/case-ops/AlertsPanel";
 import ExportReadyList from "@/components/case-ops/ExportReadyList";
@@ -85,6 +85,11 @@ function getFirstPriority(queue: CaseOpsQueueItem[]) {
 export default function DashboardClient() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Reactive demo-mode flag: re-evaluates whenever the URL changes (e.g. when
+  // updateFilters() calls router.replace) so that the banner stays consistent
+  // with what's actually in the URL bar across reloads and navigation.
+  const isDemoMode = searchParams?.get("demo") === "1";
   const [filters, setFilters] = useState<IncidentFilters>(() => {
     if (typeof window === "undefined") return DEFAULT_FILTERS;
     const params = new URLSearchParams(window.location.search);
@@ -112,15 +117,6 @@ export default function DashboardClient() {
   const [qrStats, setQrStats] = useState<VehicleQrStats | null>(null);
   const [integrationValidationResults, setIntegrationValidationResults] = useState<IntegrationValidationResult[]>([]);
   const [demoTourDismissed, setDemoTourDismissed] = useState(false);
-  const [showDemoTour, setShowDemoTour] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("demo") === "1") {
-      setShowDemoTour(true);
-    }
-  }, []);
 
   const activeTab = (Object.keys(TAB_TO_STATUS).find(
     (key) => TAB_TO_STATUS[key as QueueTabKey] === filters.status
@@ -252,6 +248,10 @@ export default function DashboardClient() {
     if (next.blockers) query.set("blockers", next.blockers);
     if (next.search) query.set("search", next.search);
     if (next.sort) query.set("sort", next.sort);
+    // Preserve the demo flag across in-page URL updates so the tour banner
+    // (and any other demo-mode affordances derived from useSearchParams) do
+    // not get silently dropped when filters/tabs change.
+    if (isDemoMode) query.set("demo", "1");
     const nextUrl = query.toString() ? `/dashboard?${query.toString()}` : "/dashboard";
     router.replace(nextUrl);
   };
@@ -325,7 +325,7 @@ export default function DashboardClient() {
           }
         />
 
-        {showDemoTour && !demoTourDismissed ? (
+        {isDemoMode && !demoTourDismissed ? (
           <div
             data-testid="demo-tour-banner"
             className="rounded-lg border border-status-info/40 bg-status-info-soft p-4"
