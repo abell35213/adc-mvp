@@ -4,8 +4,17 @@ import { useEffect, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { login } from "@/lib/api";
 
-const DEMO_EMAIL_FALLBACK = "demo-admin@adc.local";
-const DEMO_PASSWORD_FALLBACK = "DemoAdmin!2345";
+// Demo-mode prefill is opt-in: it requires both NEXT_PUBLIC_DEMO_EMAIL and
+// NEXT_PUBLIC_DEMO_PASSWORD to be set at build time, AND a non-production
+// build. We deliberately do NOT embed credential fallbacks in the client
+// bundle so production deployments cannot leak a plaintext demo password
+// just because a visitor appended `?demo=1` to the URL.
+const DEMO_EMAIL_ENV = process.env.NEXT_PUBLIC_DEMO_EMAIL;
+const DEMO_PASSWORD_ENV = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
+const DEMO_PREFILL_ENABLED =
+  process.env.NODE_ENV !== "production" &&
+  Boolean(DEMO_EMAIL_ENV) &&
+  Boolean(DEMO_PASSWORD_ENV);
 
 /**
  * Login page.  Provides a simple email and password form for users to
@@ -13,16 +22,18 @@ const DEMO_PASSWORD_FALLBACK = "DemoAdmin!2345";
  * dashboard.  Any errors are displayed to the user.  Styling
  * matches the overall dashboard aesthetic.
  *
- * When the URL carries `?demo=1` the form is prefilled with the seeded
- * demo-tenant credentials (sourced from NEXT_PUBLIC_DEMO_EMAIL /
- * NEXT_PUBLIC_DEMO_PASSWORD, with safe local-dev fallbacks) and a
+ * When the URL carries `?demo=1` AND a non-production build has both
+ * NEXT_PUBLIC_DEMO_EMAIL and NEXT_PUBLIC_DEMO_PASSWORD configured, the
+ * form is prefilled with the seeded demo-tenant credentials and a
  * sandbox banner is rendered above the form.  This is the entry point
- * used by the marketing-site "Try the demo" CTAs.
+ * used by the marketing-site "Try the demo" CTAs.  Production builds
+ * never render the demo affordances, even with `?demo=1`.
  */
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isDemoMode = searchParams?.get("demo") === "1";
+  const isDemoRequest = searchParams?.get("demo") === "1";
+  const isDemoMode = isDemoRequest && DEMO_PREFILL_ENABLED;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,9 +42,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isDemoMode) return;
-    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? DEMO_EMAIL_FALLBACK;
-    const demoPassword =
-      process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? DEMO_PASSWORD_FALLBACK;
+    // Both env vars are guaranteed non-empty by DEMO_PREFILL_ENABLED.
+    const demoEmail = DEMO_EMAIL_ENV as string;
+    const demoPassword = DEMO_PASSWORD_ENV as string;
     setEmail((current) => current || demoEmail);
     setPassword((current) => current || demoPassword);
   }, [isDemoMode]);

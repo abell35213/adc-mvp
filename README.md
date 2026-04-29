@@ -151,8 +151,11 @@ Default demo credentials (override via env before running the seed script):
 | `DEMO_ORG`             | `ADC Demo Org`           |
 
 The frontend reads `NEXT_PUBLIC_DEMO_EMAIL` / `NEXT_PUBLIC_DEMO_PASSWORD`
-to prefill the login form (see `.env.example`). These credentials are for
-**local development only** — never enable them in staging or production.
+to prefill the login form (see `.env.example`). Demo prefill is opt-in
+and **only activates** when both env vars are set at frontend build time
+**and** the build is non-production (`NODE_ENV !== "production"`).
+Production builds never embed or autofill these credentials, even if a
+visitor appends `?demo=1` to the URL.
 
 ### Manual Development (from repo root)
 
