@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ dataset_label }} Report - {{ incident_id }}{% endblock %}
+
+{% block body %}
+{% with title=dataset_label ~ " Report", package_root=incident_id, generated_at_utc=generated_at_utc %}
+  {% include "partials/_header.html" %}
+{% endwith %}
+
+<h2>Summary</h2>
+<table>
+  <tr><th>Incident ID</th><td>{{ incident_id }}</td></tr>
+  <tr><th>Dataset</th><td>{{ dataset_name }}</td></tr>
+  <tr><th>Record Count</th><td>{{ record_count }}</td></tr>
+  <tr><th>Window Start (UTC)</th><td>{{ window_start_utc or "n/a" }}</td></tr>
+  <tr><th>Window End (UTC)</th><td>{{ window_end_utc or "n/a" }}</td></tr>
+</table>
+
+<h2>Records</h2>
+{% if records %}
+  <table class="records">
+    <thead>
+      <tr>
+        {% for column in columns %}<th>{{ column }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records %}
+        <tr>
+          {% for column in columns %}<td>{{ record.get(column, "") }}</td>{% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if truncated %}
+    <p class="muted">
+      Note: showing the first {{ records|length }} of {{ record_count }} records.
+      The full record set is in the corresponding JSON / CSV artifact.
+    </p>
+  {% endif %}
+{% else %}
+  <p>No records were captured for this dataset in the requested window.</p>
+{% endif %}
+
+{% include "partials/_footer.html" %}
+{% endblock %}

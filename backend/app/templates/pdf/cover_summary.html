@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ summary_title }}{% endblock %}
+
+{% block body %}
+{% with title=summary_title, package_root=package_root, generated_at_utc=generated_at_utc %}
+  {% include "partials/_header.html" %}
+{% endwith %}
+
+<h2>Incident Summary Facts</h2>
+<table>
+  <tr><th>Incident ID</th><td>{{ incident_id }}</td></tr>
+  <tr><th>Incident Status</th><td>{{ incident_status }}</td></tr>
+  <tr><th>Incident Created</th><td>{{ incident_created_at_utc }}</td></tr>
+  <tr><th>Severity</th><td>{{ incident_severity }}</td></tr>
+  <tr><th>Export ID</th><td>{{ export_id }}</td></tr>
+  <tr><th>Export Type</th><td>{{ export_type }}</td></tr>
+  <tr><th>Profile ID</th><td>{{ profile_id }}</td></tr>
+  <tr><th>Export Status</th><td>{{ export_status }}</td></tr>
+  <tr><th>Artifact Count</th><td>{{ artifact_count }}</td></tr>
+  <tr><th>Timeline Event Count</th><td>{{ timeline_event_count }}</td></tr>
+</table>
+
+<h2>Key Events</h2>
+<table>
+  <tr><th>Occurred UTC</th><th>Event Type</th><th>Actor</th></tr>
+  {% if key_events %}
+    {% for event in key_events %}
+      <tr>
+        <td>{{ event.occurred_at_utc }}</td>
+        <td>{{ event.event_type }}</td>
+        <td>{{ event.actor }}</td>
+      </tr>
+    {% endfor %}
+  {% else %}
+    <tr><td colspan="3">No events recorded.</td></tr>
+  {% endif %}
+</table>
+
+<h2>Evidence Summary Counts</h2>
+<table>
+  <tr><th>Artifact Type</th><th>Count</th></tr>
+  {% if evidence_summary_counts %}
+    {% for row in evidence_summary_counts %}
+      <tr><td>{{ row.artifact_type }}</td><td>{{ row.count }}</td></tr>
+    {% endfor %}
+  {% else %}
+    <tr><td colspan="2">No artifacts listed.</td></tr>
+  {% endif %}
+</table>
+
+<h2>Missing/Unavailable Warnings</h2>
+<ul>
+  {% if missing_unavailable_warnings %}
+    {% for row in missing_unavailable_warnings %}
+      <li class="warning">{{ row.kind }} / {{ row.item }} {{ row.reason }}</li>
+    {% endfor %}
+  {% else %}
+    <li>No warnings.</li>
+  {% endif %}
+</ul>
+
+<h2>Verification Instructions</h2>
+<ol>
+  {% for item in verification_instructions %}
+    <li>{{ item }}</li>
+  {% endfor %}
+</ol>
+
+{% include "partials/_footer.html" %}
+{% endblock %}

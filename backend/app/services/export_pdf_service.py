@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from html import escape
 from typing import Any
+
+from app.services.pdf_render import render_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -41,68 +42,6 @@ DEFAULT_VERIFICATION_INSTRUCTIONS = [
 ]
 
 
-HTML_TEMPLATE = """<!doctype html>
-<html>
-<head>
-  <meta charset=\"utf-8\" />
-  <style>
-    @page {{ size: A4; margin: 1.6cm; }}
-    body {{ font-family: Arial, sans-serif; color: #111; font-size: 11pt; }}
-    h1, h2 {{ margin: 0 0 8px 0; }}
-    h1 {{ font-size: 18pt; }}
-    h2 {{ font-size: 13pt; margin-top: 14px; }}
-    .muted {{ color: #555; }}
-    table {{ width: 100%; border-collapse: collapse; margin-top: 6px; }}
-    th, td {{ border: 1px solid #ccc; padding: 6px; text-align: left; vertical-align: top; }}
-    ul {{ margin-top: 4px; }}
-    .warning {{ color: #8a2c2c; }}
-  </style>
-</head>
-<body>
-  <h1>{summary_title}</h1>
-  <p class=\"muted\">Package: {package_root}</p>
-  <p class=\"muted\">Generated: {generated_at_utc}</p>
-
-  <h2>Incident Summary Facts</h2>
-  <table>
-    <tr><th>Incident ID</th><td>{incident_id}</td></tr>
-    <tr><th>Incident Status</th><td>{incident_status}</td></tr>
-    <tr><th>Incident Created</th><td>{incident_created_at_utc}</td></tr>
-    <tr><th>Severity</th><td>{incident_severity}</td></tr>
-    <tr><th>Export ID</th><td>{export_id}</td></tr>
-    <tr><th>Export Type</th><td>{export_type}</td></tr>
-    <tr><th>Profile ID</th><td>{profile_id}</td></tr>
-    <tr><th>Export Status</th><td>{export_status}</td></tr>
-    <tr><th>Artifact Count</th><td>{artifact_count}</td></tr>
-    <tr><th>Timeline Event Count</th><td>{timeline_event_count}</td></tr>
-  </table>
-
-  <h2>Key Events</h2>
-  <table>
-    <tr><th>Occurred UTC</th><th>Event Type</th><th>Actor</th></tr>
-    {key_events_rows}
-  </table>
-
-  <h2>Evidence Summary Counts</h2>
-  <table>
-    <tr><th>Artifact Type</th><th>Count</th></tr>
-    {evidence_summary_rows}
-  </table>
-
-  <h2>Missing/Unavailable Warnings</h2>
-  <ul>
-    {warning_rows}
-  </ul>
-
-  <h2>Verification Instructions</h2>
-  <ol>
-    {verification_rows}
-  </ol>
-</body>
-</html>
-"""
-
-
 def _iso(dt: Any) -> str:
     if not dt:
         return "unknown"
@@ -127,8 +66,12 @@ def build_export_pdf_context(
     generated_at_utc: str | None = None,
 ) -> ExportPdfContext:
     options = dict(options or {})
-    profile_id = str(options.get("profile_id") or options.get("profile") or "court_defense_v1")
-    summary_style = "claim_focused" if profile_id == "insurer_packet_v1" else "litigation_full"
+    profile_id = str(
+        options.get("profile_id") or options.get("profile") or "court_defense_v1"
+    )
+    summary_style = (
+        "claim_focused" if profile_id == "insurer_packet_v1" else "litigation_full"
+    )
     counts: dict[str, int] = {}
     for artifact in artifacts:
         kind = str(getattr(artifact, "artifact_type", "unknown") or "unknown")
@@ -141,7 +84,10 @@ def build_export_pdf_context(
 
     sorted_events = sorted(
         events,
-        key=lambda event: (_iso(getattr(event, "occurred_at_utc", None)), str(getattr(event, "event_type", ""))),
+        key=lambda event: (
+            _iso(getattr(event, "occurred_at_utc", None)),
+            str(getattr(event, "event_type", "")),
+        ),
     )
     key_events = [
         {
@@ -178,48 +124,25 @@ def build_export_pdf_context(
         key_events=key_events,
         evidence_summary_counts=evidence_summary_counts,
         missing_unavailable_warnings=merged_warnings,
-        verification_instructions=verification_instructions or DEFAULT_VERIFICATION_INSTRUCTIONS,
+        verification_instructions=verification_instructions
+        or DEFAULT_VERIFICATION_INSTRUCTIONS,
     )
 
 
 def render_cover_summary_pdf(context: ExportPdfContext) -> bytes:
+    """Render the cover-summary PDF using the shared Jinja+WeasyPrint pipeline.
+
+    Hard-fails (raises ``RuntimeError``) on any rendering error so that an
+    incomplete export package is never persisted as if it were valid evidence.
+    """
     summary_title = (
         "ADC Claim Packet Cover Summary"
         if context.summary_style == "claim_focused"
         else "ADC Export Cover Summary"
     )
-    key_events_rows = "".join(
-        f"<tr><td>{escape(event['occurred_at_utc'])}</td><td>{escape(event['event_type'])}</td><td>{escape(event['actor'])}</td></tr>"
-        for event in context.key_events
-    ) or "<tr><td colspan='3'>No events recorded.</td></tr>"
-
-    evidence_summary_rows = "".join(
-        f"<tr><td>{escape(row['artifact_type'])}</td><td>{row['count']}</td></tr>"
-        for row in context.evidence_summary_counts
-    ) or "<tr><td colspan='2'>No artifacts listed.</td></tr>"
-
-    warning_rows = "".join(
-        f"<li class='warning'>{escape(row['kind'])} / {escape(row['item'])} {escape(row['reason'])}</li>"
-        for row in context.missing_unavailable_warnings
-    ) or "<li>No warnings.</li>"
-
-    verification_rows = "".join(
-        f"<li>{escape(item)}</li>" for item in context.verification_instructions
-    )
-
-    html = HTML_TEMPLATE.format(
-        **{k: escape(str(v)) for k, v in asdict(context).items() if not isinstance(v, list)},
-        summary_title=summary_title,
-        key_events_rows=key_events_rows,
-        evidence_summary_rows=evidence_summary_rows,
-        warning_rows=warning_rows,
-        verification_rows=verification_rows,
-    )
-
+    template_context = {**asdict(context), "summary_title": summary_title}
     try:
-        from weasyprint import HTML  # type: ignore
-
-        pdf_bytes = HTML(string=html).write_pdf()
+        pdf_bytes = render_pdf("cover_summary", template_context)
     except Exception as exc:  # hard-fail policy for MVP defensibility
         logger.exception(
             "Failed to generate cover summary PDF for export_id=%s incident_id=%s",

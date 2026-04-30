@@ -26,6 +26,7 @@ from app.domain.system_event_types import SystemEventType
 from app.security.authn import build_user_auth_context
 from app.security.permissions import Capability, has_capability
 from app.services.pdf_render import render_pdf
+from app.services.qr_image import qr_png_data_uri
 
 router = APIRouter(prefix="/org", tags=["qr-deployment"])
 
@@ -313,7 +314,14 @@ def download_vehicle_qr_printable(
 
     vehicle.qr_deployment_status = "distributed"
     vehicle.qr_distributed_at_utc = datetime.now(timezone.utc)
-    pdf_bytes = render_pdf("vehicle_qr_printable", {"vehicle_id": vehicle.unit_number, "qr_token": token.qr_token})
+    pdf_bytes = render_pdf(
+        "vehicle_qr_printable",
+        {
+            "vehicle_id": vehicle.unit_number,
+            "qr_token": token.qr_token,
+            "qr_image_data_uri": qr_png_data_uri(token.qr_token),
+        },
+    )
     _emit_vehicle_qr_event(
         db,
         org_id=org_id,

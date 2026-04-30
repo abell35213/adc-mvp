@@ -6,8 +6,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # curl is needed for the HEALTHCHECK below.
+# The remaining libraries are WeasyPrint's native runtime dependencies
+# (Pango/Cairo/GDK-PixBuf/HarfBuzz + shared-mime-info + base fonts).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz0b \
+        libcairo2 \
+        libgdk-pixbuf-2.0-0 \
+        shared-mime-info \
+        fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

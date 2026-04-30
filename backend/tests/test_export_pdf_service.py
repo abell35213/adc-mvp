@@ -79,8 +79,9 @@ def test_build_export_pdf_context_snapshot_structure() -> None:
 
 def test_render_cover_summary_pdf_non_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeHtml:
-        def __init__(self, string: str):
+        def __init__(self, string: str, base_url: str | None = None):
             self.string = string
+            self.base_url = base_url
 
         def write_pdf(self) -> bytes:
             return b"%PDF-1.4\nnon-empty"
@@ -105,8 +106,9 @@ def test_render_cover_summary_pdf_non_empty(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_render_cover_summary_pdf_hard_fails_on_engine_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class _ExplodingHtml:
-        def __init__(self, string: str):
+        def __init__(self, string: str, base_url: str | None = None):
             self.string = string
+            self.base_url = base_url
 
         def write_pdf(self) -> bytes:
             raise RuntimeError("engine failed")

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Vehicle QR - {{ vehicle_id }}{% endblock %}
+
+{% block body %}
+<h1>ADC Vehicle QR Tag</h1>
+<p class="muted">Vehicle: <strong>{{ vehicle_id }}</strong></p>
+
+<div class="qr-block">
+  {% if qr_image_data_uri %}
+    <img src="{{ qr_image_data_uri }}" alt="QR code for vehicle {{ vehicle_id }}" />
+  {% else %}
+    <p class="warning">QR image unavailable. Token: {{ qr_token }}</p>
+  {% endif %}
+  <p class="muted">Token: {{ qr_token }}</p>
+</div>
+
+<div class="instructions">
+  <h2>Posting Instructions</h2>
+  <ol>
+    <li>Print this page on standard letter or A4 paper.</li>
+    <li>Affix the printout inside the cab where it is visible to the driver
+        but not obstructing operating controls.</li>
+    <li>Drivers scan this QR code with the ADC driver app to file an incident
+        report for vehicle <strong>{{ vehicle_id }}</strong>.</li>
+    <li>Replace the printout immediately if it becomes damaged, faded, or
+        the QR code is rotated by the safety manager.</li>
+  </ol>
+</div>
+
+{% include "partials/_footer.html" %}
+{% endblock %}
