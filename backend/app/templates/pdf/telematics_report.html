@@ -2,7 +2,7 @@
 {% block title %}{{ dataset_label }} Report - {{ incident_id }}{% endblock %}
 
 {% block body %}
-{% with title=dataset_label ~ " Report", package_root=incident_id, generated_at_utc=generated_at_utc %}
+{% with title=dataset_label ~ " Report", generated_at_utc=generated_at_utc %}
   {% include "partials/_header.html" %}
 {% endwith %}
 
