@@ -23,7 +23,7 @@ def qr_png_data_uri(payload: str, *, box_size: int = 10, border: int = 2) -> str
     """
     try:
         import qrcode  # type: ignore
-    except Exception:  # pragma: no cover - dependency missing
+    except ImportError:  # pragma: no cover - dependency missing
         logger.warning("qrcode library not available; QR image will be omitted")
         return None
 

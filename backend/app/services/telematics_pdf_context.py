@@ -10,10 +10,21 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
 
-# Cap how many records we render in-line in the PDF. Telematics datasets
-# can run to thousands of rows per dataset; the canonical record set is
-# always available in the JSON / CSV artifacts that ship next to the PDF
-# in the export package, so the PDF only needs a representative sample.
+# Cap how many records we render in-line in the PDF.
+#
+# Telematics datasets routinely run to several thousand rows per dataset
+# (one row per GPS ping / ELD status change / safety event in the capture
+# window). Rendering all of them inside a PDF table is unnecessary because:
+#   - the canonical record set always ships next to the PDF in JSON + CSV
+#     artifacts inside the same export ZIP, and
+#   - WeasyPrint's table layout cost grows roughly linearly with row
+#     count, so a 10k-row table can take seconds and produce a multi-MB
+#     PDF that no human will read end-to-end.
+#
+# 250 rows fits comfortably in a small handful of pages while still giving
+# a reviewer enough surface to spot-check the dataset. When the dataset is
+# larger than this cap the template renders a "showing first N of M"
+# notice pointing at the JSON/CSV artifacts.
 MAX_RECORDS_IN_PDF = 250
 
 
