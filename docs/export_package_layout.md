@@ -94,3 +94,35 @@ sha256sum -c integrity/checksums.sha256
 
 All lines should report `OK`. Any mismatch indicates the file was altered after
 the export was generated.
+
+## PDF Rendering Pipeline
+
+PDF documents inside the export ZIP (cover summary, telematics dataset
+reports, vehicle QR printables) are produced by a single rendering pipeline:
+
+```
+context dict --> Jinja2 template (backend/app/templates/pdf/) --> HTML
+HTML        --> WeasyPrint (HTML(string=...).write_pdf())     --> PDF bytes
+```
+
+The single entry point is `app.services.pdf_render.render_pdf(template_name,
+context)`. Template names are resolved through the `TEMPLATE_REGISTRY` dict
+in that module; unknown names raise `ValueError`. Renders that fail or
+return empty bytes raise `RuntimeError` (hard-fail) so the export package
+cannot be persisted with a missing/corrupt document. For development
+environments only, setting `PDF_RENDER_FAIL_OPEN=true` makes the renderer
+return a placeholder PDF on engine errors instead of raising.
+
+Adding a new document type:
+
+1. Add `<name>.html` under `backend/app/templates/pdf/` (extend `base.html`
+   to inherit shared `@page` rules and typography).
+2. Register it in `TEMPLATE_REGISTRY` in `app/services/pdf_render.py`.
+3. Add a context-builder helper alongside the existing
+   `*_pdf_context.py` modules to keep callers thin.
+4. Add a unit test in `backend/tests/test_pdf_render_templates.py` that
+   asserts the key context fields appear in the rendered HTML; this runs
+   without WeasyPrint's native dependencies.
+
+See `backend/docs/pdf-rendering.md` for the developer-facing rundown.
+

@@ -1,0 +1,128 @@
+/*
+ * Shared print styles for ADC export documents rendered via WeasyPrint.
+ *
+ * Keep rules minimal and CSS Paged Media compatible. WeasyPrint supports
+ * @page, running headers/footers, and standard CSS 2.1 + many CSS3 modules.
+ */
+
+@page {
+  size: A4;
+  margin: 1.6cm;
+
+  @top-center {
+    content: string(doctitle);
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    color: #555;
+  }
+
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    color: #555;
+  }
+
+  @bottom-left {
+    content: string(packageroot);
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    color: #555;
+  }
+}
+
+body {
+  font-family: Arial, sans-serif;
+  color: #111;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+h1 {
+  font-size: 18pt;
+  margin: 0 0 8px 0;
+  string-set: doctitle content();
+}
+
+h2 {
+  font-size: 13pt;
+  margin: 14px 0 6px 0;
+  border-bottom: 1px solid #999;
+  padding-bottom: 2px;
+}
+
+h3 {
+  font-size: 11pt;
+  margin: 10px 0 4px 0;
+}
+
+p {
+  margin: 4px 0;
+}
+
+.muted {
+  color: #555;
+  font-size: 10pt;
+}
+
+.package-root {
+  string-set: packageroot content();
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 10pt;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+th {
+  background-color: #f2f2f2;
+}
+
+/* Long telematics tables must paginate cleanly. */
+table.records {
+  page-break-inside: auto;
+}
+
+table.records tr {
+  page-break-inside: avoid;
+  page-break-after: auto;
+}
+
+table.records thead {
+  display: table-header-group;
+}
+
+ul,
+ol {
+  margin-top: 4px;
+}
+
+.warning {
+  color: #8a2c2c;
+}
+
+.qr-block {
+  text-align: center;
+  margin: 24px 0;
+}
+
+.qr-block img {
+  width: 8cm;
+  height: 8cm;
+  image-rendering: pixelated;
+}
+
+.instructions {
+  margin-top: 16px;
+}

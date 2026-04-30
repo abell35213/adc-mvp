@@ -552,6 +552,7 @@ def capture_telematics_bundle(
     from app.services.vault_s3 import VaultS3
     from app.services.schema_validate import validate_payload
     from app.services.pdf_render import render_pdf
+    from app.services.telematics_pdf_context import build_telematics_pdf_context
     from app.services.normalizers.eld import normalize_eld_record
     from app.services.normalizers.gps import normalize_gps_record
     from app.services.normalizers.safety_events import normalize_safety_event
@@ -904,7 +905,13 @@ def capture_telematics_bundle(
                 # 6. Generate PDF rendering
                 pdf_bytes = render_pdf(
                     f"{dataset_name}_report",
-                    {"records": normalized, "incident_id": incident_id},
+                    build_telematics_pdf_context(
+                        dataset_name=dataset_name,
+                        records=normalized,
+                        incident_id=incident_id,
+                        window_start_utc=start,
+                        window_end_utc=end,
+                    ),
                 )
                 pdf_key_id = _idempotency_key(
                     workflow_key, dataset_name, spec["artifact_type"], "pdf"
