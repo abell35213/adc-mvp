@@ -78,10 +78,17 @@ def build_telematics_pdf_context(
     max_records: int = MAX_RECORDS_IN_PDF,
 ) -> dict[str, Any]:
     """Build the context dict consumed by ``telematics_report.html``."""
-    record_list = [dict(rec) for rec in records]
-    record_count = len(record_list)
+    # Single streaming pass: only copy/stringify the first ``max_records``
+    # records, while still counting the full input. This avoids materializing
+    # the full dataset in memory inside the Celery task when the source has
+    # thousands of rows but only the first N are rendered in the PDF.
+    visible_records: list[dict[str, Any]] = []
+    record_count = 0
+    for rec in records:
+        record_count += 1
+        if len(visible_records) < max_records:
+            visible_records.append(dict(rec))
     truncated = record_count > max_records
-    visible_records = record_list[:max_records]
     columns = _columns_from(visible_records)
     # Pre-stringify cell values so the template stays free of formatting
     # logic and Jinja autoescape sees plain strings.

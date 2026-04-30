@@ -59,7 +59,45 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "safety_event_report": "telematics_report.html",
 }
 
-_PLACEHOLDER_PDF = b"%PDF-1.4 placeholder"
+
+def _build_placeholder_pdf() -> bytes:
+    """Return a structurally valid minimal single-page PDF.
+
+    Used only by the ``PDF_RENDER_FAIL_OPEN`` fail-open path. Constructed by
+    hand (rather than via WeasyPrint, which is what just failed) so the
+    placeholder is guaranteed to be openable in any conformant PDF viewer:
+    it has a header, four objects (catalog, pages, page, trailing-content
+    placeholder), a correct cross-reference table with byte offsets, a
+    trailer, ``startxref`` and ``%%EOF``.
+    """
+    header = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        (
+            b"3 0 obj\n<< /Type /Page /Parent 2 0 R "
+            b"/MediaBox [0 0 612 792] /Resources << >> >>\nendobj\n"
+        ),
+    ]
+    body = bytearray(header)
+    offsets = [0]  # object 0 is the free entry
+    for obj in objects:
+        offsets.append(len(body))
+        body.extend(obj)
+
+    xref_offset = len(body)
+    xref_lines = [f"xref\n0 {len(objects) + 1}\n", "0000000000 65535 f \n"]
+    for off in offsets[1:]:
+        xref_lines.append(f"{off:010d} 00000 n \n")
+    body.extend("".join(xref_lines).encode("ascii"))
+    body.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(body)
+
+
+_PLACEHOLDER_PDF = _build_placeholder_pdf()
 
 
 def _fail_open() -> bool:
