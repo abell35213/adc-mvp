@@ -12,6 +12,7 @@ class IntegrationDomain(str, Enum):
     TELEMATICS = "telematics"
     DASHCAM = "dashcam"
     MESSAGING = "messaging"
+    EMAIL = "email"
     STORAGE = "storage"
     FLEET_DIRECTORY = "fleet_directory"
 
@@ -22,6 +23,7 @@ class ProviderCapability(str, Enum):
     TELEMATICS = "telematics"
     DASHCAM = "dashcam"
     MESSAGING = "messaging"
+    EMAIL = "email"
     STORAGE = "storage"
     FLEET_DIRECTORY = "fleet_directory"
 

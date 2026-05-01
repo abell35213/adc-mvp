@@ -123,6 +123,16 @@ class AppSettings(BaseSettings):
     TWILIO_SMS_FROM: str = ""
     TWILIO_VOICE_FROM: str = ""
 
+    # Email / SES (crash packet notifications)
+    EMAIL_PROVIDER: str = "noop"  # one of: noop, ses
+    SES_REGION: str = "us-east-1"
+    EMAIL_FROM: str = ""
+    EMAIL_REPLY_TO: str = ""
+    EMAIL_CONFIGURATION_SET: str = ""
+
+    # Crash packet SLA (15 minutes)
+    CRASH_PACKET_SLA_SECONDS: int = 900
+
     # Driver OTP
     OTP_HASH_PEPPER: str = INSECURE_DEFAULT_SENTINEL
     OTP_RESEND_COOLDOWN_SECONDS: int = 60
@@ -222,6 +232,10 @@ class AppSettings(BaseSettings):
         self.SECRET_PROVIDER = self.SECRET_PROVIDER.strip().lower()
         if self.SECRET_PROVIDER not in {"env", "aws_secrets_manager"}:
             raise ValueError("SECRET_PROVIDER must be one of: env, aws_secrets_manager")
+
+        self.EMAIL_PROVIDER = self.EMAIL_PROVIDER.strip().lower() or "noop"
+        if self.EMAIL_PROVIDER not in {"noop", "ses"}:
+            raise ValueError("EMAIL_PROVIDER must be one of: noop, ses")
 
         self.COOKIE_DEPLOYMENT_TOPOLOGY = self.COOKIE_DEPLOYMENT_TOPOLOGY.strip().lower()
         if self.COOKIE_DEPLOYMENT_TOPOLOGY not in {"same_site", "cross_site"}:

@@ -232,7 +232,13 @@ class Incident(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     status = Column(
-        Enum("open", "evidence_capturing", "closed", name="incident_status"),
+        Enum(
+            "open",
+            "evidence_capturing",
+            "accident_occurred",
+            "closed",
+            name="incident_status",
+        ),
         nullable=False,
         default="open",
     )
@@ -2145,3 +2151,117 @@ class DriverInstructionStep(Base):
     title = Column(Text, nullable=False)
     body = Column(Text, nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
+
+
+# ── Crash-packet notification (Phase 1 of demo workflow) ───────────
+
+
+class OrgNotificationRecipient(Base):
+    """Per-org control file of recipients for crash packet notifications.
+
+    Acts as the single source of truth for who receives what channel
+    (email today; sms/voice can read this table in a later phase).
+    """
+
+    __tablename__ = "org_notification_recipients"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    email = Column(Text, nullable=False)
+    full_name = Column(Text, nullable=True)
+    role_tag = Column(Text, nullable=True)
+    # JSON array of channel strings: ["email"], ["email","sms"], etc.
+    channels = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[\"email\"]'")
+    )
+    active = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_org_notification_recipients_org_active",
+            "org_id",
+            "active",
+        ),
+    )
+
+
+class CrashPacketDelivery(Base):
+    """Tracks one crash-packet send attempt for an incident.
+
+    Indexed by incident_id for idempotency and by status/dispatched_at
+    for the SLA watchdog scan.
+    """
+
+    __tablename__ = "crash_packet_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(
+        Enum(
+            "queued",
+            "dispatched",
+            "sent",
+            "partial",
+            "failed",
+            "overdue",
+            name="crash_packet_delivery_status",
+        ),
+        nullable=False,
+        default="queued",
+        server_default="queued",
+    )
+    target_sla_seconds = Column(Integer, nullable=False, default=900)
+    idempotency_key = Column(Text, nullable=False, unique=True)
+    payload_hash = Column(Text, nullable=True)
+    sent_to = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    failed_to = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    message_ids = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    error_summary = Column(Text, nullable=True)
+    dispatched_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_crash_packet_deliveries_status_dispatched",
+            "status",
+            "dispatched_at_utc",
+        ),
+    )

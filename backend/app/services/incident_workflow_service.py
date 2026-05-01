@@ -185,6 +185,60 @@ def initiate_driver_incident(
     )
 
 
+def transition_incident_to_accident_occurred(
+    db: Session,
+    *,
+    incident: Incident,
+    actor_type: str = "system",
+    actor_id: str = "incident_workflow",
+) -> Incident:
+    """Flip an incident's status to ``accident_occurred`` and dispatch the
+    crash packet exactly once.
+
+    Idempotent: re-calling for an already-flipped incident is a no-op for the
+    DB, and the dispatch task itself is keyed on ``crash_packet:{incident_id}``
+    so duplicate enqueues are safe. Any failure to enqueue is logged but not
+    raised — the SLA watchdog will surface a missed packet.
+    """
+    from app.domain.system_event_types import SystemEventType
+
+    if incident.status != "accident_occurred":
+        prior_status = incident.status
+        incident.status = "accident_occurred"
+        db.commit()
+        db.refresh(incident)
+        db.add(
+            Event(
+                org_id=incident.org_id,
+                incident_id=incident.incident_id,
+                event_type=SystemEventType.INCIDENT_STATUS_CHANGED.value,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                payload={
+                    "from_status": prior_status,
+                    "to_status": "accident_occurred",
+                },
+            )
+        )
+        db.commit()
+
+    # Enqueue dispatch lazily so the import doesn't pull Celery into import
+    # graphs that don't need it (e.g. unit tests of the transition itself).
+    try:
+        from app.tasks.crash_packet_tasks import dispatch_crash_packet
+
+        dispatch_crash_packet.delay(str(incident.incident_id))
+    except Exception:  # noqa: BLE001 - never let queueing block status flip
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Failed to enqueue dispatch_crash_packet for incident %s",
+            incident.incident_id,
+        )
+
+    return incident
+
+
 def incident_status_summary(db: Session, *, incident_id: uuid.UUID) -> dict:
     """Build a complete status payload for a driver incident."""
     events = (

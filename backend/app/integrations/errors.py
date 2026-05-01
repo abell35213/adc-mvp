@@ -8,7 +8,7 @@ from typing import Literal
 import httpx
 
 
-ErrorCategory = Literal["telematics", "dashcam", "messaging", "mapping", "auth", "storage", "integration"]
+ErrorCategory = Literal["telematics", "dashcam", "messaging", "email", "mapping", "auth", "storage", "integration"]
 
 # Canonical code sets by integration domain.
 TELEMATICS_ERROR_CODES = frozenset(
@@ -39,6 +39,16 @@ MESSAGING_ERROR_CODES = frozenset(
         "MESSAGING_TIMEOUT",
         "MESSAGING_INVALID_DESTINATION",
         "MESSAGING_PROVIDER_ERROR",
+    }
+)
+EMAIL_ERROR_CODES = frozenset(
+    {
+        "EMAIL_AUTH_FAILED",
+        "EMAIL_RATE_LIMITED",
+        "EMAIL_TIMEOUT",
+        "EMAIL_INVALID_DESTINATION",
+        "EMAIL_NOT_CONFIGURED",
+        "EMAIL_PROVIDER_ERROR",
     }
 )
 MAPPING_ERROR_CODES = frozenset(
@@ -217,6 +227,56 @@ def map_storage_error(exc: Exception, *, provider_key: str = "storage") -> Norma
     )
 
 
+def map_ses_error(exc: Exception) -> NormalizedIntegrationError:
+    """Map a boto3/botocore SES exception to a normalized error."""
+    provider_key = "ses"
+    operator_message = str(exc)
+    error_code: str | None = None
+
+    # botocore.exceptions.ClientError carries an error code dict; we
+    # avoid importing botocore to keep the function light.
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        error_block = response.get("Error") or {}
+        error_code = error_block.get("Code")
+
+    if error_code in {"Throttling", "TooManyRequestsException"}:
+        return NormalizedIntegrationError(
+            code="EMAIL_RATE_LIMITED",
+            category="email",
+            provider_key=provider_key,
+            retryable=True,
+            user_facing_message="Email provider is throttling. Please retry shortly.",
+            operator_message=operator_message,
+        )
+    if error_code in {"AccessDenied", "InvalidClientTokenId", "SignatureDoesNotMatch"}:
+        return NormalizedIntegrationError(
+            code="EMAIL_AUTH_FAILED",
+            category="email",
+            provider_key=provider_key,
+            retryable=False,
+            user_facing_message="Email provider authentication failed.",
+            operator_message=operator_message,
+        )
+    if error_code in {"MessageRejected", "MailFromDomainNotVerified"}:
+        return NormalizedIntegrationError(
+            code="EMAIL_INVALID_DESTINATION",
+            category="email",
+            provider_key=provider_key,
+            retryable=False,
+            user_facing_message="Email destination was rejected by the provider.",
+            operator_message=operator_message,
+        )
+    return NormalizedIntegrationError(
+        code="EMAIL_PROVIDER_ERROR",
+        category="email",
+        provider_key=provider_key,
+        retryable=True,
+        user_facing_message="Email provider operation failed.",
+        operator_message=operator_message,
+    )
+
+
 def as_normalized_error(exc: Exception, *, provider_hint: str | None = None, category: ErrorCategory = "integration") -> NormalizedIntegrationError:
     if isinstance(exc, IntegrationError):
         return exc.normalized_error
@@ -224,6 +284,8 @@ def as_normalized_error(exc: Exception, *, provider_hint: str | None = None, cat
         return map_samsara_error(exc, category=category)
     if provider_hint == "twilio":
         return map_twilio_error(exc, category=category)
+    if provider_hint == "ses":
+        return map_ses_error(exc)
     if provider_hint in {"s3", "storage"}:
         return map_storage_error(exc, provider_key=provider_hint)
     return NormalizedIntegrationError(
