@@ -49,15 +49,32 @@
   <p><em>Vehicle record not available.</em></p>
 {% endif %}
 
+<h2>Trailer</h2>
+{% if trailer %}
+  <table>
+    <tr><th>Trailer ID</th><td>{{ trailer.adc_trailer_id }}</td></tr>
+    <tr><th>VIN</th><td>{{ trailer.vin or "—" }}</td></tr>
+    <tr><th>Make / Model</th><td>{{ trailer.make or "—" }} {{ trailer.model or "" }}</td></tr>
+    <tr><th>Year</th><td>{{ trailer.year or "—" }}</td></tr>
+    <tr><th>Plate</th><td>{{ trailer.plate or "—" }}</td></tr>
+    <tr><th>Last Inspection</th><td>{{ trailer.last_inspection_at_utc or "—" }}</td></tr>
+    <tr><th>Source</th><td>{{ trailer.source }}</td></tr>
+  </table>
+{% else %}
+  <p><em>No trailer record on file for this incident.</em></p>
+{% endif %}
+
 <h2>Maintenance (last {{ maintenance_window_days }} days)</h2>
 {% if maintenance %}
   <table>
-    <tr><th>Performed (UTC)</th><th>Vendor</th><th>Summary</th></tr>
+    <tr><th>Performed (UTC)</th><th>Asset</th><th>Vendor</th><th>Summary</th><th>Mileage</th></tr>
     {% for record in maintenance %}
       <tr>
-        <td>{{ record.performed_at }}</td>
-        <td>{{ record.vendor }}</td>
-        <td>{{ record.summary }}</td>
+        <td>{{ record.performed_at_utc }}</td>
+        <td>{{ record.asset_kind }}: {{ record.asset_id }}</td>
+        <td>{{ record.vendor or "—" }}</td>
+        <td>{{ record.summary or "—" }}</td>
+        <td>{{ record.mileage or "—" }}</td>
       </tr>
     {% endfor %}
   </table>

@@ -39,7 +39,9 @@ from app.db.models import (
     Driver,
     Event,
     Incident,
+    MaintenanceRecord,
     OrgVehicleRegistry,
+    Trailer,
 )
 
 # 1-year maintenance lookback per the user's clarifying note (#5):
@@ -89,6 +91,7 @@ def _serialize_incident(incident: Incident) -> dict[str, Any]:
         "adc_vehicle_id": incident.adc_vehicle_id,
         "samsara_vehicle_id": incident.samsara_vehicle_id,
         "adc_driver_id": incident.adc_driver_id,
+        "adc_trailer_id": incident.adc_trailer_id,
         "created_at_utc": (
             incident.created_at_utc.isoformat() if incident.created_at_utc else None
         ),
@@ -115,6 +118,43 @@ def _serialize_vehicle(vehicle: OrgVehicleRegistry) -> dict[str, Any]:
         "provider": vehicle.provider,
         "provider_vehicle_id": vehicle.provider_vehicle_id,
         "is_active": bool(vehicle.is_active),
+    }
+
+
+def _serialize_trailer(trailer: Trailer) -> dict[str, Any]:
+    return {
+        "trailer_id": str(trailer.id),
+        "adc_trailer_id": trailer.adc_trailer_id,
+        "vin": trailer.vin,
+        "make": trailer.make,
+        "model": trailer.model,
+        "year": trailer.year,
+        "plate": trailer.plate,
+        "last_inspection_at_utc": (
+            trailer.last_inspection_at_utc.isoformat()
+            if trailer.last_inspection_at_utc
+            else None
+        ),
+        "source": trailer.source,
+        "external_id": trailer.external_id,
+    }
+
+
+def _serialize_maintenance(record: MaintenanceRecord) -> dict[str, Any]:
+    return {
+        "maintenance_record_id": str(record.id),
+        "asset_kind": record.asset_kind,
+        "asset_id": record.asset_id,
+        "performed_at_utc": (
+            record.performed_at_utc.isoformat()
+            if record.performed_at_utc
+            else None
+        ),
+        "vendor": record.vendor,
+        "summary": record.summary,
+        "mileage": record.mileage,
+        "source": record.source,
+        "external_id": record.external_id,
     }
 
 
@@ -247,11 +287,48 @@ def fetch_crash_packet_row(
             .first()
         )
 
-    # Maintenance — Phase 2 will populate via the TMS cache. We compute the
-    # cutoff here so the structure already exists in Phase 1.
-    cutoff = _utcnow() - timedelta(days=MAINTENANCE_LOOKBACK_DAYS)
+    # Trailer (Phase 2): joined via incident.adc_trailer_id.
+    adc_trailer_id = incident.adc_trailer_id
+    trailer_obj: Trailer | None = None
+    if adc_trailer_id and org_id:
+        trailer_obj = (
+            db.query(Trailer)
+            .filter(
+                Trailer.org_id == org_id,
+                Trailer.adc_trailer_id == adc_trailer_id,
+            )
+            .first()
+        )
+
+    # Maintenance (Phase 2): combined tractor + trailer, last 1 year.
     maintenance: list[dict[str, Any]] = []
-    _ = cutoff  # placeholder for Phase 2 maintenance_record query
+    if org_id:
+        cutoff = _utcnow() - timedelta(days=MAINTENANCE_LOOKBACK_DAYS)
+        maint_filters = []
+        if adc_vehicle_id:
+            maint_filters.append(
+                (MaintenanceRecord.asset_kind == "tractor")
+                & (MaintenanceRecord.asset_id == adc_vehicle_id)
+            )
+        if adc_trailer_id:
+            maint_filters.append(
+                (MaintenanceRecord.asset_kind == "trailer")
+                & (MaintenanceRecord.asset_id == adc_trailer_id)
+            )
+        if maint_filters:
+            from sqlalchemy import or_
+
+            records = (
+                db.query(MaintenanceRecord)
+                .filter(
+                    MaintenanceRecord.org_id == org_id,
+                    MaintenanceRecord.performed_at_utc >= cutoff,
+                    or_(*maint_filters),
+                )
+                .order_by(MaintenanceRecord.performed_at_utc.desc())
+                .all()
+            )
+            maintenance = [_serialize_maintenance(r) for r in records]
 
     # ELD artifacts (any HOS/ELD-bearing artifact captured for this incident).
     eld_artifacts = (
@@ -295,7 +372,7 @@ def fetch_crash_packet_row(
         driver_json=_serialize_driver(driver_obj) if driver_obj else None,
         driver_history_json=driver_history,
         vehicle_json=_serialize_vehicle(vehicle_obj) if vehicle_obj else None,
-        trailer_json=None,
+        trailer_json=_serialize_trailer(trailer_obj) if trailer_obj else None,
         maintenance_json=maintenance,
         eld_logs_json=eld_logs,
         samsara_clip_links_json=samsara_links,

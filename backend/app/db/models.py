@@ -245,6 +245,8 @@ class Incident(Base):
     adc_vehicle_id = Column(Text, nullable=True)
     samsara_vehicle_id = Column(Text, nullable=True)
     adc_driver_id = Column(Text, nullable=True)
+    # Phase 2: nullable opaque trailer reference; matches trailer.adc_trailer_id.
+    adc_trailer_id = Column(Text, nullable=True)
     severity = Column(Text, nullable=True)
     case_status = Column(
         Enum(
@@ -2263,5 +2265,213 @@ class CrashPacketDelivery(Base):
             "ix_crash_packet_deliveries_status_dispatched",
             "status",
             "dispatched_at_utc",
+        ),
+    )
+
+
+# ── TMS-cached trailer + maintenance + connection metadata (Phase 2) ──
+
+
+class Trailer(Base):
+    """A trailer record, either entered manually or synced from a TMS."""
+
+    __tablename__ = "trailers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Stable per-org opaque id matching incident.adc_trailer_id.
+    adc_trailer_id = Column(Text, nullable=False)
+    vin = Column(Text, nullable=True)
+    make = Column(Text, nullable=True)
+    model = Column(Text, nullable=True)
+    year = Column(Integer, nullable=True)
+    plate = Column(Text, nullable=True)
+    last_inspection_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    source = Column(
+        Enum("manual", "tms", name="trailer_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    # External id from the source-of-truth TMS (used as upsert key with org_id).
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_trailers_org_adc_trailer_id", "org_id", "adc_trailer_id", unique=True),
+        Index("ix_trailers_org_external_id", "org_id", "external_id"),
+    )
+
+
+class MaintenanceRecord(Base):
+    """A single maintenance event for a tractor or trailer.
+
+    Indexed on ``(org_id, asset_kind, asset_id, performed_at_utc desc)`` for
+    the canonical 1-year lookup.
+    """
+
+    __tablename__ = "maintenance_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_kind = Column(
+        Enum("tractor", "trailer", name="maintenance_asset_kind"),
+        nullable=False,
+    )
+    # Free-form per-org asset id: tractor unit_number or trailer.adc_trailer_id.
+    asset_id = Column(Text, nullable=False)
+    performed_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    vendor = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    mileage = Column(Integer, nullable=True)
+    doc_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source = Column(
+        Enum("manual", "tms", name="maintenance_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_maintenance_records_lookup",
+            "org_id",
+            "asset_kind",
+            "asset_id",
+            "performed_at_utc",
+        ),
+        Index(
+            "ix_maintenance_records_external_id",
+            "org_id",
+            "external_id",
+            unique=False,
+        ),
+    )
+
+
+class TmsConnection(Base):
+    """Per-org configuration for an ODBC-based TMS data source."""
+
+    __tablename__ = "tms_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    vendor_hint = Column(
+        Enum(
+            "mcleod",
+            "tmw",
+            "fleetio",
+            "whip_around",
+            "generic",
+            name="tms_vendor_hint",
+        ),
+        nullable=False,
+        default="generic",
+        server_default="generic",
+    )
+    # Reference key into SECRET_PROVIDER (e.g. AWS Secrets Manager). The
+    # actual ODBC DSN / connection string is *never* stored in the DB.
+    odbc_secret_ref = Column(Text, nullable=False)
+    schedule_cron = Column(
+        Text, nullable=False, default="0 3 * * *", server_default="0 3 * * *"
+    )
+    last_synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    status = Column(
+        Enum("active", "disabled", "error", name="tms_connection_status"),
+        nullable=False,
+        default="active",
+        server_default="active",
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = ()
+
+
+class TmsFieldMap(Base):
+    """A single source-column → target-field mapping for a TMS connection."""
+
+    __tablename__ = "tms_field_maps"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tms_connection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tms_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity = Column(
+        Enum("trailer", "maintenance_record", name="tms_field_map_entity"),
+        nullable=False,
+    )
+    source_table = Column(Text, nullable=False)
+    source_column = Column(Text, nullable=False)
+    target_field = Column(Text, nullable=False)
+    transform = Column(
+        Text, nullable=False, default="none", server_default="none"
+    )
+    is_key = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_tms_field_maps_conn_entity",
+            "tms_connection_id",
+            "entity",
         ),
     )
