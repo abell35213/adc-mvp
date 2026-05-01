@@ -1,4 +1,4 @@
-.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix
+.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix verify-demo
 
 ## Start all services (infra + backend + worker + frontend) from repo root
 ## Uses docker compose (plugin-style command)
@@ -32,3 +32,11 @@ check-prod-hardening-gates:
 ## Enforce control-matrix updates when hardening files change
 check-hardening-matrix:
 	python scripts/check_hardening_matrix_updates.py
+
+## Verify the Phase 4 ``crash_with_full_packet`` demo scenario end-to-end.
+## Spins up an in-memory SQLite DB, seeds the scenario, and asserts that
+## every Phase 1+2+3 record the guided tour calls out is present and
+## well-formed. Offline — no Postgres / Celery / SES / S3 needed.
+verify-demo:
+cd backend && pip install -q -r requirements.txt
+python scripts/verify_demo.py

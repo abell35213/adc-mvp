@@ -12,17 +12,31 @@ from app.audit.emitter import emit_audit_event
 from app.db.models import (
     Artifact,
     AuditEvent,
+    CrashPacketDelivery,
     DemoScenario,
+    Driver,
+    DriverVehicleAssignment,
     Event,
     Export,
     Incident,
+    InsuranceFormFilling,
+    InsuranceFormTemplate,
+    MaintenanceRecord,
     Org,
     OrgExportValidationRun,
+    OrgNotificationRecipient,
     OrgOnboardingStepCompletion,
     OrgTestIncidentRun,
+    Trailer,
     User,
 )
 from app.onboarding.service import create_export_validation_run, create_test_incident_run, set_step_completion_override
+from app.services.insurance_form_template_service import (
+    FieldSpec,
+    add_field,
+    finalize_template,
+)
+from app.db.repo import insurance_form_templates as insurance_templates_repo
 
 DEMO_FEATURES: tuple[str, ...] = (
     "demo.workspace",
@@ -48,6 +62,15 @@ SCENARIO_CATALOG: tuple[DemoScenarioDefinition, ...] = (
         name="Escalated follow-up",
         description="Seeds an escalated incident with incomplete evidence and onboarding blockers.",
     ),
+    DemoScenarioDefinition(
+        scenario_key="crash_with_full_packet",
+        name="Crash with full insurance packet",
+        description=(
+            "End-to-end crash workflow: trailer + maintenance history (Phase 2), "
+            "accident_occurred status with a sent crash-packet delivery (Phase 1), "
+            "and a finalized insurance form template filled into a PDF artifact (Phase 3)."
+        ),
+    ),
 )
 
 DEFAULT_SCENARIO_KEY = SCENARIO_CATALOG[0].scenario_key
@@ -70,6 +93,23 @@ def _seed_incident_values(scenario_key: str) -> dict[str, object]:
             "completeness_status": "needs_follow_up",
             "vehicle_id": "veh-demo-escalated-001",
             "driver_id": "drv-demo-escalated-001",
+        }
+
+    if scenario_key == "crash_with_full_packet":
+        # Phase 1+2+3 end-to-end: incident is post-collision so the Phase 1
+        # crash-packet hook would fire in production. The seeder mocks that
+        # by writing a CrashPacketDelivery row directly so the demo viewer
+        # sees a "sent" packet without needing Celery + SES.
+        return {
+            "status": "accident_occurred",
+            "case_status": "ready_for_export",
+            "severity": "serious",
+            "readiness_state": "complete",
+            "completeness_percent": 100,
+            "completeness_status": "ready",
+            "vehicle_id": "veh-demo-crashpacket-001",
+            "driver_id": "drv-demo-crashpacket-001",
+            "trailer_id": "trl-demo-crashpacket-001",
         }
 
     return {
@@ -150,6 +190,16 @@ def reset_demo_tenant(
             .filter(Event.org_id == org_id, Event.incident_id.in_(incident_ids))
             .delete(synchronize_session=False)
         )
+        # Phase 1: crash-packet deliveries (incident_id FK).
+        db.query(CrashPacketDelivery).filter(
+            CrashPacketDelivery.incident_id.in_(incident_ids)
+        ).delete(synchronize_session=False)
+        # Phase 3: fillings reference both incidents (CASCADE) and artifacts
+        # (SET NULL) and templates (RESTRICT). Delete fillings explicitly so
+        # the template wipe below isn't blocked by RESTRICT.
+        db.query(InsuranceFormFilling).filter(
+            InsuranceFormFilling.incident_id.in_(incident_ids)
+        ).delete(synchronize_session=False)
         deleted_counts["artifacts"] = (
             db.query(Artifact)
             .filter(Artifact.org_id == org_id, Artifact.incident_id.in_(incident_ids))
@@ -178,6 +228,46 @@ def reset_demo_tenant(
         db.query(Incident).filter(Incident.incident_id.in_(incident_ids)).delete(
             synchronize_session=False
         )
+
+    # Phase 2: trailers + maintenance records seeded by the crash_with_full_packet
+    # scenario. Filter narrowly so non-demo data in the same org is untouched.
+    db.query(Trailer).filter(
+        Trailer.org_id == org_id, Trailer.adc_trailer_id.like("trl-demo-%")
+    ).delete(synchronize_session=False)
+    db.query(MaintenanceRecord).filter(
+        MaintenanceRecord.org_id == org_id,
+        MaintenanceRecord.asset_id.like("veh-demo-%")
+        | MaintenanceRecord.asset_id.like("trl-demo-%"),
+    ).delete(synchronize_session=False)
+    # Driver + assignment seeded by the same scenario.
+    demo_driver_ids = [
+        row.driver_id
+        for row in db.query(Driver.driver_id)
+        .filter(
+            Driver.org_id == org_id,
+            Driver.display_name == "Pat Demo-Driver",
+        )
+        .all()
+    ]
+    if demo_driver_ids:
+        db.query(DriverVehicleAssignment).filter(
+            DriverVehicleAssignment.org_id == org_id,
+            DriverVehicleAssignment.driver_id.in_(demo_driver_ids),
+        ).delete(synchronize_session=False)
+        db.query(Driver).filter(
+            Driver.driver_id.in_(demo_driver_ids)
+        ).delete(synchronize_session=False)
+    # Phase 1: notification recipient seeded by the scenario.
+    db.query(OrgNotificationRecipient).filter(
+        OrgNotificationRecipient.org_id == org_id,
+        OrgNotificationRecipient.email == "claims-demo@adc.local",
+    ).delete(synchronize_session=False)
+    # Phase 3: demo template (fillings already wiped above, so the
+    # RESTRICT FK doesn't block this).
+    db.query(InsuranceFormTemplate).filter(
+        InsuranceFormTemplate.org_id == org_id,
+        InsuranceFormTemplate.name.like("ACORD-DEMO%"),
+    ).delete(synchronize_session=False)
 
     db.query(OrgTestIncidentRun).filter(OrgTestIncidentRun.org_id == org_id).delete(
         synchronize_session=False
@@ -232,6 +322,7 @@ def seed_demo_tenant(
         adc_vehicle_id=str(state["vehicle_id"]),
         samsara_vehicle_id=f"sm-{state['vehicle_id']}",
         adc_driver_id=str(state["driver_id"]),
+        adc_trailer_id=str(state["trailer_id"]) if state.get("trailer_id") else None,
         readiness_state=str(state["readiness_state"]),
         completeness_percent=int(state["completeness_percent"]),
         completeness_status=str(state["completeness_status"]),
@@ -330,6 +421,22 @@ def seed_demo_tenant(
             seed_metadata_json={"incident_id": str(incident.incident_id), "test_run_id": str(run.run_id)},
         )
     )
+
+    # Phase 4: optional cross-phase supplement for the crash_with_full_packet
+    # scenario. Adds Phase 2 trailer + maintenance, Phase 1 notification +
+    # delivery rows, and a Phase 3 finalized template that is filled inline
+    # against this incident so a viewer sees the whole flow in one launch.
+    full_packet_extras: dict[str, object] = {}
+    if scenario_key == "crash_with_full_packet":
+        full_packet_extras = _seed_crash_with_full_packet_extras(
+            db,
+            org_id=org_id,
+            actor=actor,
+            incident=incident,
+            now_utc=now_utc,
+            state=state,
+        )
+
     db.commit()
 
     emit_audit_event(
@@ -350,6 +457,7 @@ def seed_demo_tenant(
         "seed_batch_id": seed_batch_id,
         "incident_id": str(incident.incident_id),
         "export_id": str(export.export_id),
+        **full_packet_extras,
     }
 
 
@@ -384,3 +492,219 @@ def ensure_demo_org(db: Session, *, org_id: uuid.UUID) -> Org:
     if org is None:
         raise ValueError("org_not_found")
     return org
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4 — crash_with_full_packet supplemental seeding
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _seed_crash_with_full_packet_extras(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    actor: User,
+    incident: Incident,
+    now_utc: datetime,
+    state: dict[str, object],
+) -> dict[str, object]:
+    """Add Phase 1+2+3 demo records on top of the base seed.
+
+    Produces, for the seeded incident:
+
+    * **Phase 2** — a :class:`Trailer` keyed by ``incident.adc_trailer_id``
+      and three :class:`MaintenanceRecord` rows (mix of tractor + trailer,
+      newest within the canonical 1-year window).
+    * **Phase 1** — an active :class:`OrgNotificationRecipient` and a
+      ``status='sent'`` :class:`CrashPacketDelivery` row, mirroring what
+      the dispatch task would have produced. Useful for demoing the
+      Phase 1 surface without standing up Celery + SES.
+    * **Phase 3** — a finalized :class:`InsuranceFormTemplate` with
+      mapped fields, then runs the real :func:`fill_form_for_incident`
+      service to materialise an :class:`InsuranceFormFilling` row +
+      ``insurance_form_filled`` :class:`Artifact`.
+
+    Returns a dict of the new ids merged into the seeder's return payload
+    so callers (and ``scripts/verify_demo.py``) can assert on them.
+    """
+    # We need a real Driver row so the canonical row's ``driver_json`` is
+    # populated. Incident.adc_driver_id is opaque text; the canonical query
+    # matches it as a UUID against drivers.driver_id, so we point the
+    # incident at the new driver's UUID after creation.
+    driver = Driver(
+        org_id=org_id,
+        # Phone is unique per row; salt with the org so re-seeds across
+        # parallel test orgs don't collide.
+        phone_e164=f"+1555{str(org_id.int)[-7:]}",
+        display_name="Pat Demo-Driver",
+        is_active=True,
+    )
+    db.add(driver)
+    db.flush()
+
+    db.add(
+        DriverVehicleAssignment(
+            org_id=org_id,
+            driver_id=driver.driver_id,
+            adc_vehicle_id=str(state["vehicle_id"]),
+            source="manual",
+        )
+    )
+
+    # Re-point the incident at the real driver UUID so the canonical row
+    # join lands. ``adc_driver_id`` is plain text in the model.
+    incident.adc_driver_id = str(driver.driver_id)
+
+    # Phase 2 — trailer + maintenance.
+    trailer = Trailer(
+        org_id=org_id,
+        adc_trailer_id=str(state["trailer_id"]),
+        vin="TRDEMO00000000001",
+        make="DemoTrailerCo",
+        model="Reefer-53",
+        year=2022,
+        plate="DEMO-T1",
+        last_inspection_at_utc=now_utc - timedelta(days=45),
+        source="manual",
+    )
+    db.add(trailer)
+
+    for offset_days, vendor, summary, asset_kind, asset_id in [
+        (
+            14,
+            "ShopAlpha",
+            "Pre-trip brake adjustment",
+            "tractor",
+            str(state["vehicle_id"]),
+        ),
+        (
+            45,
+            "ShopBeta",
+            "Trailer ABS sensor replacement",
+            "trailer",
+            str(state["trailer_id"]),
+        ),
+        (
+            120,
+            "ShopAlpha",
+            "Annual DOT inspection",
+            "tractor",
+            str(state["vehicle_id"]),
+        ),
+    ]:
+        db.add(
+            MaintenanceRecord(
+                org_id=org_id,
+                asset_kind=asset_kind,
+                asset_id=asset_id,
+                performed_at_utc=now_utc - timedelta(days=offset_days),
+                vendor=vendor,
+                summary=summary,
+                mileage=100000 + offset_days * 100,
+                source="manual",
+            )
+        )
+
+    # Phase 1 — recipient + a "sent" delivery row.
+    recipient = OrgNotificationRecipient(
+        org_id=org_id,
+        email="claims-demo@adc.local",
+        full_name="Demo Claims Inbox",
+        role_tag="claims",
+        channels=["email"],
+        active=True,
+    )
+    db.add(recipient)
+
+    delivery_idempotency_key = f"demo-crashpacket-{incident.incident_id}"
+    delivery = CrashPacketDelivery(
+        incident_id=incident.incident_id,
+        org_id=org_id,
+        status="sent",
+        target_sla_seconds=900,
+        idempotency_key=delivery_idempotency_key,
+        payload_hash="demo-payload-hash",
+        sent_to=[{"email": recipient.email, "channel": "email"}],
+        failed_to=[],
+        message_ids=[{"provider": "noop", "message_id": "demo-msg-1"}],
+        delivered_at_utc=now_utc - timedelta(minutes=1),
+    )
+    db.add(delivery)
+
+    # Phase 3 — finalized template + inline fill of this incident.
+    template = insurance_templates_repo.create_template(
+        db,
+        org_id=org_id,
+        name="ACORD-DEMO",
+        carrier="DemoMutual",
+        created_by_user_id=actor.id,
+    )
+    add_field(
+        db,
+        template_id=template.id,
+        spec=FieldSpec(
+            name="DriverName",
+            label="Driver Name",
+            source_path="driver.display_name",
+            transform="upper",
+            required=True,
+            sort_order=10,
+        ),
+    )
+    add_field(
+        db,
+        template_id=template.id,
+        spec=FieldSpec(
+            name="VehicleUnit",
+            label="Tractor unit",
+            source_path="incident.adc_vehicle_id",
+            sort_order=20,
+        ),
+    )
+    add_field(
+        db,
+        template_id=template.id,
+        spec=FieldSpec(
+            name="TrailerVIN",
+            label="Trailer VIN",
+            source_path="trailer.vin",
+            sort_order=30,
+        ),
+    )
+    add_field(
+        db,
+        template_id=template.id,
+        spec=FieldSpec(
+            name="LastMaintVendor",
+            label="Most recent maintenance vendor",
+            source_path="maintenance[0].vendor",
+            sort_order=40,
+        ),
+    )
+    finalize_template(db, template_id=template.id)
+
+    # Imported lazily to avoid a top-level cycle through the fill service
+    # (which itself imports the repo modules).
+    from app.services.insurance_form_fill_service import fill_form_for_incident
+
+    db.flush()  # ensure trailer + maintenance + driver visible to fill query
+
+    fill_result = fill_form_for_incident(
+        db,
+        incident_id=incident.incident_id,
+        template_id=template.id,
+    )
+
+    return {
+        "driver_id": str(driver.driver_id),
+        "trailer_id": str(trailer.id),
+        "recipient_id": str(recipient.id),
+        "crash_packet_delivery_id": str(delivery.id),
+        "insurance_form_template_id": str(template.id),
+        "insurance_form_filling_id": str(fill_result.filling.id),
+        "insurance_form_artifact_id": (
+            str(fill_result.filling.output_artifact_id)
+            if fill_result.filling.output_artifact_id
+            else None
+        ),
+    }
