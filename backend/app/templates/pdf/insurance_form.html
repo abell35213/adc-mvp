@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ subject }}{% endblock %}
+
+{% block body %}
+<h1>Insurance Form: {{ template.name }}</h1>
+<p><strong>Incident:</strong> {{ incident.incident_id }}</p>
+<p><strong>Carrier:</strong> {{ template.carrier or "—" }}</p>
+<p><strong>Template version:</strong> v{{ template.version }}</p>
+<p><strong>Filled (UTC):</strong> {{ filled_at_utc }}</p>
+
+{% if missing_required_fields %}
+<div class="warning">
+  <h2>Missing required fields</h2>
+  <ul>
+    {% for name in missing_required_fields %}
+      <li>{{ name }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<h2>Filled fields</h2>
+<table>
+  <tr><th>Field</th><th>Source</th><th>Value</th></tr>
+  {% for f in fields %}
+    <tr>
+      <td>{{ f.label or f.name }}</td>
+      <td><code>{{ f.source_path or "—" }}</code></td>
+      <td>{% if f.value is none %}<em>—</em>{% else %}{{ f.value }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+</table>
+{% endblock %}

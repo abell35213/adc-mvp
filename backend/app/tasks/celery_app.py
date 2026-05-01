@@ -77,6 +77,7 @@ celery_app.conf.update(
         },
         "app.tasks.tms_sync_tasks.sync_tms_org": {"queue": "evidence"},
         "app.tasks.tms_sync_tasks.sync_tms_connection": {"queue": "evidence"},
+        "app.tasks.insurance_form_tasks.fill_insurance_form": {"queue": "evidence"},
         "app.tasks.celery_app.record_dead_letter": {"queue": "dead_letter"},
     },
     task_annotations={

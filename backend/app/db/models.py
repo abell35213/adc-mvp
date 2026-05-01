@@ -2475,3 +2475,203 @@ class TmsFieldMap(Base):
             "entity",
         ),
     )
+
+
+# ── Insurance form templates + fillings (Phase 3) ──
+
+
+class InsuranceFormTemplate(Base):
+    """Operator-uploaded blank insurance form (org-scoped, not incident-scoped).
+
+    The blank PDF/image lives in S3 referenced by ``s3_bucket`` / ``s3_key``.
+    Once :attr:`status` is ``'finalized'`` the field map is locked; further
+    edits create a new version.
+    """
+
+    __tablename__ = "insurance_form_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    carrier = Column(Text, nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    status = Column(
+        Enum("draft", "finalized", "archived", name="insurance_form_template_status"),
+        nullable=False,
+        default="draft",
+        server_default="draft",
+    )
+    s3_bucket = Column(Text, nullable=True)
+    s3_key = Column(Text, nullable=True)
+    sha256 = Column(Text, nullable=True)
+    page_count = Column(Integer, nullable=True)
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    finalized_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_templates_org_name_version",
+            "org_id",
+            "name",
+            "version",
+            unique=True,
+        ),
+    )
+
+
+class InsuranceFormTemplateField(Base):
+    """One mapped field on an insurance form template.
+
+    ``source_path`` is a dot-notation path into the canonical
+    ``CrashPacketRow`` (e.g. ``incident.adc_vehicle_id``,
+    ``maintenance[0].vendor``). ``transform`` reuses the Phase 2
+    enumeration (``none|date|upper|json_extract:<path>``).
+
+    ``kind`` indicates the AcroForm/visual field type so the renderer can
+    pick a sensible widget. ``page`` and ``bbox_json`` are populated when
+    the operator (or AcroForm detection) has positional information; the
+    MVP renderer only needs ``label`` + resolved value.
+    """
+
+    __tablename__ = "insurance_form_template_fields"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "insurance_form_templates.id", ondelete="CASCADE"
+        ),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    label = Column(Text, nullable=True)
+    page = Column(Integer, nullable=True)
+    kind = Column(
+        Enum(
+            "text",
+            "date",
+            "checkbox",
+            "signature",
+            name="insurance_form_field_kind",
+        ),
+        nullable=False,
+        default="text",
+        server_default="text",
+    )
+    bbox_json = Column(JSONB, nullable=True)
+    source_path = Column(Text, nullable=True)
+    transform = Column(
+        Text, nullable=False, default="none", server_default="none"
+    )
+    required = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    default_value = Column(Text, nullable=True)
+    sort_order = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_template_fields_template_name",
+            "template_id",
+            "name",
+            unique=True,
+        ),
+    )
+
+
+class InsuranceFormFilling(Base):
+    """One materialized fill of an insurance form for an incident.
+
+    Idempotent on ``(incident_id, template_id, payload_hash)`` — re-running
+    the fill task with unchanged data does not produce a duplicate
+    Artifact. Errors (missing required fields, render failures) are
+    captured in ``status`` + ``error_message``.
+    """
+
+    __tablename__ = "insurance_form_fillings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("insurance_form_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    template_version = Column(Integer, nullable=False)
+    status = Column(
+        Enum(
+            "pending",
+            "filled",
+            "failed",
+            name="insurance_form_filling_status",
+        ),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    payload_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    payload_hash = Column(Text, nullable=True, index=True)
+    output_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    missing_required_fields = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    error_message = Column(Text, nullable=True)
+    filled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_fillings_incident_template_hash",
+            "incident_id",
+            "template_id",
+            "payload_hash",
+        ),
+    )
