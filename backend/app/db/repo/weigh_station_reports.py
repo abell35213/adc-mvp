@@ -106,16 +106,22 @@ def update_manual(
     fields: dict[str, Any],
 ) -> WeighStationReport:
     clean = {k: v for k, v in fields.items() if k in ALLOWED_FIELDS}
-    # Recompute over-limit if either gross or limit is being changed and the
-    # caller didn't pass an explicit override.
-    if (
-        "is_over_legal_limit" not in clean
-        and ("gross_weight_lb" in clean or "legal_limit_lb" in clean)
-    ):
+    # Recompute over-limit if either gross or legal limit is being changed
+    # and the caller didn't pass an explicit override. Delegating to
+    # ``_coerce_over_limit`` keeps the derivation rule in one place.
+    if "gross_weight_lb" in clean or "legal_limit_lb" in clean:
         merged = {
+            "is_over_legal_limit": clean["is_over_legal_limit"]
+            if "is_over_legal_limit" in clean
+            else None,
             "gross_weight_lb": clean.get("gross_weight_lb", report.gross_weight_lb),
             "legal_limit_lb": clean.get("legal_limit_lb", report.legal_limit_lb),
         }
+        # ``_coerce_over_limit`` is a no-op if ``is_over_legal_limit`` is
+        # already set; pop it first so an unset (None) caller value lets
+        # the helper compute it.
+        if merged["is_over_legal_limit"] is None:
+            merged.pop("is_over_legal_limit")
         _coerce_over_limit(merged)
         if "is_over_legal_limit" in merged:
             clean["is_over_legal_limit"] = merged["is_over_legal_limit"]

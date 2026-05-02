@@ -501,13 +501,9 @@ def fetch_crash_packet_row(
     weigh_station_reports: list[dict[str, Any]] = []
     loading_dock_reports: list[dict[str, Any]] = []
 
-    if org_id:
+    if org_id and incident.created_at_utc is not None:
         window_end = incident.created_at_utc
-        window_start = (
-            window_end - timedelta(hours=TRIP_CONTEXT_FALLBACK_HOURS)
-            if window_end is not None
-            else None
-        )
+        window_start = window_end - timedelta(hours=TRIP_CONTEXT_FALLBACK_HOURS)
 
         # Dispatch instructions.
         di_direct = (
@@ -523,7 +519,7 @@ def fetch_crash_packet_row(
             dispatch_instructions = [
                 _serialize_dispatch_instruction(r) for r in di_direct
             ]
-        elif adc_driver_id and window_start is not None and window_end is not None:
+        elif adc_driver_id:
             di_fallback = (
                 db.query(DispatchInstruction)
                 .filter(
@@ -554,7 +550,7 @@ def fetch_crash_packet_row(
             weigh_station_reports = [
                 _serialize_weigh_station_report(r) for r in ws_direct
             ]
-        elif adc_vehicle_id and window_start is not None and window_end is not None:
+        elif adc_vehicle_id:
             ws_fallback = (
                 db.query(WeighStationReport)
                 .filter(
@@ -584,7 +580,7 @@ def fetch_crash_packet_row(
         ld_records: list[LoadingDockReport]
         if ld_direct:
             ld_records = ld_direct
-        elif adc_trailer_id and window_start is not None and window_end is not None:
+        elif adc_trailer_id:
             ld_records = (
                 db.query(LoadingDockReport)
                 .filter(

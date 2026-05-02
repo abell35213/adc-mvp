@@ -179,7 +179,14 @@ class WeighStationReportListResponse(_BaseConfig):
     items: list[WeighStationReportItem] = Field(default_factory=list)
 
 
-class LoadingDockReportCreate(_BaseConfig):
+class _LoadingDockReportFields(_BaseConfig):
+    """Shared optional fields used by both the create and patch payloads.
+
+    All fields are ``Optional`` here so the patch payload can omit any of
+    them; the create payload narrows ``is_overloaded`` /
+    ``is_improperly_loaded`` to non-optional booleans with sane defaults.
+    """
+
     adc_trailer_id: Optional[str] = None
     adc_vehicle_id: Optional[str] = None
     dispatch_instruction_id: Optional[uuid.UUID] = None
@@ -194,16 +201,19 @@ class LoadingDockReportCreate(_BaseConfig):
     seal_number: Optional[str] = None
     securement_method: Optional[str] = None
     weight_distribution_notes: Optional[str] = None
-    is_overloaded: bool = False
-    is_improperly_loaded: bool = False
     loaded_by: Optional[str] = None
     dock_supervisor: Optional[str] = None
     signature_artifact_id: Optional[uuid.UUID] = None
 
 
-class LoadingDockReportPatch(LoadingDockReportCreate):
-    is_overloaded: Optional[bool] = None  # type: ignore[assignment]
-    is_improperly_loaded: Optional[bool] = None  # type: ignore[assignment]
+class LoadingDockReportCreate(_LoadingDockReportFields):
+    is_overloaded: bool = False
+    is_improperly_loaded: bool = False
+
+
+class LoadingDockReportPatch(_LoadingDockReportFields):
+    is_overloaded: Optional[bool] = None
+    is_improperly_loaded: Optional[bool] = None
 
 
 class LoadingDockReportItem(_BaseConfig):
