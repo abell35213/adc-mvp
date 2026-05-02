@@ -525,6 +525,7 @@ def fetch_crash_packet_row(
                 .filter(
                     DispatchInstruction.org_id == org_id,
                     DispatchInstruction.adc_driver_id == adc_driver_id,
+                    DispatchInstruction.incident_id.is_(None),
                     DispatchInstruction.dispatched_at_utc >= window_start,
                     DispatchInstruction.dispatched_at_utc <= window_end,
                 )
