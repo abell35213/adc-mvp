@@ -84,6 +84,9 @@ class CrashPacketRow:
     dispatch_instructions_json: list[dict[str, Any]] = field(default_factory=list)
     weigh_station_reports_json: list[dict[str, Any]] = field(default_factory=list)
     loading_dock_reports_json: list[dict[str, Any]] = field(default_factory=list)
+    # FMCSA driver violation history (last 360d, only included_in_brief rows).
+    driver_violation_history_json: list[dict[str, Any]] = field(default_factory=list)
+    driver_violation_history_meta_json: dict[str, Any] = field(default_factory=dict)
 
     @property
     def maintenance_window_days(self) -> int:
@@ -623,6 +626,39 @@ def fetch_crash_packet_row(
                 )
             )
 
+    # FMCSA driver violation history (last 360d, only included rows).
+    driver_violation_history: list[dict[str, Any]] = []
+    driver_violation_history_meta: dict[str, Any] = {}
+    if org_id:
+        from app.db.repo.fmcsa_inspections import (
+            get_meta_for_incident as _fmcsa_meta,
+            list_violation_history_for_incident as _fmcsa_list,
+        )
+
+        rows = _fmcsa_list(db, incident_id, include_low_confidence=False)
+        for link, insp in rows:
+            driver_violation_history.append(
+                {
+                    "report_number": insp.report_number,
+                    "inspection_date_utc": (
+                        insp.inspection_date_utc.isoformat()
+                        if insp.inspection_date_utc
+                        else None
+                    ),
+                    "report_state": insp.report_state,
+                    "inspection_level": insp.inspection_level,
+                    "oos_total": insp.oos_total,
+                    "violation_count": insp.violation_count,
+                    "unit_kind": insp.unit_type,
+                    "vehicle_vin": insp.vehicle_vin,
+                    "vehicle_license_plate": insp.vehicle_license_plate,
+                    "vehicle_license_state": insp.vehicle_license_state,
+                    "match_basis": link.match_basis,
+                    "match_confidence": link.match_confidence,
+                }
+            )
+        driver_violation_history_meta = _fmcsa_meta(db, incident_id)
+
     return CrashPacketRow(
         incident_json=_serialize_incident(incident),
         driver_json=_serialize_driver(driver_obj) if driver_obj else None,
@@ -636,4 +672,6 @@ def fetch_crash_packet_row(
         dispatch_instructions_json=dispatch_instructions,
         weigh_station_reports_json=weigh_station_reports,
         loading_dock_reports_json=loading_dock_reports,
+        driver_violation_history_json=driver_violation_history,
+        driver_violation_history_meta_json=driver_violation_history_meta,
     )

@@ -40,6 +40,8 @@ def _row_to_template_context(row: CrashPacketRow, *, subject: str) -> dict[str, 
         "dispatch_instructions": row.dispatch_instructions_json,
         "weigh_station_reports": row.weigh_station_reports_json,
         "loading_dock_reports": row.loading_dock_reports_json,
+        "driver_violation_history": row.driver_violation_history_json,
+        "driver_violation_history_meta": row.driver_violation_history_meta_json,
     }
 
 
@@ -89,6 +91,10 @@ def build_crash_packet(row: CrashPacketRow) -> CrashPacket:
                 "dispatch_instructions": row.dispatch_instructions_json,
                 "weigh_station_reports": row.weigh_station_reports_json,
                 "loading_dock_reports": row.loading_dock_reports_json,
+                "driver_violation_history": row.driver_violation_history_json,
+                "driver_violation_history_meta": (
+                    row.driver_violation_history_meta_json
+                ),
             },
             sort_keys=True,
             default=str,

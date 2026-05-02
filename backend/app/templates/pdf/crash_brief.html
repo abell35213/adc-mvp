@@ -211,4 +211,55 @@
 {% endif %}
 
 <p><small>Related events on this incident: {{ related_event_count }}</small></p>
+
+<h2>Driver Violation History (FMCSA MCMIS, Last 360 Days)</h2>
+{% if driver_violation_history %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>State</th>
+        <th>Level</th>
+        <th>Unit</th>
+        <th>Vehicle (VIN / Plate)</th>
+        <th>OOS</th>
+        <th>Violations</th>
+        <th>Match</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for insp in driver_violation_history %}
+        <tr>
+          <td>{{ insp.inspection_date_utc }}</td>
+          <td>{{ insp.report_state }}</td>
+          <td>{{ insp.inspection_level }}</td>
+          <td>{{ insp.unit_kind }}</td>
+          <td>
+            {% if insp.vehicle_vin %}{{ insp.vehicle_vin }}{% endif %}
+            {% if insp.vehicle_license_plate %}
+              ({{ insp.vehicle_license_plate }}{% if insp.vehicle_license_state %}/{{ insp.vehicle_license_state }}{% endif %})
+            {% endif %}
+          </td>
+          <td>
+            {% if insp.oos_total and insp.oos_total > 0 %}
+              <strong>OOS: {{ insp.oos_total }}</strong>
+            {% else %}0{% endif %}
+          </td>
+          <td>{{ insp.violation_count }}</td>
+          <td>{{ insp.match_basis }} / {{ insp.match_confidence }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p><small>
+    Only inspections matched to confirmed driver-vehicle assignments are
+    shown. {{ driver_violation_history_meta.low_confidence_excluded_count or 0 }}
+    inspection(s) excluded due to insufficient match confidence.
+    {% if driver_violation_history_meta.last_refreshed_at_utc %}
+      Last refreshed: {{ driver_violation_history_meta.last_refreshed_at_utc }}.
+    {% endif %}
+  </small></p>
+{% else %}
+  <p><em>No driver-attributed FMCSA inspections in the last 360 days.</em></p>
+{% endif %}
 {% endblock %}
