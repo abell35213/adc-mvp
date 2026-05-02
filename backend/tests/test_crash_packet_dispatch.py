@@ -302,3 +302,143 @@ class TestSlaWatchdog:
             .one()
         )
         assert reloaded.status == "sent"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pre-queue bookkeeping at the status-flip + watchdog detection of
+# never-dispatched rows. Addresses PR feedback: the SLA watchdog must be
+# able to surface end-to-end SLA misses even if the Celery task never runs.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestTransitionPreQueuesDelivery:
+    def test_transition_creates_queued_delivery_row(self, db_session, org):
+        """``transition_incident_to_accident_occurred`` must persist a
+        ``CrashPacketDelivery`` row in status ``queued`` *before* enqueueing,
+        so the watchdog has something to find if the Celery task never runs."""
+        from app.services.incident_workflow_service import (
+            transition_incident_to_accident_occurred,
+        )
+
+        inc = Incident(
+            status="open",
+            adc_vehicle_id="T-200",
+            adc_driver_id="placeholder",
+            severity="serious",
+            org_id=org.id,
+        )
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        # Stub the Celery enqueue so we exercise *only* the bookkeeping.
+        with patch(
+            "app.tasks.crash_packet_tasks.dispatch_crash_packet.delay"
+        ) as enqueue:
+            transition_incident_to_accident_occurred(db_session, incident=inc)
+
+        enqueue.assert_called_once_with(str(inc.incident_id))
+
+        delivery = (
+            db_session.query(CrashPacketDelivery)
+            .filter(CrashPacketDelivery.incident_id == inc.incident_id)
+            .one()
+        )
+        assert delivery.status == "queued"
+        assert delivery.dispatched_at_utc is None
+        assert delivery.idempotency_key == f"crash_packet:{inc.incident_id}"
+        assert delivery.target_sla_seconds == 900
+
+    def test_transition_is_idempotent_on_delivery_row(self, db_session, org):
+        """Re-running the transition (or running it after a row already
+        exists, e.g. seeded by tests) must not insert a second row."""
+        from app.services.incident_workflow_service import (
+            transition_incident_to_accident_occurred,
+        )
+
+        inc = Incident(
+            status="open",
+            adc_vehicle_id="T-201",
+            adc_driver_id="placeholder",
+            severity="serious",
+            org_id=org.id,
+        )
+        db_session.add(inc)
+        db_session.commit()
+        db_session.refresh(inc)
+
+        with patch(
+            "app.tasks.crash_packet_tasks.dispatch_crash_packet.delay"
+        ):
+            transition_incident_to_accident_occurred(db_session, incident=inc)
+            transition_incident_to_accident_occurred(db_session, incident=inc)
+
+        rows = (
+            db_session.query(CrashPacketDelivery)
+            .filter(CrashPacketDelivery.incident_id == inc.incident_id)
+            .all()
+        )
+        assert len(rows) == 1
+
+
+class TestWatchdogDetectsNeverDispatched:
+    def test_watchdog_flags_queued_row_past_sla(self, db_session, incident):
+        """A ``queued`` delivery whose ``created_at_utc`` is older than the
+        SLA window must be flipped to ``overdue`` (the Celery task never ran
+        case)."""
+        long_ago = datetime.now(timezone.utc) - timedelta(minutes=20)
+        delivery = CrashPacketDelivery(
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            status="queued",
+            target_sla_seconds=900,
+            idempotency_key=f"crash_packet:{incident.incident_id}",
+            dispatched_at_utc=None,
+            created_at_utc=long_ago,
+        )
+        db_session.add(delivery)
+        db_session.commit()
+
+        with patch("app.tasks.crash_packet_tasks._get_db", return_value=db_session):
+            result = crash_packet_sla_watchdog()
+
+        assert result["overdue_count"] == 1
+        reloaded = (
+            db_session.query(CrashPacketDelivery)
+            .filter(CrashPacketDelivery.id == delivery.id)
+            .one()
+        )
+        assert reloaded.status == "overdue"
+
+        events = _events_of_type(
+            db_session,
+            incident.incident_id,
+            SystemEventType.CRASH_PACKET_OVERDUE.value,
+        )
+        assert len(events) == 1
+        assert events[0].payload.get("never_dispatched") is True
+
+    def test_watchdog_does_not_flag_recent_queued_row(self, db_session, incident):
+        recent = datetime.now(timezone.utc) - timedelta(seconds=30)
+        delivery = CrashPacketDelivery(
+            incident_id=incident.incident_id,
+            org_id=incident.org_id,
+            status="queued",
+            target_sla_seconds=900,
+            idempotency_key=f"crash_packet:{incident.incident_id}",
+            dispatched_at_utc=None,
+            created_at_utc=recent,
+        )
+        db_session.add(delivery)
+        db_session.commit()
+
+        with patch("app.tasks.crash_packet_tasks._get_db", return_value=db_session):
+            result = crash_packet_sla_watchdog()
+
+        assert result["overdue_count"] == 0
+        reloaded = (
+            db_session.query(CrashPacketDelivery)
+            .filter(CrashPacketDelivery.id == delivery.id)
+            .one()
+        )
+        assert reloaded.status == "queued"

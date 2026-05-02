@@ -94,7 +94,15 @@ def mark_overdue(
 def find_overdue_deliveries(
     db: Session, *, now_utc: datetime
 ) -> list[CrashPacketDelivery]:
-    """Return deliveries whose dispatched_at + SLA has elapsed but not sent."""
+    """Return deliveries whose SLA window has elapsed but that have not been sent.
+
+    SLA reference: ``dispatched_at_utc`` once the dispatch task has run, else
+    ``created_at_utc`` (the moment the row was queued — typically right after
+    the incident transitioned to ``accident_occurred``). Using
+    ``created_at_utc`` as the fallback lets the watchdog detect end-to-end SLA
+    misses where the Celery task never ran (broker outage / worker down /
+    queue misroute), not just dispatched-but-unsent rows.
+    """
     candidates = (
         db.query(CrashPacketDelivery)
         .filter(
@@ -104,14 +112,14 @@ def find_overdue_deliveries(
     )
     overdue: list[CrashPacketDelivery] = []
     for d in candidates:
-        if d.dispatched_at_utc is None:
+        reference = d.dispatched_at_utc or d.created_at_utc
+        if reference is None:
             continue
         # SQLite (used in tests) returns naive datetimes for TIMESTAMP(tz=True);
         # normalize to UTC so the subtraction is well-defined on every dialect.
-        dispatched = d.dispatched_at_utc
-        if dispatched.tzinfo is None:
-            dispatched = dispatched.replace(tzinfo=timezone.utc)
-        elapsed = (now_utc - dispatched).total_seconds()
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - reference).total_seconds()
         if elapsed > d.target_sla_seconds:
             overdue.append(d)
     return overdue

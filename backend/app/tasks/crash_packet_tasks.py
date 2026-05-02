@@ -241,11 +241,14 @@ def crash_packet_sla_watchdog():
         for delivery in overdue:
             mark_overdue(db, delivery)
             increment("crash_packet.sla_breaches")
-            dispatched = delivery.dispatched_at_utc
-            if dispatched is not None and dispatched.tzinfo is None:
-                dispatched = dispatched.replace(tzinfo=timezone.utc)
+            # SLA reference matches the watchdog's own selection logic:
+            # dispatched_at_utc once the task has run, else created_at_utc
+            # (queued-but-never-dispatched).
+            reference = delivery.dispatched_at_utc or delivery.created_at_utc
+            if reference is not None and reference.tzinfo is None:
+                reference = reference.replace(tzinfo=timezone.utc)
             elapsed_seconds = (
-                (now_utc - dispatched).total_seconds() if dispatched else None
+                (now_utc - reference).total_seconds() if reference else None
             )
             _emit(
                 db,
@@ -255,6 +258,7 @@ def crash_packet_sla_watchdog():
                     "delivery_id": str(delivery.id),
                     "elapsed_seconds": elapsed_seconds,
                     "target_sla_seconds": delivery.target_sla_seconds,
+                    "never_dispatched": delivery.dispatched_at_utc is None,
                 },
             )
             overdue_count += 1

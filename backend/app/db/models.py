@@ -2247,7 +2247,7 @@ class CrashPacketDelivery(Base):
     )
     error_summary = Column(Text, nullable=True)
     dispatched_at_utc = Column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+        TIMESTAMP(timezone=True), nullable=True
     )
     delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     created_at_utc = Column(
