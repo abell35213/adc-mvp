@@ -409,6 +409,32 @@ class IncidentDetailResponse(BaseModel):
     readiness_state: str = "not_ready"
     completeness_missing_items: list[str] = Field(default_factory=list)
     blockers: list[dict[str, Any]] = Field(default_factory=list)
+    driver_violation_history: list["FmcsaInspectionSummary"] = Field(
+        default_factory=list
+    )
+    driver_violation_history_meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class FmcsaInspectionSummary(BaseModel):
+    """One driver-attributed FMCSA inspection row surfaced on the brief."""
+
+    report_number: str
+    inspection_date_utc: Optional[datetime] = None
+    report_state: Optional[str] = None
+    inspection_level: Optional[str] = None
+    oos_total: int = 0
+    violation_count: int = 0
+    unit_kind: str = "other"
+    unit_number: Optional[str] = None
+    vehicle_vin: Optional[str] = None
+    vehicle_license_plate: Optional[str] = None
+    vehicle_license_state: Optional[str] = None
+    match_basis: str
+    match_confidence: str
+    attributed_driver_id: Optional[uuid.UUID] = None
+
+
+IncidentDetailResponse.model_rebuild()
 
 
 class IncidentStatusPatchRequest(BaseModel):
@@ -1345,6 +1371,18 @@ class DriverProtocolSettingsRequest(BaseModel):
 
 class DriverProtocolSettingsResponse(DriverProtocolSettingsRequest):
     pass
+
+
+class OrgUsdotRequest(BaseModel):
+    """USDOT carrier-identity setter for an org. ``null`` clears the value."""
+
+    usdot_number: Optional[Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=8, pattern=r"^[0-9]{1,8}$"
+    )]] = None
+
+
+class OrgUsdotResponse(BaseModel):
+    usdot_number: Optional[str] = None
 
 
 class DriverInstructionStep(BaseModel):

@@ -30,6 +30,9 @@ from app.db.models import TmsConnection, TmsFieldMap
 from app.db.repo.dispatch_instructions import (
     upsert_from_tms as upsert_dispatch_instruction,
 )
+from app.db.repo.driver_unit_history import (
+    upsert_from_tms as upsert_driver_unit_history,
+)
 from app.db.repo.loading_dock_reports import (
     upsert_from_tms as upsert_loading_dock_report,
 )
@@ -361,12 +364,21 @@ def sync_connection(
         entity_name="loading_dock_report",
         upsert_fn=upsert_loading_dock_report,
     )
+    duh_res = _sync_simple_entity(
+        db,
+        org_id=conn.org_id,
+        factory=factory,
+        entries=_entries_for_entity(field_maps, "driver_unit_history"),
+        entity_name="driver_unit_history",
+        upsert_fn=upsert_driver_unit_history,
+    )
     result.entity_results = [
         trailer_res,
         maint_res,
         dispatch_res,
         weigh_res,
         dock_res,
+        duh_res,
     ]
 
     finished = datetime.now(timezone.utc)

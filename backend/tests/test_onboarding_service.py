@@ -46,6 +46,7 @@ def test_readiness_status_transitions_pilot_and_launch():
             protocol_configured=True,
             test_run_passed=True,
             export_validation_passed=False,
+            usdot_number_set=True,
         ),
         blocked_step_keys=set(),
     )
@@ -71,6 +72,7 @@ def test_readiness_status_transitions_pilot_and_launch():
             protocol_configured=True,
             test_run_passed=True,
             export_validation_passed=True,
+            usdot_number_set=True,
         ),
         blocked_step_keys=set(),
     )

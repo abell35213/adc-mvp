@@ -15,6 +15,7 @@ class IntegrationDomain(str, Enum):
     EMAIL = "email"
     STORAGE = "storage"
     FLEET_DIRECTORY = "fleet_directory"
+    INSPECTIONS = "inspections"
 
 
 class ProviderCapability(str, Enum):
@@ -26,6 +27,7 @@ class ProviderCapability(str, Enum):
     EMAIL = "email"
     STORAGE = "storage"
     FLEET_DIRECTORY = "fleet_directory"
+    INSPECTIONS = "inspections"
 
 
 ProviderName: TypeAlias = str

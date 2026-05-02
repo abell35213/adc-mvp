@@ -27,6 +27,8 @@ from app.api.schemas import (
     OpsFailedExportItem,
     OpsFailedNotificationItem,
     OpsIncidentItem,
+    OrgUsdotRequest,
+    OrgUsdotResponse,
     QrPayloadResponse,
     RotateQrResponse,
 )
@@ -270,6 +272,59 @@ def update_driver_protocol_settings(
         voice_enabled=org.voice_enabled,
         safety_manager_phone=org.safety_manager_phone,
     )
+
+
+@router.get("/org/usdot", response_model=OrgUsdotResponse)
+def get_org_usdot(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    """Return the org's FMCSA USDOT carrier id."""
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_READ
+        ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="org.usdot.read",
+    )
+    org = _get_admin_org(db, context.org_ids[0])
+    return OrgUsdotResponse(usdot_number=org.usdot_number)
+
+
+@router.patch("/org/usdot", response_model=OrgUsdotResponse)
+def patch_org_usdot(
+    body: OrgUsdotRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_user),
+):
+    """Set / clear the org's FMCSA USDOT carrier id (1–8 digit string)."""
+    context = build_user_auth_context(db, admin)
+    _require_admin_policy(
+        db,
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
+        ),
+        actor_id=admin.id,
+        org_id=context.org_ids[0],
+        action="org.usdot.update",
+    )
+    org = _get_admin_org(db, context.org_ids[0])
+    org.usdot_number = body.usdot_number
+    emit_audit_event(
+        db,
+        org_id=org.id,
+        actor_type="user",
+        actor_id=str(admin.id),
+        action="org.usdot.update",
+        event_type="config_updated",
+        outcome="success",
+        metadata={"usdot_number": org.usdot_number},
+    )
+    db.commit()
+    return OrgUsdotResponse(usdot_number=org.usdot_number)
 
 
 @router.get(

@@ -17,7 +17,9 @@ RetryClass = Literal[
     "non_retryable_intervention_required",
 ]
 TaskType = Literal["export_tasks", "evidence_tasks", "notification_tasks", "unknown"]
-Capability = Literal["dashcam", "telematics", "messaging", "export", "unknown"]
+Capability = Literal[
+    "dashcam", "telematics", "messaging", "export", "inspections", "unknown"
+]
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ CAPABILITY_POLICY: dict[Capability, RetryPolicy] = {
     "telematics": RetryPolicy(max_retries=3, base_delay_seconds=30, backoff_cap_seconds=420, jitter_ratio=0.35),
     "messaging": RetryPolicy(max_retries=2, base_delay_seconds=10, backoff_cap_seconds=120, jitter_ratio=0.2),
     "export": RetryPolicy(max_retries=3, base_delay_seconds=15, backoff_cap_seconds=180, jitter_ratio=0.2),
+    "inspections": RetryPolicy(max_retries=3, base_delay_seconds=30, backoff_cap_seconds=420, jitter_ratio=0.35),
     "unknown": RetryPolicy(max_retries=0, base_delay_seconds=30, backoff_cap_seconds=60, jitter_ratio=0.0),
 }
 

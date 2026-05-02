@@ -737,6 +737,143 @@
           ],
           "title": "ExportSummary",
           "type": "object"
+        },
+        "FmcsaInspectionSummary": {
+          "description": "One driver-attributed FMCSA inspection row surfaced on the brief.",
+          "properties": {
+            "attributed_driver_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Attributed Driver Id"
+            },
+            "inspection_date_utc": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Inspection Date Utc"
+            },
+            "inspection_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Inspection Level"
+            },
+            "match_basis": {
+              "title": "Match Basis",
+              "type": "string"
+            },
+            "match_confidence": {
+              "title": "Match Confidence",
+              "type": "string"
+            },
+            "oos_total": {
+              "default": 0,
+              "title": "Oos Total",
+              "type": "integer"
+            },
+            "report_number": {
+              "title": "Report Number",
+              "type": "string"
+            },
+            "report_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Report State"
+            },
+            "unit_kind": {
+              "default": "other",
+              "title": "Unit Kind",
+              "type": "string"
+            },
+            "unit_number": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Unit Number"
+            },
+            "vehicle_license_plate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Vehicle License Plate"
+            },
+            "vehicle_license_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Vehicle License State"
+            },
+            "vehicle_vin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Vehicle Vin"
+            },
+            "violation_count": {
+              "default": 0,
+              "title": "Violation Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "report_number",
+            "match_basis",
+            "match_confidence"
+          ],
+          "title": "FmcsaInspectionSummary",
+          "type": "object"
         }
       },
       "properties": {
@@ -809,6 +946,18 @@
           ],
           "default": null,
           "title": "Created At Utc"
+        },
+        "driver_violation_history": {
+          "items": {
+            "$ref": "#/$defs/FmcsaInspectionSummary"
+          },
+          "title": "Driver Violation History",
+          "type": "array"
+        },
+        "driver_violation_history_meta": {
+          "additionalProperties": true,
+          "title": "Driver Violation History Meta",
+          "type": "object"
         },
         "evidence_inventory": {
           "items": {

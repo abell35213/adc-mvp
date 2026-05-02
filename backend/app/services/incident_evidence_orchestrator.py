@@ -7,10 +7,15 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.metrics import MetricNames, increment, timed
+from app.db.models import Incident, Org
 from app.db.repo.evidence_requests import create_evidence_request
 from app.domain.system_event_types import SystemEventType
 from app.services.dashcam_capture_service import queue_dashcam_capture
+from app.services.driver_violation_history_capture_service import (
+    queue_driver_violation_history_capture,
+)
 from app.services.messaging_service import emit_timeline_event
 from app.services.telematics_capture_service import queue_telematics_capture
 
@@ -22,6 +27,7 @@ class IncidentEvidenceOrchestrationResult:
     correlation_id: str
     dashcam_operation_id: uuid.UUID
     telematics_operation_id: uuid.UUID
+    inspections_operation_id: uuid.UUID | None = None
 
 
 class IncidentEvidenceOrchestrator:
@@ -116,6 +122,29 @@ class IncidentEvidenceOrchestrator:
             evidence_request_ids=telematics_request_ids,
         )
 
+        # ── Optional 3rd capture: FMCSA driver violation history ──
+        inspections_operation_id: uuid.UUID | None = None
+        if getattr(settings, "FMCSA_INSPECTIONS_ENABLED", True):
+            org = self.db.query(Org).filter(Org.id == org_id).first()
+            usdot = (org.usdot_number if org is not None else None) or ""
+            usdot = usdot.strip()
+            if usdot:
+                incident = (
+                    self.db.query(Incident)
+                    .filter(Incident.incident_id == incident_id)
+                    .first()
+                )
+                inspections_operation_id = queue_driver_violation_history_capture(
+                    self.db,
+                    org_id=org_id,
+                    incident_id=incident_id,
+                    adc_driver_id=(
+                        incident.adc_driver_id if incident is not None else None
+                    ),
+                    usdot_number=usdot,
+                    api_correlation_id=correlation_id,
+                )
+
         emit_timeline_event(
             self.db,
             incident_id=incident_id,
@@ -126,10 +155,14 @@ class IncidentEvidenceOrchestrator:
                 "correlation_id": correlation_id,
                 "dashcam_operation_id": str(dashcam_operation_id),
                 "telematics_operation_id": str(telematics_operation_id),
+                "inspections_operation_id": (
+                    str(inspections_operation_id) if inspections_operation_id else None
+                ),
             },
         )
         return IncidentEvidenceOrchestrationResult(
             correlation_id=correlation_id,
             dashcam_operation_id=dashcam_operation_id,
             telematics_operation_id=telematics_operation_id,
+            inspections_operation_id=inspections_operation_id,
         )

@@ -14,6 +14,7 @@ from app.api.schemas import (
     CreateIncidentResponse,
     EventSummary,
     ExportSummary,
+    FmcsaInspectionSummary,
     IncidentDetailResponse,
     IncidentListItem,
     IncidentOwnerPatchRequest,
@@ -30,6 +31,10 @@ from app.db.models import User
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
+from app.db.repo.fmcsa_inspections import (
+    get_meta_for_incident as get_fmcsa_meta_for_incident,
+    list_violation_history_for_incident,
+)
 from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.repo.message_operations import get_messaging_reliability_summary
 from app.db.session import get_db
@@ -264,6 +269,30 @@ def get_incident_endpoint(
         exports=exports,
     )
 
+    violation_history_rows = list_violation_history_for_incident(
+        db, incident_id, include_low_confidence=False
+    )
+    violation_history = [
+        FmcsaInspectionSummary(
+            report_number=insp.report_number,
+            inspection_date_utc=insp.inspection_date_utc,
+            report_state=insp.report_state,
+            inspection_level=insp.inspection_level,
+            oos_total=insp.oos_total,
+            violation_count=insp.violation_count,
+            unit_kind=insp.unit_type,
+            unit_number=None,
+            vehicle_vin=insp.vehicle_vin,
+            vehicle_license_plate=insp.vehicle_license_plate,
+            vehicle_license_state=insp.vehicle_license_state,
+            match_basis=link.match_basis,
+            match_confidence=link.match_confidence,
+            attributed_driver_id=link.driver_id,
+        )
+        for link, insp in violation_history_rows
+    ]
+    violation_history_meta = get_fmcsa_meta_for_incident(db, incident_id)
+
     return IncidentDetailResponse(
         incident_id=incident.incident_id,
         status=incident.status,
@@ -361,7 +390,56 @@ def get_incident_endpoint(
             }
             for blocker in snapshot.blockers.items
         ],
+        driver_violation_history=violation_history,
+        driver_violation_history_meta=violation_history_meta,
     )
+
+
+@router.get(
+    "/{incident_id}/driver-violation-history",
+    response_model=list[FmcsaInspectionSummary],
+)
+def get_incident_driver_violation_history_endpoint(
+    incident_id: uuid.UUID,
+    include_low_confidence: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read-only endpoint for case-ops to audit excluded (low-confidence) rows.
+
+    By default returns only rows ``included_in_brief = True`` (same as the
+    incident detail response). Pass ``?include_low_confidence=true`` to
+    include the audit-only rows.
+    """
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    incident = get_incident(db, incident_id, org_ids=org_ids)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_view_incident(context, incident))
+
+    rows = list_violation_history_for_incident(
+        db, incident_id, include_low_confidence=include_low_confidence
+    )
+    return [
+        FmcsaInspectionSummary(
+            report_number=insp.report_number,
+            inspection_date_utc=insp.inspection_date_utc,
+            report_state=insp.report_state,
+            inspection_level=insp.inspection_level,
+            oos_total=insp.oos_total,
+            violation_count=insp.violation_count,
+            unit_kind=insp.unit_type,
+            unit_number=None,
+            vehicle_vin=insp.vehicle_vin,
+            vehicle_license_plate=insp.vehicle_license_plate,
+            vehicle_license_state=insp.vehicle_license_state,
+            match_basis=link.match_basis,
+            match_confidence=link.match_confidence,
+            attributed_driver_id=link.driver_id,
+        )
+        for link, insp in rows
+    ]
 
 
 @router.patch("/{incident_id}/status", response_model=IncidentStatusPatchResponse)

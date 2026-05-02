@@ -37,6 +37,7 @@ class SystemEventType(str, Enum):
     EVIDENCE_CAPTURE_ATTEMPTED = "evidence_capture_attempted"
     EVIDENCE_CAPTURE_SUCCEEDED = "evidence_capture_succeeded"
     EVIDENCE_CAPTURE_FAILED = "evidence_capture_failed"
+    MCMIS_INSPECTIONS_FETCHED = "mcmis_inspections_fetched"
 
     # ── Artifacts ───────────────────────────────────────────────────
     ARTIFACT_RECORDED = "artifact_recorded"

@@ -48,6 +48,7 @@ class OnboardingSignals:
     latest_activity_at_utc: datetime | None = None
     repeated_integration_failures: int = 0
     has_started_activity: bool = False
+    usdot_number_set: bool = False
 
 
 @dataclass(slots=True)
@@ -68,6 +69,7 @@ STEP_DEFINITIONS: tuple[StepDefinition, ...] = (
     StepDefinition("driver_protocol", "Driver protocol", 70),
     StepDefinition("testIncidentCompleted", "Test incident run", 80),
     StepDefinition("export_validation", "Export validation", 90),
+    StepDefinition("usdot_number_set", "USDOT carrier identity", 95),
 )
 
 
@@ -116,6 +118,9 @@ def derive_step_statuses(
         else "not_started",
         "export_validation": "completed"
         if signals.export_validation_passed
+        else "not_started",
+        "usdot_number_set": "completed"
+        if signals.usdot_number_set
         else "not_started",
     }
 

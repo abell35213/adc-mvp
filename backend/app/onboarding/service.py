@@ -355,6 +355,7 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         else None,
         repeated_integration_failures=repeated_integration_failures,
         has_started_activity=has_started_activity,
+        usdot_number_set=bool((org.usdot_number or "").strip()) if org else False,
     )
 
 

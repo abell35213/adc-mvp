@@ -1204,3 +1204,328 @@ def collect_evidence(incident_id: str):
     """Collect all evidence artifacts for an incident."""
     # Placeholder: orchestrate evidence collection
     return {"incident_id": incident_id, "status": "collected"}
+
+
+# ---------------------------------------------------------------------------
+# Task: capture_driver_violation_history (FMCSA MCMIS)
+# ---------------------------------------------------------------------------
+
+
+def _normalize_fmcsa_row(raw: dict) -> dict:
+    """Translate a raw Socrata row into the columns used by ``fmcsa_inspections``."""
+    insp_date = raw.get("insp_date") or raw.get("inspection_date_utc")
+    parsed_date = _parse_iso(insp_date) if isinstance(insp_date, str) else insp_date
+
+    unit_type = (raw.get("unit_type") or "").lower()
+    if unit_type not in ("tractor", "trailer", "other"):
+        unit_type = "other"
+
+    violations = raw.get("violations") or raw.get("violations_json") or []
+
+    return {
+        "report_number": raw.get("report_number") or raw.get("report_num") or "",
+        "inspection_date_utc": parsed_date,
+        "report_state": raw.get("report_state"),
+        "usdot_number": raw.get("dot_number") or raw.get("usdot_number") or "",
+        "vehicle_vin": raw.get("vin") or raw.get("vehicle_vin"),
+        "vehicle_license_plate": (
+            raw.get("license_plate") or raw.get("vehicle_license_plate")
+        ),
+        "vehicle_license_state": (
+            raw.get("license_state") or raw.get("vehicle_license_state")
+        ),
+        "unit_type": unit_type,
+        "inspection_level": str(raw.get("inspection_level") or "") or None,
+        "oos_total": int(raw.get("oos_total") or 0),
+        "violation_count": int(raw.get("violation_count") or len(violations) or 0),
+        "violations_json": violations,
+        "raw_json": raw,
+    }
+
+
+@celery_app.task(
+    bind=True,
+    acks_late=True,
+    name="app.tasks.evidence_tasks.capture_driver_violation_history",
+    max_retries=3,
+    soft_time_limit=180,
+    time_limit=240,
+)
+def capture_driver_violation_history(
+    self,
+    operation_id: str,
+    evidence_request_id: str,
+    org_id: str,
+    incident_id: str,
+    adc_driver_id: str | None,
+    usdot_number: str,
+):
+    """Pull FMCSA MCMIS inspections for the carrier, run slip-seating
+    attribution against the driver's unit history, and persist the
+    per-incident match rows.
+    """
+    from datetime import timedelta
+
+    from app.core.config import settings as _settings
+    from app.db.models import (
+        Driver,
+        EvidenceRequest,
+        IntegrationOperation,
+    )
+    from app.db.repo.driver_unit_history import (
+        derive_from_assignments,
+        list_active_for_driver_in_window,
+    )
+    from app.db.repo.fmcsa_inspections import (
+        create_snapshot,
+        get_latest_succeeded_snapshot,
+        is_snapshot_fresh,
+        list_inspections_for_org,
+        replace_incident_attributions,
+        upsert_inspections,
+    )
+    from app.domain.system_event_types import SystemEventType
+    from app.integrations.registry import get_provider
+    from app.integrations.models import ProviderCapability
+    from app.services.fmcsa_attribution import (
+        InspectionRow,
+        UnitHistoryRow,
+        attribute_inspections,
+    )
+    from app.services.integration_health_service import (
+        set_evidence_request_status,
+        transition_operation_status,
+    )
+
+    increment("evidence.capture_inspections.attempts")
+    inc_uuid = _uuid.UUID(incident_id)
+    org_uuid = _uuid.UUID(org_id)
+    op_uuid = _uuid.UUID(operation_id)
+    er_uuid = _uuid.UUID(evidence_request_id)
+
+    db = _get_db()
+
+    try:
+        operation = (
+            db.query(IntegrationOperation)
+            .filter(IntegrationOperation.operation_id == op_uuid)
+            .first()
+        )
+        evidence_request = (
+            db.query(EvidenceRequest)
+            .filter(EvidenceRequest.evidence_request_id == er_uuid)
+            .first()
+        )
+        if operation is None or evidence_request is None:
+            return {
+                "status": "missing_records",
+                "operation_id": operation_id,
+                "evidence_request_id": evidence_request_id,
+            }
+
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="running",
+            message="FMCSA inspection capture task started",
+        )
+
+        # --- 1. Cache check ---
+        ttl_hours = int(getattr(_settings, "FMCSA_CACHE_TTL_HOURS", 6))
+        snapshot = get_latest_succeeded_snapshot(db, org_id=org_uuid)
+        if snapshot is None or not is_snapshot_fresh(snapshot, ttl_hours=ttl_hours):
+            now = datetime.now(timezone.utc)
+            lookback_days = int(getattr(_settings, "FMCSA_LOOKBACK_DAYS", 360))
+            window_start = now - timedelta(days=lookback_days)
+            provider = get_provider(ProviderCapability.INSPECTIONS)
+            try:
+                raw_rows = list(
+                    provider.fetch_inspections(
+                        usdot_number=usdot_number,
+                        since=window_start.date().isoformat(),
+                        until=now.date().isoformat(),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                normalized = as_normalized_error(exc, provider_hint="fmcsa")
+                from app.db.repo.evidence_requests import (
+                    update_evidence_request_error,
+                )
+                from app.db.repo.integration_operations import (
+                    update_integration_operation_error,
+                )
+
+                update_integration_operation_error(db, operation, normalized)
+                update_evidence_request_error(db, evidence_request, normalized)
+                _emit(
+                    db,
+                    inc_uuid,
+                    SystemEventType.EVIDENCE_CAPTURE_FAILED,
+                    {
+                        "type": "inspections",
+                        "operation_id": operation_id,
+                        "error": normalized.code,
+                    },
+                )
+                set_evidence_request_status(
+                    db, evidence_request=evidence_request, status="failed"
+                )
+                transition_operation_status(
+                    db,
+                    operation=operation,
+                    to_status="failed",
+                    message=normalized.operator_message,
+                )
+                return {"status": "failed", "error": normalized.code}
+
+            normalized_rows = [_normalize_fmcsa_row(r) for r in raw_rows]
+            snapshot = create_snapshot(
+                db,
+                org_id=org_uuid,
+                usdot_number=usdot_number,
+                window_start_utc=window_start,
+                window_end_utc=now,
+                record_count=len(normalized_rows),
+                status="succeeded",
+            )
+            upsert_inspections(db, snapshot=snapshot, rows=normalized_rows)
+
+        # --- 2. Build driver unit set ---
+        driver_id = None
+        if adc_driver_id:
+            driver = (
+                db.query(Driver)
+                .filter(
+                    Driver.org_id == org_uuid,
+                    Driver.driver_id == adc_driver_id,
+                )
+                .first()
+                if _is_uuid_string(adc_driver_id)
+                else None
+            )
+            if driver is not None:
+                driver_id = driver.driver_id
+
+        lookback_days = int(getattr(_settings, "FMCSA_LOOKBACK_DAYS", 360))
+        window_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        if driver_id is not None:
+            unit_rows = list_active_for_driver_in_window(
+                db,
+                org_id=org_uuid,
+                driver_id=driver_id,
+                window_start_utc=window_start,
+            )
+            if not unit_rows:
+                unit_rows = derive_from_assignments(
+                    db, org_id=org_uuid, driver_id=driver_id
+                )
+        else:
+            unit_rows = []
+
+        # --- 3. Match ---
+        inspections_db = list_inspections_for_org(
+            db, org_id=org_uuid, since_utc=window_start
+        )
+        inspection_rows = [
+            InspectionRow(
+                inspection_id=str(i.inspection_id),
+                inspection_date_utc=i.inspection_date_utc,
+                vehicle_vin=i.vehicle_vin,
+                vehicle_license_plate=i.vehicle_license_plate,
+                vehicle_license_state=i.vehicle_license_state,
+            )
+            for i in inspections_db
+        ]
+        unit_history_rows = [
+            UnitHistoryRow(
+                history_id=str(u.id),
+                unit_kind=u.unit_kind,
+                vin=u.vin,
+                license_plate=u.license_plate,
+                license_state=u.license_state,
+                started_at_utc=u.started_at_utc,
+                ended_at_utc=u.ended_at_utc,
+                confidence=u.confidence,
+            )
+            for u in unit_rows
+        ]
+        matches = attribute_inspections(
+            inspections=inspection_rows, unit_history=unit_history_rows
+        )
+
+        # --- 4. Persist matches ---
+        match_payload = []
+        for m in matches:
+            match_payload.append(
+                {
+                    "inspection_id": _uuid.UUID(m.inspection_id),
+                    "unit_history_id": (
+                        _uuid.UUID(m.unit_history_id) if m.unit_history_id else None
+                    ),
+                    "driver_id": driver_id,
+                    "match_basis": m.match_basis,
+                    "match_confidence": m.match_confidence,
+                    "included_in_brief": m.included_in_brief,
+                    "excluded_reason": m.excluded_reason,
+                }
+            )
+        # Only persist matches whose inspection actually exists in the snapshot
+        valid_ids = {str(i.inspection_id) for i in inspections_db}
+        match_payload = [
+            mp for mp in match_payload if str(mp["inspection_id"]) in valid_ids
+        ]
+        replace_incident_attributions(
+            db, incident_id=inc_uuid, matches=match_payload
+        )
+
+        included = sum(1 for m in matches if m.included_in_brief)
+        low = sum(1 for m in matches if m.match_confidence == "low")
+
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.MCMIS_INSPECTIONS_FETCHED,
+            {
+                "operation_id": operation_id,
+                "usdot_number": usdot_number,
+                "snapshot_record_count": snapshot.record_count if snapshot else 0,
+                "match_total": len(matches),
+                "match_included": included,
+                "match_low_confidence": low,
+            },
+        )
+        _emit(
+            db,
+            inc_uuid,
+            SystemEventType.EVIDENCE_CAPTURE_SUCCEEDED,
+            {"type": "inspections", "operation_id": operation_id},
+        )
+        set_evidence_request_status(
+            db, evidence_request=evidence_request, status="fulfilled"
+        )
+        transition_operation_status(
+            db,
+            operation=operation,
+            to_status="succeeded",
+            message="FMCSA inspections captured",
+        )
+
+        return {
+            "status": "ok",
+            "incident_id": incident_id,
+            "match_total": len(matches),
+            "match_included": included,
+            "match_low_confidence": low,
+        }
+    finally:
+        db.close()
+
+
+def _is_uuid_string(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        _uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False

@@ -86,5 +86,18 @@ class FleetDirectoryProvider(Protocol):
 
 
 @runtime_checkable
+class InspectionsProvider(Protocol):
+    """Roadside inspection feed (e.g. FMCSA MCMIS via Socrata)."""
+
+    def fetch_inspections(
+        self,
+        *,
+        usdot_number: str,
+        since: str,
+        until: str,
+    ) -> list[dict[str, Any]]: ...
+
+
+@runtime_checkable
 class HealthcheckProvider(Protocol):
     def health(self) -> ProviderHealth: ...

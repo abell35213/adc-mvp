@@ -47,6 +47,8 @@ telematics_retry_policy = get_policy_for_capability("telematics")
 export_retry_policy = get_policy_for_capability("export")
 messaging_retry_policy = get_policy_for_capability("messaging")
 
+inspections_retry_policy = get_policy_for_capability("inspections")
+
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -64,6 +66,7 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.evidence_tasks.capture_dashcam": {"queue": "evidence"},
         "app.tasks.evidence_tasks.capture_telematics_bundle": {"queue": "evidence"},
+        "app.tasks.evidence_tasks.capture_driver_violation_history": {"queue": "evidence"},
         "app.tasks.export_tasks.build_export": {"queue": "exports"},
         "app.tasks.notification_tasks.notify_safety_manager": {
             "queue": "notifications"
@@ -91,6 +94,12 @@ celery_app.conf.update(
             "max_retries": telematics_retry_policy.max_retries,
             "retry_backoff": telematics_retry_policy.base_delay_seconds,
             "retry_backoff_max": telematics_retry_policy.backoff_cap_seconds,
+            "retry_jitter": True,
+        },
+        "app.tasks.evidence_tasks.capture_driver_violation_history": {
+            "max_retries": inspections_retry_policy.max_retries,
+            "retry_backoff": inspections_retry_policy.base_delay_seconds,
+            "retry_backoff_max": inspections_retry_policy.backoff_cap_seconds,
             "retry_jitter": True,
         },
         "app.tasks.export_tasks.build_export": {

@@ -7,8 +7,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 62 system event types."""
-        assert len(SystemEventType) == 62
+        """There must be exactly 63 system event types."""
+        assert len(SystemEventType) == 63
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -51,6 +51,11 @@ class TestSystemEventType:
 
     def test_evidence_capture_failed(self):
         assert SystemEventType.EVIDENCE_CAPTURE_FAILED == "evidence_capture_failed"
+
+    def test_mcmis_inspections_fetched(self):
+        assert (
+            SystemEventType.MCMIS_INSPECTIONS_FETCHED == "mcmis_inspections_fetched"
+        )
 
     # ── Artifacts ───────────────────────────────────────────────────
 
