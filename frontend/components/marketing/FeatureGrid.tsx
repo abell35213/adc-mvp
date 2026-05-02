@@ -36,7 +36,7 @@ const features = [
             VERIFIED
           </span>
         </div>
-        <ol className="space-y-3 text-[11px] text-slate-600" aria-label="Custody timeline">
+        <ol className="space-y-3 text-[11px] text-slate-600" role="list" aria-label="Custody timeline">
           {[
             { time: "14:02:17", actor: "Telematics", action: "Event captured", chip: "SHA-256 9f3a…b2e1" },
             { time: "14:02:42", actor: "Driver app", action: "Photos uploaded (4)", chip: "SHA-256 1d77…04ac" },

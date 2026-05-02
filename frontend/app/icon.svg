@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" role="img" aria-label="ADC – Accident Defense Center">
+  <title>ADC – Accident Defense Center</title>
   <defs>
     <linearGradient id="iconEdge" x1="1" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#1B6EF3"/>
