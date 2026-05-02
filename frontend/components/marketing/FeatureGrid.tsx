@@ -48,10 +48,10 @@ const features = [
               <div className="flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-[#062040]">{actor}</span>
-                  <span className="font-mono text-[10px] text-slate-400">{time}</span>
+                  <span className="font-mono text-[10px] text-slate-600">{time}</span>
                 </div>
                 <p>{action}</p>
-                <p className="font-mono text-[10px] text-slate-400 truncate">{chip}</p>
+                <p className="font-mono text-[10px] text-slate-600 truncate">{chip}</p>
               </div>
             </li>
           ))}
