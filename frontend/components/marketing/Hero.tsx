@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
+import { Logo } from "@/components/marketing/Logo";
 import { marketingTokens } from "@/components/marketing/tokens";
 import { trackCtaClick } from "@/lib/tracking";
 
@@ -47,7 +48,14 @@ export function Hero() {
     <header className="bg-[#EBF2FA]">
       <MarketingContainer>
         <nav className="flex items-center justify-between py-5" aria-label="Primary">
-          <span className="text-lg font-bold tracking-tight text-[#062040]">ADC</span>
+          <Link
+            href="/"
+            aria-label="ADC home"
+            className="inline-flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#EBF2FA]"
+          >
+            <Logo variant="mark" height={36} priority />
+            <span className="ml-2 text-lg font-bold tracking-tight text-[#062040]">ADC</span>
+          </Link>
 
           <ul className="hidden items-center gap-8 text-sm font-medium text-[#062040] md:flex" role="list">
             {primaryNavLinks.map(({ label, href }) => (
@@ -116,18 +124,6 @@ export function Hero() {
               ))}
             </ul>
 
-            <div className="border-t border-slate-200/80 pt-6">
-              <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Trusted by leading fleet operators
-              </p>
-              <ul className="flex flex-wrap items-center gap-x-8 gap-y-3" role="list" aria-label="Customer logos">
-                {["NorthLine Freight", "Summit Logistics", "Apex Transport"].map((name) => (
-                  <li key={name} className="text-sm font-bold uppercase tracking-wide text-slate-400">
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
 
           <form

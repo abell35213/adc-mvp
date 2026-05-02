@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" role="img" aria-label="ADC – Accident Defense Center">
+  <title>ADC – Accident Defense Center</title>
+  <defs>
+    <linearGradient id="iconEdge" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1B6EF3"/>
+      <stop offset="100%" stop-color="#062040"/>
+    </linearGradient>
+    <linearGradient id="iconRoad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#0A2A50"/>
+      <stop offset="100%" stop-color="#062040"/>
+    </linearGradient>
+  </defs>
+  <path d="M60 40 H300 V210 C300 280 250 320 180 350 C110 320 60 280 60 210 Z"
+        fill="#FFFFFF" stroke="url(#iconEdge)" stroke-width="18" stroke-linejoin="round"/>
+  <g stroke="#1B6EF3" stroke-width="10" stroke-linecap="round" fill="none">
+    <path d="M95 150 H180"/>
+    <path d="M95 190 H170"/>
+    <path d="M95 230 H190"/>
+  </g>
+  <g fill="#1B6EF3">
+    <circle cx="93" cy="150" r="10"/>
+    <circle cx="93" cy="190" r="10"/>
+    <circle cx="93" cy="230" r="10"/>
+  </g>
+  <path d="M280 65 C 260 145, 240 215, 190 330 L 150 330 C 200 215, 220 145, 250 65 Z"
+        fill="url(#iconRoad)"/>
+  <path d="M265 80 C 245 155, 225 225, 180 325"
+        fill="none" stroke="#FFFFFF" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="12 16"/>
+</svg>

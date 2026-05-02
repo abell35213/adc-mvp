@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="adcMarkEdge" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1B6EF3"/>
+      <stop offset="100%" stop-color="#062040"/>
+    </linearGradient>
+    <linearGradient id="adcMarkRoad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#0A2A50"/>
+      <stop offset="100%" stop-color="#062040"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M60 40 H300 V210 C300 280 250 320 180 350 C110 320 60 280 60 210 Z"
+        fill="none" stroke="url(#adcMarkEdge)" stroke-width="16" stroke-linejoin="round"/>
+
+  <g stroke="#1B6EF3" stroke-width="8" stroke-linecap="round" fill="none">
+    <path d="M95 145 H180"/>
+    <path d="M95 180 H160 L175 195 H205"/>
+    <path d="M95 215 H190"/>
+    <path d="M95 250 H170"/>
+  </g>
+  <g fill="#1B6EF3">
+    <circle cx="93" cy="145" r="9"/>
+    <circle cx="93" cy="180" r="9"/>
+    <circle cx="93" cy="215" r="9"/>
+    <circle cx="93" cy="250" r="9"/>
+  </g>
+
+  <path d="M280 65 C 260 145, 240 215, 190 330 L 150 330 C 200 215, 220 145, 250 65 Z"
+        fill="url(#adcMarkRoad)"/>
+  <path d="M265 80 C 245 155, 225 225, 180 325"
+        fill="none" stroke="#FFFFFF" stroke-width="5"
+        stroke-linecap="round" stroke-dasharray="12 16"/>
+</svg>

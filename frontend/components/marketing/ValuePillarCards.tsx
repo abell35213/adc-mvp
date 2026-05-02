@@ -8,15 +8,24 @@ const features = [
     body: "Apply tamper-evident hashing and immutable audit logs across every photo, video, and document tied to a claim.",
     visual: (
       <div className="rounded-xl bg-[#F4F8FC] p-6 border border-slate-200">
-        <p className="text-sm font-semibold text-[#062040] mb-3">Oil Change</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-[#062040]">Evidence integrity</p>
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+            VERIFIED
+          </span>
+        </div>
         <div className="space-y-3 text-sm text-slate-600">
           <div className="flex justify-between border-b border-slate-200 pb-2">
-            <span>Labor Hours</span>
-            <span className="font-medium text-[#062040]">1.50 hr</span>
+            <span>SHA-256</span>
+            <span className="font-mono text-xs text-[#062040]">9f3a…b2e1</span>
           </div>
-          <div className="flex justify-between pt-2">
-            <span>Labor Rate</span>
-            <span className="font-medium text-[#062040]">$150.00</span>
+          <div className="flex justify-between border-b border-slate-200 pb-2">
+            <span>Captured</span>
+            <span className="font-medium text-[#062040]">2:28 PM EST</span>
+          </div>
+          <div className="flex justify-between pt-1">
+            <span>Custody actions</span>
+            <span className="font-medium text-[#062040]">12 logged</span>
           </div>
         </div>
       </div>

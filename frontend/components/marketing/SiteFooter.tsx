@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MarketingContainer } from "@/components/marketing/LayoutPrimitives";
+import { Logo } from "@/components/marketing/Logo";
 
 const footerSections = [
   {
@@ -81,7 +82,14 @@ export function SiteFooter() {
         <div className="py-10">
           <div className="grid gap-8 md:grid-cols-6">
             <div>
-              <span className="text-lg font-bold text-[#062040]">ADC</span>
+              <Link
+                href="/"
+                aria-label="ADC home"
+                className="inline-flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]"
+              >
+                <Logo variant="mark" height={32} />
+                <span className="text-lg font-bold text-[#062040]">ADC</span>
+              </Link>
             </div>
             {footerSections.map((section) => (
               <nav key={section.title} aria-label={section.title}>
