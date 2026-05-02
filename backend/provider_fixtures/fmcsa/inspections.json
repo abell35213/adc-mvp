@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "report_number": "FAKE-INSPECTION-0001",
+      "insp_date": "2026-04-15T00:00:00.000",
+      "report_state": "TX",
+      "dot_number": "12345678",
+      "vin": "1FUJGLDV6CSBR1234",
+      "license_plate": "ABC1234",
+      "license_state": "TX",
+      "unit_type": "tractor",
+      "inspection_level": "2",
+      "oos_total": 0,
+      "violation_count": 1,
+      "violations": [
+        {"code": "393.75A1", "description": "Tire tread depth"}
+      ]
+    },
+    {
+      "report_number": "FAKE-INSPECTION-0002",
+      "insp_date": "2026-03-02T00:00:00.000",
+      "report_state": "OK",
+      "dot_number": "12345678",
+      "vin": "1FUJGLDV9DLBT5678",
+      "license_plate": "TR-9876",
+      "license_state": "OK",
+      "unit_type": "trailer",
+      "inspection_level": "1",
+      "oos_total": 1,
+      "violation_count": 2,
+      "violations": [
+        {"code": "393.45", "description": "Brake hose"},
+        {"code": "393.9",  "description": "Inoperative lamp"}
+      ]
+    }
+  ]
+}

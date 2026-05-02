@@ -50,6 +50,8 @@ class Org(Base):
     safety_manager_phone = Column(Text, nullable=True)
     instruction_source = Column(Text, nullable=False, default="default")
     require_org_admin_mfa = Column(Boolean, nullable=False, default=False)
+    # Carrier identity for the FMCSA MCMIS pull (single carrier per tenant).
+    usdot_number = Column(Text, nullable=True)
 
 
 class User(Base):
@@ -1953,6 +1955,12 @@ class OrgVehicleRegistry(Base):
     qr_generated_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     qr_distributed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     qr_confirmed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    license_plate = Column(Text, nullable=True)
+    license_state = Column(Text, nullable=True)
+    dot_unit_type = Column(
+        Enum("tractor", "straight_truck", "other", name="dot_unit_type"),
+        nullable=True,
+    )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1970,6 +1978,12 @@ class OrgVehicleRegistry(Base):
             "org_id",
             "provider",
             "provider_vehicle_id",
+        ),
+        Index(
+            "ix_org_vehicle_registry_org_plate_state",
+            "org_id",
+            "license_plate",
+            "license_state",
         ),
     )
 
@@ -2767,6 +2781,7 @@ class TmsFieldMap(Base):
             "dispatch_instruction",
             "weigh_station_report",
             "loading_dock_report",
+            "driver_unit_history",
             name="tms_field_map_entity",
         ),
         nullable=False,
@@ -2989,5 +3004,275 @@ class InsuranceFormFilling(Base):
             "incident_id",
             "template_id",
             "payload_hash",
+        ),
+    )
+
+
+# ── FMCSA MCMIS + driver unit history (slip-seating support) ──
+
+
+class DriverUnitHistory(Base):
+    """Slip-seating-aware history of tractor/trailer assignments per driver.
+
+    Sourced primarily from TMS driver-history rows; falls back to a
+    ``derived_from_assignment`` row built from ``DriverVehicleAssignment``
+    when no TMS feed is mapped (always low-confidence).
+    """
+
+    __tablename__ = "driver_unit_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    driver_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("drivers.driver_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    adc_driver_id = Column(Text, nullable=True)
+    unit_kind = Column(
+        Enum("tractor", "trailer", name="driver_unit_kind"), nullable=False
+    )
+    adc_vehicle_id = Column(Text, nullable=True)
+    unit_number = Column(Text, nullable=True)
+    vin = Column(Text, nullable=True)
+    license_plate = Column(Text, nullable=True)
+    license_state = Column(Text, nullable=True)
+    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    ended_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    source = Column(
+        Enum(
+            "tms",
+            "eld",
+            "manual",
+            "derived_from_assignment",
+            name="driver_unit_history_source",
+        ),
+        nullable=False,
+        default="tms",
+        server_default="tms",
+    )
+    source_record_ref = Column(Text, nullable=True)
+    confidence = Column(
+        Enum("high", "medium", "low", name="driver_unit_history_confidence"),
+        nullable=False,
+        default="medium",
+        server_default="medium",
+    )
+    confidence_reason = Column(Text, nullable=True)
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_driver_unit_history_org_driver_started",
+            "org_id",
+            "driver_id",
+            "started_at_utc",
+        ),
+        Index("ix_driver_unit_history_org_vin", "org_id", "vin"),
+        Index(
+            "ix_driver_unit_history_org_plate_state",
+            "org_id",
+            "license_plate",
+            "license_state",
+        ),
+        Index(
+            "ix_driver_unit_history_org_external_id",
+            "org_id",
+            "external_id",
+            unique=True,
+        ),
+    )
+
+
+class FmcsaInspectionSnapshot(Base):
+    """Per-org envelope for one FMCSA MCMIS pull (cached for ~6h)."""
+
+    __tablename__ = "fmcsa_inspection_snapshots"
+
+    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    usdot_number = Column(Text, nullable=False)
+    fetched_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    window_start_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    window_end_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    record_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    status = Column(
+        Enum("succeeded", "partial", "failed", name="fmcsa_snapshot_status"),
+        nullable=False,
+        default="succeeded",
+        server_default="succeeded",
+    )
+    error_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    is_stale = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_fmcsa_inspection_snapshots_org_fetched",
+            "org_id",
+            "fetched_at_utc",
+        ),
+    )
+
+
+class FmcsaInspection(Base):
+    """A single normalized FMCSA inspection row.
+
+    NOTE: deliberately omits any ``driver_*`` fields that the FMCSA
+    dataset exposes — driver attribution is internal-only via
+    :mod:`app.services.fmcsa_attribution`.
+    """
+
+    __tablename__ = "fmcsa_inspections"
+
+    inspection_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    snapshot_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("fmcsa_inspection_snapshots.snapshot_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    report_number = Column(Text, nullable=False)
+    inspection_date_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    report_state = Column(Text, nullable=True)
+    usdot_number = Column(Text, nullable=False)
+    vehicle_vin = Column(Text, nullable=True)
+    vehicle_license_plate = Column(Text, nullable=True)
+    vehicle_license_state = Column(Text, nullable=True)
+    unit_type = Column(
+        Enum("tractor", "trailer", "other", name="fmcsa_unit_type"),
+        nullable=False,
+        default="other",
+        server_default="other",
+    )
+    inspection_level = Column(Text, nullable=True)
+    oos_total = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    violation_count = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    violations_json = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    raw_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_fmcsa_inspections_org_report_unique",
+            "org_id",
+            "report_number",
+            unique=True,
+        ),
+        Index("ix_fmcsa_inspections_org_vin", "org_id", "vehicle_vin"),
+        Index(
+            "ix_fmcsa_inspections_org_plate_state",
+            "org_id",
+            "vehicle_license_plate",
+            "vehicle_license_state",
+        ),
+        Index(
+            "ix_fmcsa_inspections_org_date", "org_id", "inspection_date_utc"
+        ),
+    )
+
+
+class IncidentDriverViolationHistory(Base):
+    """Per-incident attribution of FMCSA inspections to a driver.
+
+    Low-confidence rows are persisted (with ``excluded_reason``) but
+    excluded from API responses and PDF (see
+    :func:`app.db.repo.fmcsa_inspections.list_violation_history_for_incident`).
+    """
+
+    __tablename__ = "incident_driver_violation_history"
+
+    link_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    inspection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("fmcsa_inspections.inspection_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    driver_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("drivers.driver_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    unit_history_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_unit_history.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    match_basis = Column(
+        Enum("vin", "plate_state", name="fmcsa_match_basis"),
+        nullable=False,
+    )
+    match_confidence = Column(
+        Enum("high", "medium", "low", name="fmcsa_match_confidence"),
+        nullable=False,
+    )
+    included_in_brief = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    excluded_reason = Column(Text, nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_incident_driver_violation_history_unique",
+            "incident_id",
+            "inspection_id",
+            unique=True,
+        ),
+        Index(
+            "ix_incident_driver_violation_history_incident_included",
+            "incident_id",
+            "included_in_brief",
         ),
     )

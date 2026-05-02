@@ -148,6 +148,15 @@ class AppSettings(BaseSettings):
     EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = 300
     ORG_ADMIN_MFA_REQUIRED: bool = False
 
+    # FMCSA MCMIS (driver violation history pull)
+    SOCRATA_APP_TOKEN: str = ""
+    FMCSA_INSPECTIONS_ENABLED: bool = True
+    FMCSA_INSPECTIONS_REPOLL_ENABLED: bool = True
+    FMCSA_LOOKBACK_DAYS: int = 360
+    FMCSA_CACHE_TTL_HOURS: int = 6
+    FMCSA_INCIDENT_REFRESH_INTERVAL_HOURS: int = 24
+    FMCSA_BASE_URL: str = "https://data.transportation.gov"
+
     # API rate limits (per subject/IP sliding windows)
     AUTH_LOGIN_RATE_LIMIT: int = 20
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 300

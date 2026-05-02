@@ -65,3 +65,17 @@ def validate_startup_config(settings: AppSettings) -> None:
 
     if errors:
         raise ValueError(f"Invalid configuration: {'; '.join(errors)}")
+
+    # Soft warning (logged, non-fatal): FMCSA pull enabled in prod with
+    # no Socrata app token will hit the anonymous rate limit hard.
+    if (
+        settings.is_prod
+        and settings.FMCSA_INSPECTIONS_ENABLED
+        and not _require_non_empty(settings.SOCRATA_APP_TOKEN)
+    ):
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "FMCSA_INSPECTIONS_ENABLED=true but SOCRATA_APP_TOKEN is empty; "
+            "anonymous Socrata requests are rate-limited and may be throttled."
+        )

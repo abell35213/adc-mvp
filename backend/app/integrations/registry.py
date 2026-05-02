@@ -50,6 +50,8 @@ def get_provider(capability: ProviderCapability) -> Any:
 def register_default_providers() -> None:
     """Wire up default runtime adapters."""
     from app.integrations.providers.fake_samsara import FakeSamsaraProvider
+    from app.integrations.providers.fake_fmcsa import FakeFmcsaProvider
+    from app.integrations.providers.fmcsa import FmcsaProvider
     from app.integrations.providers.samsara import SamsaraProvider
     from app.integrations.providers.ses import build_default_email_provider
     from app.integrations.providers.twilio import TwilioMessagingProvider
@@ -61,9 +63,16 @@ def register_default_providers() -> None:
     else:
         telematics_dashcam_provider = SamsaraProvider()
 
+    inspections_provider: Any
+    if settings.APP_ENV in {"local", "test"} and not settings.SOCRATA_APP_TOKEN.strip():
+        inspections_provider = FakeFmcsaProvider()
+    else:
+        inspections_provider = FmcsaProvider()
+
     twilio = TwilioMessagingProvider()
 
     register_provider(ProviderCapability.TELEMATICS, telematics_dashcam_provider)
     register_provider(ProviderCapability.DASHCAM, telematics_dashcam_provider)
     register_provider(ProviderCapability.MESSAGING, twilio)
     register_provider(ProviderCapability.EMAIL, build_default_email_provider())
+    register_provider(ProviderCapability.INSPECTIONS, inspections_provider)
