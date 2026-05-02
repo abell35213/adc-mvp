@@ -1,0 +1,40 @@
+[
+  {
+    "external_id": "LD-3001",
+    "adc_trailer_id": "TRL-300",
+    "adc_vehicle_id": "VEH-200",
+    "loaded_at_utc": "2026-04-30T20:00:00Z",
+    "facility_name": "Acme Distribution Center",
+    "facility_address": "789 Dock Rd, Albany NY",
+    "commodity": "Refrigerated produce (24 pallets)",
+    "pieces": 24,
+    "gross_weight_lb": 41000,
+    "net_weight_lb": 38000,
+    "seal_number": "SEAL-77-A",
+    "securement_method": "load bars + ratchet straps",
+    "weight_distribution_notes": "Heavy on rear axle — shifted during loading",
+    "is_overloaded": false,
+    "is_improperly_loaded": true,
+    "loaded_by": "Acme Dock Worker",
+    "dock_supervisor": "Sue Supervisor"
+  },
+  {
+    "external_id": "LD-3002",
+    "adc_trailer_id": "TRL-301",
+    "adc_vehicle_id": "VEH-201",
+    "loaded_at_utc": "2026-05-01T09:30:00Z",
+    "facility_name": "Beta Foods Loading Dock",
+    "facility_address": "12 Cooler Way, Buffalo NY",
+    "commodity": "Frozen goods (18 pallets)",
+    "pieces": 18,
+    "gross_weight_lb": 35000,
+    "net_weight_lb": 32000,
+    "seal_number": "SEAL-88-B",
+    "securement_method": "load bars",
+    "weight_distribution_notes": "Even distribution",
+    "is_overloaded": false,
+    "is_improperly_loaded": false,
+    "loaded_by": "Beta Dock Lead",
+    "dock_supervisor": "Tom Supervisor"
+  }
+]

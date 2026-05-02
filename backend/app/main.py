@@ -20,6 +20,7 @@ from app.api.routes_integrations import router as integrations_router
 from app.api.routes.routes_driver_artifacts import router as driver_artifacts_router
 from app.api.routes.routes_case_ops import router as case_ops_router
 from app.api.routes.routes_notes import router as notes_router
+from app.api.routes.routes_dispatch_evidence import router as dispatch_evidence_router
 from app.api.routes.routes_driver_report import router as driver_report_router
 from app.api.routes.routes_tasks import router as tasks_router
 from app.api.routes.routes_demo import router as demo_router
@@ -82,6 +83,7 @@ app.include_router(driver_artifacts_router, prefix="/driver", tags=["driver-arti
 app.include_router(driver_report_router, prefix="/driver", tags=["driver-report"])
 app.include_router(case_ops_router, tags=["case-ops"])
 app.include_router(notes_router, tags=["notes"])
+app.include_router(dispatch_evidence_router, tags=["dispatch-evidence"])
 app.include_router(tasks_router, tags=["tasks"])
 app.include_router(demo_router)
 app.include_router(entitlements_router)

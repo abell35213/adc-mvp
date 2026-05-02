@@ -14,6 +14,7 @@ from app.db.models import (
     AuditEvent,
     CrashPacketDelivery,
     DemoScenario,
+    DispatchInstruction,
     Driver,
     DriverVehicleAssignment,
     Event,
@@ -21,6 +22,7 @@ from app.db.models import (
     Incident,
     InsuranceFormFilling,
     InsuranceFormTemplate,
+    LoadingDockReport,
     MaintenanceRecord,
     Org,
     OrgExportValidationRun,
@@ -29,6 +31,7 @@ from app.db.models import (
     OrgTestIncidentRun,
     Trailer,
     User,
+    WeighStationReport,
 )
 from app.onboarding.service import create_export_validation_run, create_test_incident_run, set_step_completion_override
 from app.services.insurance_form_template_service import (
@@ -238,6 +241,21 @@ def reset_demo_tenant(
         MaintenanceRecord.org_id == org_id,
         MaintenanceRecord.asset_id.like("veh-demo-%")
         | MaintenanceRecord.asset_id.like("trl-demo-%"),
+    ).delete(synchronize_session=False)
+    # Phase 3: dispatch / weigh / loading dock evidence seeded for the demo
+    # accident. Photos linked via ``loading_dock_report_id`` cascade-delete
+    # automatically when the LoadingDockReport row goes away.
+    db.query(WeighStationReport).filter(
+        WeighStationReport.org_id == org_id,
+        WeighStationReport.ticket_number.like("WS-DEMO-%"),
+    ).delete(synchronize_session=False)
+    db.query(LoadingDockReport).filter(
+        LoadingDockReport.org_id == org_id,
+        LoadingDockReport.facility_name.like("Demo Loading Dock%"),
+    ).delete(synchronize_session=False)
+    db.query(DispatchInstruction).filter(
+        DispatchInstruction.org_id == org_id,
+        DispatchInstruction.dispatch_id.like("DSP-DEMO-%"),
     ).delete(synchronize_session=False)
     # Driver + assignment seeded by the same scenario.
     demo_driver_ids = [
@@ -602,6 +620,97 @@ def _seed_crash_with_full_packet_extras(
                 summary=summary,
                 mileage=100000 + offset_days * 100,
                 source="manual",
+            )
+        )
+
+    # Phase 3 — dispatch / weigh / loading dock evidence.
+    #
+    # All three rows are linked directly to the demo incident so the marketing
+    # flow visibly exercises the new crash-brief sections + their compliance
+    # callouts (forced dispatch, over-weight ticket, improperly-loaded cargo).
+    dispatch = DispatchInstruction(
+        org_id=org_id,
+        incident_id=incident.incident_id,
+        adc_driver_id=str(driver.driver_id),
+        adc_vehicle_id=str(state["vehicle_id"]),
+        adc_trailer_id=str(state["trailer_id"]),
+        dispatch_id="DSP-DEMO-001",
+        load_number="LD-DEMO-9001",
+        dispatched_by="Jane Dispatcher",
+        dispatched_at_utc=now_utc - timedelta(hours=8),
+        pickup_appointment_at_utc=now_utc - timedelta(hours=4),
+        delivery_appointment_at_utc=now_utc + timedelta(hours=10),
+        eta_at_utc=now_utc + timedelta(hours=9),
+        origin_address="100 Origin Way, Albany NY",
+        destination_address="900 Destination Blvd, Boston MA",
+        hos_remaining_drive_minutes=45,
+        hos_remaining_duty_minutes=120,
+        forced_dispatch_flag=True,
+        notes="Reefer set to 34F",
+        source="manual",
+    )
+    db.add(dispatch)
+    db.flush()
+
+    weigh = WeighStationReport(
+        org_id=org_id,
+        incident_id=incident.incident_id,
+        adc_vehicle_id=str(state["vehicle_id"]),
+        adc_trailer_id=str(state["trailer_id"]),
+        dispatch_instruction_id=dispatch.id,
+        weighed_at_utc=now_utc - timedelta(hours=2),
+        station_name="Demo Scale",
+        station_location="I-90 mile 215",
+        ticket_number="WS-DEMO-12345",
+        gross_weight_lb=82500,
+        steer_axle_weight_lb=12000,
+        drive_axle_weight_lb=35000,
+        trailer_axle_weight_lb=35500,
+        legal_limit_lb=80000,
+        is_over_legal_limit=True,
+        result="cited",
+        citation_text="Cited: drive-axle 35,000 lb (limit 34,000 lb)",
+        inspector_name="Officer Smith",
+        source="manual",
+    )
+    db.add(weigh)
+
+    dock = LoadingDockReport(
+        org_id=org_id,
+        incident_id=incident.incident_id,
+        adc_trailer_id=str(state["trailer_id"]),
+        adc_vehicle_id=str(state["vehicle_id"]),
+        dispatch_instruction_id=dispatch.id,
+        loaded_at_utc=now_utc - timedelta(hours=6),
+        facility_name="Demo Loading Dock A",
+        facility_address="789 Dock Rd, Albany NY",
+        commodity="Refrigerated produce (24 pallets)",
+        pieces=24,
+        gross_weight_lb=41000,
+        net_weight_lb=38000,
+        seal_number="SEAL-DEMO-77",
+        securement_method="load bars + ratchet straps",
+        weight_distribution_notes="Heavy on rear axle — shifted during loading",
+        is_overloaded=False,
+        is_improperly_loaded=True,
+        loaded_by="Demo Dock Worker",
+        dock_supervisor="Sue Supervisor",
+        source="manual",
+    )
+    db.add(dock)
+    db.flush()
+
+    # Two photos linked many-to-one via Artifact.loading_dock_report_id.
+    for label in ("dock-rear", "dock-left-axle"):
+        db.add(
+            Artifact(
+                org_id=org_id,
+                incident_id=incident.incident_id,
+                artifact_type="loading_dock_photo",
+                status="captured",
+                s3_bucket="adc-mvp-artifacts",
+                s3_key=f"demo/loading_dock/{label}.jpg",
+                loading_dock_report_id=dock.id,
             )
         )
 

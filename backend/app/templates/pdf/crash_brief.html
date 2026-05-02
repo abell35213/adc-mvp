@@ -38,6 +38,32 @@
   <p><em>No prior incidents on file.</em></p>
 {% endif %}
 
+<h2>Dispatch Instructions</h2>
+{% if dispatch_instructions %}
+  {% for di in dispatch_instructions %}
+    <table>
+      <tr><th>Dispatch ID</th><td>{{ di.dispatch_id or "—" }}</td></tr>
+      <tr><th>Load #</th><td>{{ di.load_number or "—" }}</td></tr>
+      <tr><th>Dispatched By</th><td>{{ di.dispatched_by or "—" }}</td></tr>
+      <tr><th>Dispatched (UTC)</th><td>{{ di.dispatched_at_utc or "—" }}</td></tr>
+      <tr><th>Pickup Appt (UTC)</th><td>{{ di.pickup_appointment_at_utc or "—" }}</td></tr>
+      <tr><th>Delivery Appt (UTC)</th><td>{{ di.delivery_appointment_at_utc or "—" }}</td></tr>
+      <tr><th>ETA (UTC)</th><td>{{ di.eta_at_utc or "—" }}</td></tr>
+      <tr><th>Origin</th><td>{{ di.origin_address or "—" }}</td></tr>
+      <tr><th>Destination</th><td>{{ di.destination_address or "—" }}</td></tr>
+      <tr><th>HOS Drive Remaining (min)</th><td>{{ di.hos_remaining_drive_minutes if di.hos_remaining_drive_minutes is not none else "—" }}</td></tr>
+      <tr><th>HOS Duty Remaining (min)</th><td>{{ di.hos_remaining_duty_minutes if di.hos_remaining_duty_minutes is not none else "—" }}</td></tr>
+      <tr><th>Source</th><td>{{ di.source }}</td></tr>
+      {% if di.notes %}<tr><th>Notes</th><td>{{ di.notes }}</td></tr>{% endif %}
+    </table>
+    {% if di.forced_dispatch_flag %}
+      <p><strong>⚠ Forced dispatch flagged on this trip.</strong></p>
+    {% endif %}
+  {% endfor %}
+{% else %}
+  <p><em>No dispatch instructions on file (TMS sync pending or awaiting manual entry).</em></p>
+{% endif %}
+
 <h2>Tractor</h2>
 {% if vehicle %}
   <table>
@@ -62,6 +88,79 @@
   </table>
 {% else %}
   <p><em>No trailer record on file for this incident.</em></p>
+{% endif %}
+
+<h2>Loading Dock Reports</h2>
+{% if loading_dock_reports %}
+  {% for ld in loading_dock_reports %}
+    <table>
+      <tr><th>Loaded (UTC)</th><td>{{ ld.loaded_at_utc or "—" }}</td></tr>
+      <tr><th>Facility</th><td>{{ ld.facility_name or "—" }}</td></tr>
+      <tr><th>Facility Address</th><td>{{ ld.facility_address or "—" }}</td></tr>
+      <tr><th>Commodity</th><td>{{ ld.commodity or "—" }}</td></tr>
+      <tr><th>Pieces</th><td>{{ ld.pieces if ld.pieces is not none else "—" }}</td></tr>
+      <tr><th>Gross Weight (lb)</th><td>{{ ld.gross_weight_lb if ld.gross_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Net Weight (lb)</th><td>{{ ld.net_weight_lb if ld.net_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Seal #</th><td>{{ ld.seal_number or "—" }}</td></tr>
+      <tr><th>Securement</th><td>{{ ld.securement_method or "—" }}</td></tr>
+      {% if ld.weight_distribution_notes %}
+        <tr><th>Weight Distribution</th><td>{{ ld.weight_distribution_notes }}</td></tr>
+      {% endif %}
+      <tr><th>Loaded By</th><td>{{ ld.loaded_by or "—" }}</td></tr>
+      <tr><th>Dock Supervisor</th><td>{{ ld.dock_supervisor or "—" }}</td></tr>
+      <tr><th>Source</th><td>{{ ld.source }}</td></tr>
+    </table>
+    {% if ld.is_overloaded %}
+      <p><strong>⚠ Cargo flagged as overloaded.</strong></p>
+    {% endif %}
+    {% if ld.is_improperly_loaded %}
+      <p><strong>⚠ Cargo flagged as improperly loaded.</strong></p>
+    {% endif %}
+    {% if ld.photos %}
+      <p><strong>Loading dock photos ({{ ld.photos|length }}):</strong></p>
+      <ul>
+        {% for photo in ld.photos %}
+          <li>{{ photo.artifact_type }} — {{ photo.status }} ({{ photo.artifact_id }})</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endfor %}
+{% else %}
+  <p><em>No loading dock reports on file (TMS sync pending or awaiting manual entry).</em></p>
+{% endif %}
+
+<h2>Weigh Station Reports</h2>
+{% if weigh_station_reports %}
+  {% for ws in weigh_station_reports %}
+    <table>
+      <tr><th>Weighed (UTC)</th><td>{{ ws.weighed_at_utc or "—" }}</td></tr>
+      <tr><th>Station</th><td>{{ ws.station_name or "—" }}</td></tr>
+      <tr><th>Location</th><td>{{ ws.station_location or "—" }}</td></tr>
+      <tr><th>Ticket #</th><td>{{ ws.ticket_number or "—" }}</td></tr>
+      <tr><th>Gross (lb)</th><td>{{ ws.gross_weight_lb if ws.gross_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Steer Axle (lb)</th><td>{{ ws.steer_axle_weight_lb if ws.steer_axle_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Drive Axle (lb)</th><td>{{ ws.drive_axle_weight_lb if ws.drive_axle_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Trailer Axle (lb)</th><td>{{ ws.trailer_axle_weight_lb if ws.trailer_axle_weight_lb is not none else "—" }}</td></tr>
+      <tr><th>Legal Limit (lb)</th><td>{{ ws.legal_limit_lb if ws.legal_limit_lb is not none else "—" }}</td></tr>
+      <tr><th>Result</th><td>{{ ws.result or "—" }}</td></tr>
+      <tr><th>Inspector</th><td>{{ ws.inspector_name or "—" }}</td></tr>
+      <tr><th>Source</th><td>{{ ws.source }}</td></tr>
+      {% if ws.citation_text %}
+        <tr><th>Citation</th><td>{{ ws.citation_text }}</td></tr>
+      {% endif %}
+    </table>
+    {% if ws.is_over_legal_limit %}
+      <p><strong>⚠ Vehicle was over the legal weight limit.</strong></p>
+    {% endif %}
+    {% if ws.result in ("cited", "out_of_service") %}
+      <p><strong>⚠ Inspection result: {{ ws.result }}.</strong></p>
+    {% endif %}
+    {% if ws.doc_artifact_id %}
+      <p><small>Scanned ticket artifact: {{ ws.doc_artifact_id }}</small></p>
+    {% endif %}
+  {% endfor %}
+{% else %}
+  <p><em>No weigh station reports on file (TMS sync pending or awaiting manual entry).</em></p>
 {% endif %}
 
 <h2>Maintenance (last {{ maintenance_window_days }} days)</h2>

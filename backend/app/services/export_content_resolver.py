@@ -44,6 +44,18 @@ def _target_folder(artifact_type: str, filename: str) -> str:
         return "safety"
     if artifact_type == "vehicle_state":
         return "vehicle"
+    # Phase 3 — dispatch / weigh / loading dock evidence. Each artifact
+    # type lands in its own subfolder under the package root so legal
+    # counsel can locate the dock photo / weigh ticket / dispatch packet
+    # without trawling the generic ``media/other`` bucket. The future
+    # imaging-integration project's auto-attached digitized scale tickets
+    # and dispatch sheets land in the same folders.
+    if artifact_type in ("loading_dock_photo", "loading_dock_signature"):
+        return "loading_dock"
+    if artifact_type == "weigh_ticket":
+        return "weigh_tickets"
+    if artifact_type == "dispatch_sheet":
+        return "dispatch"
     lower_type = (artifact_type or "").lower()
     lower_name = (filename or "").lower()
     if "dashcam" in lower_type or lower_name.endswith((".mp4", ".jpg", ".jpeg", ".png")):

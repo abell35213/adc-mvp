@@ -1,0 +1,36 @@
+[
+  {
+    "external_id": "WS-2001",
+    "adc_vehicle_id": "VEH-200",
+    "adc_trailer_id": "TRL-300",
+    "weighed_at_utc": "2026-04-30T23:30:00Z",
+    "station_name": "I-90 Westbound Scale",
+    "station_location": "I-90 mile 215, NY",
+    "ticket_number": "WS-2001",
+    "gross_weight_lb": 82500,
+    "steer_axle_weight_lb": 12000,
+    "drive_axle_weight_lb": 35000,
+    "trailer_axle_weight_lb": 35500,
+    "legal_limit_lb": 80000,
+    "result": "cited",
+    "citation_text": "Cited: drive-axle 35,000 lb (limit 34,000 lb)",
+    "inspector_name": "Officer Smith"
+  },
+  {
+    "external_id": "WS-2002",
+    "adc_vehicle_id": "VEH-201",
+    "adc_trailer_id": "TRL-301",
+    "weighed_at_utc": "2026-05-01T11:15:00Z",
+    "station_name": "I-90 Eastbound Scale",
+    "station_location": "I-90 mile 117, NY",
+    "ticket_number": "WS-2002",
+    "gross_weight_lb": 76000,
+    "steer_axle_weight_lb": 11000,
+    "drive_axle_weight_lb": 32000,
+    "trailer_axle_weight_lb": 33000,
+    "legal_limit_lb": 80000,
+    "result": "pass",
+    "citation_text": null,
+    "inspector_name": "Officer Jones"
+  }
+]
