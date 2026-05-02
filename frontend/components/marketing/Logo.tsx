@@ -14,9 +14,9 @@ interface LogoProps {
 
 const SOURCES: Record<LogoVariant, { src: string; aspect: number }> = {
   // 480x520 viewBox
-  full: { src: "/brand/adc-logo.svg", aspect: 480 / 520 },
+  full: { src: "/public/ADC-Image-1.png", aspect: 480 / 520 },
   // 360x360 viewBox
-  mark: { src: "/brand/adc-mark.svg", aspect: 1 },
+  mark: { src: "/public/ADC-Image-2.png", aspect: 1 },
 };
 
 export function Logo({
