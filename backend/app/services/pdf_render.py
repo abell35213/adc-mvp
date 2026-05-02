@@ -64,6 +64,12 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     # Phase 3: insurance form fill — renders a structured fill of an
     # operator-uploaded template, populated from the canonical CrashPacketRow.
     "insurance_form": "insurance_form.html",
+    # Court / legal-defense packet — renders the full litigation-grade
+    # bundle described by the ``court_defense_v1`` packet profile (cover,
+    # incident summary, evidence inventory, chain-of-custody, timeline,
+    # driver statement, telemetry highlights, media inventory, integrity
+    # attestation, appendix index).
+    "legal_defense_packet": "legal_defense_packet.html",
 }
 
 

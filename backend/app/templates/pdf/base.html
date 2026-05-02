@@ -6,7 +6,12 @@
   <style>{% include "static/base.css" %}</style>
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% if is_sample %}sample-document{% endif %}{% endblock %}">
+  {% if is_sample %}
+  <div class="sample-banner">
+    SAMPLE DOCUMENT — Generated from fictitious data for demonstration only. Not a real incident, claim, or filing.
+  </div>
+  {% endif %}
   {% block body %}{% endblock %}
 </body>
 </html>

@@ -126,3 +126,79 @@ ol {
 .instructions {
   margin-top: 16px;
 }
+
+/*
+ * Marketing-sample watermark. Applied to <body class="sample-document">,
+ * which causes a fixed-position diagonal "SAMPLE" overlay to appear on
+ * every page via WeasyPrint's CSS Paged Media support.
+ */
+.sample-document::before {
+  content: "SAMPLE — fictitious data, for demonstration only";
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  transform-origin: center center;
+  font-size: 36pt;
+  font-weight: 700;
+  color: rgba(200, 30, 30, 0.18);
+  letter-spacing: 2pt;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.sample-banner {
+  /*
+   * Use position: fixed so WeasyPrint repeats this banner on every
+   * page of the rendered PDF (same paged-media trick as the diagonal
+   * watermark above), not just on the first page.
+   */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  border: 1px solid #c81e1e;
+  background-color: #fdecec;
+  color: #8a2c2c;
+  padding: 4px 10px;
+  font-size: 9pt;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 0;
+  z-index: 9998;
+}
+
+.cover-page {
+  page-break-after: always;
+  text-align: center;
+  padding-top: 4cm;
+}
+
+.cover-page h1 {
+  font-size: 22pt;
+  margin-bottom: 24px;
+}
+
+.cover-page .case-caption {
+  font-size: 14pt;
+  font-weight: 600;
+  margin: 12px 0;
+}
+
+.cover-page .meta {
+  font-size: 11pt;
+  color: #333;
+  margin: 6px 0;
+}
+
+.kv {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.kv th {
+  width: 30%;
+  background-color: #f7f7f7;
+}

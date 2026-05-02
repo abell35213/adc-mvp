@@ -3,32 +3,32 @@ import { MarketingSection } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
 
 const featured = {
-  type: "Report",
-  title: "From collision alert to counsel-ready file: the ADC evidence workflow",
+  type: "Sample document",
+  title: "From collision alert to counsel-ready file: see ADC's documents end-to-end",
   summary:
-    "See how teams combine Samsara events, driver uploads, hash verification, and chain-of-custody logs to deliver insurer-ready packages without rework.",
-  href: "/resources",
-  cta: "Read the workflow brief →",
+    "Preview the executive brief, insurance form, and legal defense packet ADC produces from a single incident — all generated from fictitious sample data and watermarked SAMPLE.",
+  href: "/resources/sample-documents",
+  cta: "Browse sample documents →",
 };
 
 const reports = [
   {
-    type: "Report",
-    title: "Checklist: building a defensible chain-of-custody for fleet incidents",
-    href: "/resources",
-    cta: "Open checklist →",
+    type: "Sample document",
+    title: "Sample: Initial Executive Brief sent within minutes of an incident",
+    href: "/resources/sample-documents#executive-brief",
+    cta: "Preview executive brief →",
   },
   {
-    type: "Template",
-    title: "Template: insurer-ready export package for bodily injury claims",
-    href: "/resources",
-    cta: "Get template →",
+    type: "Sample document",
+    title: "Sample: insurer-ready FNOL form pre-filled from incident data",
+    href: "/resources/sample-documents#insurance-form",
+    cta: "Preview insurance form →",
   },
   {
-    type: "Guide",
-    title: "Guide: validating evidence integrity with file hashing and audit trails",
-    href: "/resources",
-    cta: "Read the guide →",
+    type: "Sample document",
+    title: "Sample: court-ready legal defense packet with chain-of-custody",
+    href: "/resources/sample-documents#legal-defense-packet",
+    cta: "Preview defense packet →",
   },
 ];
 

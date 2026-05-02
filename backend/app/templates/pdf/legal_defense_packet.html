@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ subject }}{% endblock %}
+
+{% block body %}
+{# ============================== COVER PAGE ============================== #}
+<section class="cover-page">
+  <h1>Legal Defense Packet</h1>
+  <p class="case-caption">{{ case.caption }}</p>
+  <p class="meta"><strong>Court:</strong> {{ case.court }}</p>
+  <p class="meta"><strong>Docket No.:</strong> {{ case.docket_number }}</p>
+  <p class="meta"><strong>Incident ID:</strong> {{ incident.incident_id }}</p>
+  <p class="meta"><strong>Incident Date (UTC):</strong> {{ incident.occurred_at_utc }}</p>
+  <p class="meta"><strong>Carrier:</strong> {{ org.name }} (DOT {{ org.dot_number }})</p>
+  <p class="meta"><strong>Prepared By:</strong> {{ prepared_by.attorney_name }}, Bar No. {{ prepared_by.bar_number }}</p>
+  <p class="meta"><strong>Prepared On (UTC):</strong> {{ prepared_at_utc }}</p>
+  <p class="meta"><strong>Packet Profile:</strong> {{ profile.profile_id }} ({{ profile.summary_style }})</p>
+  <p class="muted" style="margin-top:32px;">
+    Evidence integrity verified via SHA-256 manifest. See "Integrity Attestation" section.
+  </p>
+</section>
+
+{# ============================== 1. INCIDENT SUMMARY ============================== #}
+<h2>1. Incident Summary</h2>
+<table class="kv">
+  <tr><th>Date / Time (UTC)</th><td>{{ incident.occurred_at_utc }}</td></tr>
+  <tr><th>Location</th><td>{{ incident.location_address }}</td></tr>
+  <tr><th>Coordinates</th><td>{{ incident.location_lat }}, {{ incident.location_lng }}</td></tr>
+  <tr><th>Severity</th><td>{{ incident.severity }}</td></tr>
+  <tr><th>Weather / Road</th><td>{{ incident.weather_road_conditions }}</td></tr>
+  <tr><th>Police Report #</th><td>{{ incident.police_report_number or "—" }}</td></tr>
+  <tr><th>Driver</th><td>{{ driver.display_name }} ({{ driver.driver_id }})</td></tr>
+  <tr><th>Tractor</th><td>Unit {{ vehicle.unit_number }} — VIN {{ vehicle.vin }}</td></tr>
+  <tr><th>Trailer</th><td>{{ trailer.adc_trailer_id }} — VIN {{ trailer.vin }}</td></tr>
+</table>
+<h3>Narrative</h3>
+<p>{{ incident.narrative }}</p>
+
+{# ============================== 2. EVIDENCE INVENTORY ============================== #}
+<h2>2. Evidence Inventory</h2>
+{% if evidence_inventory %}
+<table class="records">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Artifact ID</th>
+      <th>Type</th>
+      <th>Captured (UTC)</th>
+      <th>Custodian</th>
+      <th>SHA-256 (first 16)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for art in evidence_inventory %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ art.artifact_id }}</td>
+      <td>{{ art.artifact_type }}</td>
+      <td>{{ art.captured_at_utc }}</td>
+      <td>{{ art.custodian }}</td>
+      <td><code>{{ art.sha256_short }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No evidence artifacts on file.</em></p>
+{% endif %}
+
+{# ============================== 3. CHAIN OF CUSTODY ============================== #}
+<h2>3. Chain of Custody</h2>
+{% if chain_of_custody %}
+<table class="records">
+  <thead>
+    <tr>
+      <th>Event (UTC)</th>
+      <th>Artifact ID</th>
+      <th>Action</th>
+      <th>Actor</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in chain_of_custody %}
+    <tr>
+      <td>{{ c.event_at_utc }}</td>
+      <td>{{ c.artifact_id }}</td>
+      <td>{{ c.action }}</td>
+      <td>{{ c.actor }}</td>
+      <td>{{ c.notes or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No chain-of-custody events recorded.</em></p>
+{% endif %}
+
+{# ============================== 4. TIMELINE ============================== #}
+<h2>4. Incident Timeline</h2>
+{% if timeline %}
+<table class="records">
+  <thead>
+    <tr>
+      <th>Time (UTC)</th>
+      <th>Event</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in timeline %}
+    <tr>
+      <td>{{ t.event_at_utc }}</td>
+      <td>{{ t.description }}</td>
+      <td>{{ t.source }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No timeline events captured.</em></p>
+{% endif %}
+
+{# ============================== 5. DRIVER STATEMENT ============================== #}
+<h2>5. Driver Statement</h2>
+{% if driver_statement %}
+<table class="kv">
+  <tr><th>Driver</th><td>{{ driver_statement.driver_name }}</td></tr>
+  <tr><th>Recorded (UTC)</th><td>{{ driver_statement.recorded_at_utc }}</td></tr>
+  <tr><th>Method</th><td>{{ driver_statement.method }}</td></tr>
+</table>
+<blockquote style="border-left:3px solid #ccc;padding:6px 12px;margin:8px 0;background:#fafafa;">
+  {{ driver_statement.statement_text }}
+</blockquote>
+<p class="muted">Driver attestation on file: {{ driver_statement.attested_at_utc }}.</p>
+{% else %}
+<p><em>Driver statement not yet captured.</em></p>
+{% endif %}
+
+{# ============================== 6. TELEMETRY HIGHLIGHTS ============================== #}
+<h2>6. Telemetry Highlights</h2>
+{% if telemetry_highlights %}
+<table class="records">
+  <thead>
+    <tr>
+      <th>Time (UTC)</th>
+      <th>Metric</th>
+      <th>Value</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for tm in telemetry_highlights %}
+    <tr>
+      <td>{{ tm.observed_at_utc }}</td>
+      <td>{{ tm.metric }}</td>
+      <td>{{ tm.value }}</td>
+      <td>{{ tm.source }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Full raw telemetry available in the appendix and via the Evidence Vault.</p>
+{% else %}
+<p><em>No telemetry highlights selected.</em></p>
+{% endif %}
+
+{# ============================== 7. MEDIA INVENTORY ============================== #}
+<h2>7. Media Inventory</h2>
+{% if media_inventory %}
+<table class="records">
+  <thead>
+    <tr>
+      <th>Artifact ID</th>
+      <th>Type</th>
+      <th>Captured (UTC)</th>
+      <th>Provider Link</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in media_inventory %}
+    <tr>
+      <td>{{ m.artifact_id }}</td>
+      <td>{{ m.artifact_type }}</td>
+      <td>{{ m.captured_at_utc }}</td>
+      <td>{% if m.deep_link %}{{ m.deep_link }}{% else %}<em>internal storage</em>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No media artifacts attached.</em></p>
+{% endif %}
+
+{# ============================== 8. INTEGRITY ATTESTATION ============================== #}
+<h2>8. Integrity Attestation</h2>
+<table class="kv">
+  <tr><th>Manifest Hash (SHA-256)</th><td><code>{{ integrity.manifest_sha256 }}</code></td></tr>
+  <tr><th>Manifest Generated (UTC)</th><td>{{ integrity.generated_at_utc }}</td></tr>
+  <tr><th>Signed By</th><td>{{ integrity.signed_by }}</td></tr>
+  <tr><th>Signature Algorithm</th><td>{{ integrity.signature_algorithm }}</td></tr>
+  <tr><th>Artifact Count</th><td>{{ integrity.artifact_count }}</td></tr>
+</table>
+<p class="muted">
+  This packet's evidence inventory is bound to the manifest hash above. Any alteration to a
+  listed artifact would change its SHA-256 and invalidate this attestation.
+</p>
+
+{# ============================== 9. APPENDIX INDEX ============================== #}
+<h2>9. Appendix Index</h2>
+<ul>
+  {% for entry in appendix_index %}
+  <li><strong>{{ entry.label }}</strong> — {{ entry.description }}</li>
+  {% endfor %}
+</ul>
+
+<p class="package-root">{{ org.name }} · Incident {{ incident.incident_id }}</p>
+{% endblock %}
