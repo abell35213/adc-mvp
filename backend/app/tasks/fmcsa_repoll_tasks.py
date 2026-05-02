@@ -88,9 +88,12 @@ def refresh_open_incident_inspections_periodic() -> dict:
             )
             if op is None:
                 continue
+            evidence_request_id = getattr(op, "evidence_request_id", None)
+            if evidence_request_id is None:
+                continue
             capture_driver_violation_history.delay(
                 operation_id=str(op.operation_id),
-                evidence_request_id=str(op.operation_id),
+                evidence_request_id=str(evidence_request_id),
                 org_id=str(incident.org_id),
                 incident_id=str(incident.incident_id),
                 adc_driver_id=incident.adc_driver_id,
