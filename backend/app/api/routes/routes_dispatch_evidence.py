@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import (
@@ -48,6 +48,28 @@ router = APIRouter()
 
 class _BaseConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+
+def _reject_explicit_null_fields(
+    payload: BaseModel, fields: tuple[str, ...]
+) -> None:
+    """Raise ``ValueError`` when any listed field is explicitly set to None.
+
+    The corresponding DB columns are ``nullable=False``; treating an explicit
+    ``null`` from a PATCH client as "field not provided" instead of persisting
+    NULL keeps callers from triggering an IntegrityError / 500. We reject
+    rather than silently ignore so the client gets a clear 422.
+    """
+
+    bad = [
+        name
+        for name in fields
+        if name in payload.model_fields_set and getattr(payload, name) is None
+    ]
+    if bad:
+        raise ValueError(
+            "Field(s) may not be null: " + ", ".join(sorted(bad))
+        )
 
 
 class DispatchInstructionCreate(_BaseConfig):
@@ -88,6 +110,11 @@ class DispatchInstructionPatch(_BaseConfig):
     hos_remaining_duty_minutes: Optional[int] = Field(default=None, ge=0)
     forced_dispatch_flag: Optional[bool] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self) -> "DispatchInstructionPatch":
+        _reject_explicit_null_fields(self, ("forced_dispatch_flag",))
+        return self
 
 
 class DispatchInstructionItem(_BaseConfig):
@@ -145,7 +172,10 @@ class WeighStationReportCreate(_BaseConfig):
 
 
 class WeighStationReportPatch(WeighStationReportCreate):
-    pass
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self) -> "WeighStationReportPatch":
+        _reject_explicit_null_fields(self, ("is_over_legal_limit",))
+        return self
 
 
 class WeighStationReportItem(_BaseConfig):
@@ -214,6 +244,13 @@ class LoadingDockReportCreate(_LoadingDockReportFields):
 class LoadingDockReportPatch(_LoadingDockReportFields):
     is_overloaded: Optional[bool] = None
     is_improperly_loaded: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self) -> "LoadingDockReportPatch":
+        _reject_explicit_null_fields(
+            self, ("is_overloaded", "is_improperly_loaded")
+        )
+        return self
 
 
 class LoadingDockReportItem(_BaseConfig):
@@ -457,6 +494,11 @@ def patch_loading_dock_report(
     return _to_dock_item(record)
 
 
+_ALLOWED_LOADING_DOCK_ARTIFACT_TYPES = frozenset(
+    {"loading_dock_photo", "loading_dock_signature"}
+)
+
+
 @router.post(
     "/orgs/{org_id}/loading-dock-reports/{record_id}/photos",
     response_model=LoadingDockReportItem,
@@ -487,6 +529,15 @@ def attach_photo_to_loading_dock_report(
     )
     if artifact is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
+    if artifact.artifact_type not in _ALLOWED_LOADING_DOCK_ARTIFACT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Artifact type must be one of "
+                f"{sorted(_ALLOWED_LOADING_DOCK_ARTIFACT_TYPES)} to link to a "
+                "loading dock report"
+            ),
+        )
     dock_repo.attach_artifact(
         db, artifact=artifact, loading_dock_report_id=record.id
     )

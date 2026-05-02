@@ -218,3 +218,107 @@ class TestLoadingDockRoutes:
 
         db_session.refresh(artifact)
         assert str(artifact.loading_dock_report_id) == report_id
+
+    def test_attach_photo_rejects_non_dock_artifact_type(
+        self, client, db_session, org, member_user
+    ):
+        from app.db.models import Artifact, Incident
+
+        incident = Incident(org_id=org.id, status="open")
+        db_session.add(incident)
+        db_session.commit()
+        db_session.refresh(incident)
+
+        create_resp = client.post(
+            f"/orgs/{org.id}/loading-dock-reports",
+            json={"facility_name": "Acme Dock"},
+            headers=_auth(member_user),
+        )
+        assert create_resp.status_code == 200, create_resp.text
+        report_id = create_resp.json()["id"]
+
+        artifact = Artifact(
+            org_id=org.id,
+            incident_id=incident.incident_id,
+            artifact_type="dash_cam_video",
+            status="captured",
+        )
+        db_session.add(artifact)
+        db_session.commit()
+        db_session.refresh(artifact)
+
+        resp = client.post(
+            f"/orgs/{org.id}/loading-dock-reports/{report_id}/photos",
+            json={"artifact_id": str(artifact.artifact_id)},
+            headers=_auth(member_user),
+        )
+        assert resp.status_code == 422, resp.text
+
+
+class TestPatchExplicitNullRejection:
+    """Patch payloads must not allow explicit ``null`` for booleans whose
+    DB columns are ``nullable=False`` — the API should return 422 instead
+    of letting the request flow through to an IntegrityError / 500.
+    """
+
+    def test_dispatch_patch_rejects_null_forced_dispatch_flag(
+        self, client, org, member_user
+    ):
+        create = client.post(
+            f"/orgs/{org.id}/dispatch-instructions",
+            json={"dispatch_id": "DSP-NULL", "forced_dispatch_flag": True},
+            headers=_auth(member_user),
+        )
+        assert create.status_code == 200, create.text
+        record_id = create.json()["id"]
+
+        resp = client.patch(
+            f"/orgs/{org.id}/dispatch-instructions/{record_id}",
+            json={"forced_dispatch_flag": None},
+            headers=_auth(member_user),
+        )
+        assert resp.status_code == 422, resp.text
+
+    def test_weigh_patch_rejects_null_is_over_legal_limit(
+        self, client, org, member_user
+    ):
+        create = client.post(
+            f"/orgs/{org.id}/weigh-station-reports",
+            json={
+                "ticket_number": "WS-NULL",
+                "gross_weight_lb": 82000,
+                "legal_limit_lb": 80000,
+            },
+            headers=_auth(member_user),
+        )
+        assert create.status_code == 200, create.text
+        record_id = create.json()["id"]
+
+        resp = client.patch(
+            f"/orgs/{org.id}/weigh-station-reports/{record_id}",
+            json={"is_over_legal_limit": None},
+            headers=_auth(member_user),
+        )
+        assert resp.status_code == 422, resp.text
+
+    def test_dock_patch_rejects_null_overload_flags(
+        self, client, org, member_user
+    ):
+        create = client.post(
+            f"/orgs/{org.id}/loading-dock-reports",
+            json={"facility_name": "Acme Dock", "is_improperly_loaded": True},
+            headers=_auth(member_user),
+        )
+        assert create.status_code == 200, create.text
+        record_id = create.json()["id"]
+
+        for body in (
+            {"is_overloaded": None},
+            {"is_improperly_loaded": None},
+        ):
+            resp = client.patch(
+                f"/orgs/{org.id}/loading-dock-reports/{record_id}",
+                json=body,
+                headers=_auth(member_user),
+            )
+            assert resp.status_code == 422, (body, resp.text)
