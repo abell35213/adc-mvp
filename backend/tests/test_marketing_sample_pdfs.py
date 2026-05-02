@@ -12,18 +12,35 @@ PDF bytes, so these tests do not need WeasyPrint's native deps.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
 
 from app.services.pdf_render import TEMPLATE_REGISTRY, render_html
-from scripts.generate_marketing_sample_pdfs import (
-    SAMPLES,
-    build_executive_brief_context,
-    build_insurance_form_context,
-    build_legal_defense_packet_context,
-    generate_all,
+
+# Load ``backend/scripts/generate_marketing_sample_pdfs.py`` by file path.
+# We deliberately avoid ``from scripts.X import …`` because the repo root also
+# contains a top-level ``scripts/`` package (used by, e.g.,
+# ``tests/test_runtime_contract_snapshot.py``); making ``backend/scripts/`` a
+# regular package would shadow it on sys.path.
+_GENERATOR_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "scripts"
+    / "generate_marketing_sample_pdfs.py"
 )
+_spec = importlib.util.spec_from_file_location(
+    "generate_marketing_sample_pdfs", _GENERATOR_PATH
+)
+assert _spec is not None and _spec.loader is not None
+_generator = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_generator)
+
+SAMPLES = _generator.SAMPLES
+build_executive_brief_context = _generator.build_executive_brief_context
+build_insurance_form_context = _generator.build_insurance_form_context
+build_legal_defense_packet_context = _generator.build_legal_defense_packet_context
+generate_all = _generator.generate_all
 
 
 def test_legal_defense_packet_template_registered() -> None:
