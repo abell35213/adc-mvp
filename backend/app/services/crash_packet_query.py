@@ -595,15 +595,29 @@ def fetch_crash_packet_row(
         else:
             ld_records = []
 
-        for record in ld_records:
-            photos = (
+        artifacts_by_loading_dock_report_id: dict[Any, list[Artifact]] = {}
+        if ld_records:
+            ld_record_ids = [record.id for record in ld_records]
+            artifacts = (
                 db.query(Artifact)
-                .filter(Artifact.loading_dock_report_id == record.id)
-                .order_by(Artifact.created_at_utc.asc())
+                .filter(Artifact.loading_dock_report_id.in_(ld_record_ids))
+                .order_by(
+                    Artifact.loading_dock_report_id.asc(),
+                    Artifact.created_at_utc.asc(),
+                )
                 .all()
             )
+            for artifact in artifacts:
+                artifacts_by_loading_dock_report_id.setdefault(
+                    artifact.loading_dock_report_id, []
+                ).append(artifact)
+
+        for record in ld_records:
             loading_dock_reports.append(
-                _serialize_loading_dock_report(record, photos=photos)
+                _serialize_loading_dock_report(
+                    record,
+                    photos=artifacts_by_loading_dock_report_id.get(record.id, []),
+                )
             )
 
     return CrashPacketRow(
