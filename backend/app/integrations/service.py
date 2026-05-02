@@ -6,6 +6,7 @@ from typing import cast
 
 from app.integrations.base import (
     DashcamProvider,
+    EmailProvider,
     MessagingProvider,
     TelematicsProvider,
     VerifyProvider,
@@ -43,3 +44,8 @@ def get_verify_provider() -> VerifyProvider:
 def get_voice_provider() -> VoiceProvider:
     _ensure_defaults()
     return cast(VoiceProvider, get_provider(ProviderCapability.MESSAGING))
+
+
+def get_email_provider() -> EmailProvider:
+    _ensure_defaults()
+    return cast(EmailProvider, get_provider(ProviderCapability.EMAIL))

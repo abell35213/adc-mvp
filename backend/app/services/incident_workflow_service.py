@@ -185,6 +185,93 @@ def initiate_driver_incident(
     )
 
 
+def transition_incident_to_accident_occurred(
+    db: Session,
+    *,
+    incident: Incident,
+    actor_type: str = "system",
+    actor_id: str = "incident_workflow",
+) -> Incident:
+    """Flip an incident's status to ``accident_occurred`` and dispatch the
+    crash packet exactly once.
+
+    Idempotent: re-calling for an already-flipped incident is a no-op for the
+    DB, and the dispatch task itself is keyed on ``crash_packet:{incident_id}``
+    so duplicate enqueues are safe. A ``CrashPacketDelivery`` row is created
+    in ``queued`` status *before* the Celery enqueue so the SLA watchdog can
+    detect end-to-end SLA misses (incl. broker outage / worker down / queue
+    misroute) even when the dispatch task never runs. Any failure to enqueue
+    is logged but not raised.
+    """
+    from app.domain.system_event_types import SystemEventType
+
+    if incident.status != "accident_occurred":
+        prior_status = incident.status
+        incident.status = "accident_occurred"
+        db.commit()
+        db.refresh(incident)
+        db.add(
+            Event(
+                org_id=incident.org_id,
+                incident_id=incident.incident_id,
+                event_type=SystemEventType.INCIDENT_STATUS_CHANGED.value,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                payload={
+                    "from_status": prior_status,
+                    "to_status": "accident_occurred",
+                },
+            )
+        )
+        db.commit()
+
+    # Create the per-incident CrashPacketDelivery row in ``queued`` status
+    # *before* enqueueing the Celery task. This guarantees the SLA watchdog
+    # has something to find even if the task never runs (broker outage,
+    # worker down, queue misroute) — the watchdog falls back to
+    # ``created_at_utc`` when ``dispatched_at_utc`` is still NULL. The repo
+    # row uses a unique idempotency key of ``crash_packet:{incident_id}``,
+    # so re-calls of this transition (or a later dispatch task) reuse the
+    # existing row rather than inserting a duplicate.
+    try:
+        from app.config.settings import settings as _settings
+        from app.db.repo.crash_packet_deliveries import (
+            create_delivery,
+            get_delivery_for_incident,
+        )
+
+        if get_delivery_for_incident(db, incident_id=incident.incident_id) is None:
+            create_delivery(
+                db,
+                incident_id=incident.incident_id,
+                org_id=incident.org_id,
+                target_sla_seconds=_settings.CRASH_PACKET_SLA_SECONDS,
+            )
+    except Exception:  # noqa: BLE001 - never let pre-queue bookkeeping block the flip
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Failed to pre-create CrashPacketDelivery row for incident %s",
+            incident.incident_id,
+        )
+
+    # Enqueue dispatch lazily so the import doesn't pull Celery into import
+    # graphs that don't need it (e.g. unit tests of the transition itself).
+    try:
+        from app.tasks.crash_packet_tasks import dispatch_crash_packet
+
+        dispatch_crash_packet.delay(str(incident.incident_id))
+    except Exception:  # noqa: BLE001 - never let queueing block status flip
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Failed to enqueue dispatch_crash_packet for incident %s",
+            incident.incident_id,
+        )
+
+    return incident
+
+
 def incident_status_summary(db: Session, *, incident_id: uuid.UUID) -> dict:
     """Build a complete status payload for a driver incident."""
     events = (

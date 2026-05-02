@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ subject }}{% endblock %}
+
+{% block body %}
+<h1>Initial Crash Brief</h1>
+<p><strong>Incident:</strong> {{ incident.incident_id }}</p>
+<p><strong>Status:</strong> {{ incident.status }}</p>
+<p><strong>Severity:</strong> {{ incident.severity or "unknown" }}</p>
+<p><strong>Reported (UTC):</strong> {{ incident.created_at_utc or "n/a" }}</p>
+<p><strong>Maintenance window:</strong> last {{ maintenance_window_days }} days</p>
+
+<h2>Driver</h2>
+{% if driver %}
+  <table>
+    <tr><th>Name</th><td>{{ driver.display_name }}</td></tr>
+    <tr><th>Phone</th><td>{{ driver.phone_e164 }}</td></tr>
+    <tr><th>Driver ID</th><td>{{ driver.driver_id }}</td></tr>
+    <tr><th>Active</th><td>{{ driver.is_active }}</td></tr>
+  </table>
+{% else %}
+  <p><em>Driver record not available.</em></p>
+{% endif %}
+
+<h2>Driver Safety History</h2>
+{% if driver_history %}
+  <table>
+    <tr><th>Incident</th><th>Created (UTC)</th><th>Status</th><th>Severity</th></tr>
+    {% for prior in driver_history %}
+      <tr>
+        <td>{{ prior.incident_id }}</td>
+        <td>{{ prior.created_at_utc }}</td>
+        <td>{{ prior.status }}</td>
+        <td>{{ prior.severity or "unknown" }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p><em>No prior incidents on file.</em></p>
+{% endif %}
+
+<h2>Tractor</h2>
+{% if vehicle %}
+  <table>
+    <tr><th>Unit Number</th><td>{{ vehicle.unit_number }}</td></tr>
+    <tr><th>VIN</th><td>{{ vehicle.vin or "—" }}</td></tr>
+    <tr><th>Provider</th><td>{{ vehicle.provider or "—" }}</td></tr>
+  </table>
+{% else %}
+  <p><em>Vehicle record not available.</em></p>
+{% endif %}
+
+<h2>Trailer</h2>
+{% if trailer %}
+  <table>
+    <tr><th>Trailer ID</th><td>{{ trailer.adc_trailer_id }}</td></tr>
+    <tr><th>VIN</th><td>{{ trailer.vin or "—" }}</td></tr>
+    <tr><th>Make / Model</th><td>{{ trailer.make or "—" }} {{ trailer.model or "" }}</td></tr>
+    <tr><th>Year</th><td>{{ trailer.year or "—" }}</td></tr>
+    <tr><th>Plate</th><td>{{ trailer.plate or "—" }}</td></tr>
+    <tr><th>Last Inspection</th><td>{{ trailer.last_inspection_at_utc or "—" }}</td></tr>
+    <tr><th>Source</th><td>{{ trailer.source }}</td></tr>
+  </table>
+{% else %}
+  <p><em>No trailer record on file for this incident.</em></p>
+{% endif %}
+
+<h2>Maintenance (last {{ maintenance_window_days }} days)</h2>
+{% if maintenance %}
+  <table>
+    <tr><th>Performed (UTC)</th><th>Asset</th><th>Vendor</th><th>Summary</th><th>Mileage</th></tr>
+    {% for record in maintenance %}
+      <tr>
+        <td>{{ record.performed_at_utc }}</td>
+        <td>{{ record.asset_kind }}: {{ record.asset_id }}</td>
+        <td>{{ record.vendor or "—" }}</td>
+        <td>{{ record.summary or "—" }}</td>
+        <td>{{ record.mileage or "—" }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p><em>No maintenance records ingested yet (TMS sync pending).</em></p>
+{% endif %}
+
+<h2>ELD Logs (last 8 captured artifacts)</h2>
+{% if eld_logs %}
+  <ul>
+    {% for log in eld_logs %}
+      <li>{{ log.artifact_type }} — {{ log.status }} ({{ log.artifact_id }})</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p><em>No ELD artifacts captured.</em></p>
+{% endif %}
+
+<h2>Dashcam (Samsara)</h2>
+{% if samsara_clip_links %}
+  <ul>
+    {% for clip in samsara_clip_links %}
+      <li>
+        {{ clip.artifact_type }}
+        {% if clip.deep_link %}
+          — <a href="{{ clip.deep_link }}">Open in Samsara</a>
+        {% else %}
+          — <em>Samsara link unavailable; fallback artifact {{ clip.artifact_id }}</em>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p><em>No dashcam clips captured.</em></p>
+{% endif %}
+
+<p><small>Related events on this incident: {{ related_event_count }}</small></p>
+{% endblock %}

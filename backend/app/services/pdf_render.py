@@ -57,6 +57,13 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "eld_log_report": "telematics_report.html",
     "gps_trail_report": "telematics_report.html",
     "safety_event_report": "telematics_report.html",
+    # Crash-packet brief — sent to recipients on incident_status →
+    # accident_occurred. Same Jinja template renders both the PDF and the
+    # HTML email body via render_html().
+    "crash_brief": "crash_brief.html",
+    # Phase 3: insurance form fill — renders a structured fill of an
+    # operator-uploaded template, populated from the canonical CrashPacketRow.
+    "insurance_form": "insurance_form.html",
 }
 
 

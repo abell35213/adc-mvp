@@ -69,6 +69,15 @@ celery_app.conf.update(
             "queue": "notifications"
         },
         "app.tasks.notify_tasks.notify_safety": {"queue": "notifications"},
+        "app.tasks.crash_packet_tasks.dispatch_crash_packet": {
+            "queue": "notifications"
+        },
+        "app.tasks.crash_packet_tasks.crash_packet_sla_watchdog": {
+            "queue": "notifications"
+        },
+        "app.tasks.tms_sync_tasks.sync_tms_org": {"queue": "evidence"},
+        "app.tasks.tms_sync_tasks.sync_tms_connection": {"queue": "evidence"},
+        "app.tasks.insurance_form_tasks.fill_insurance_form": {"queue": "evidence"},
         "app.tasks.celery_app.record_dead_letter": {"queue": "dead_letter"},
     },
     task_annotations={
@@ -92,6 +101,13 @@ celery_app.conf.update(
             "retry_jitter": True,
         },
         "app.tasks.notification_tasks.notify_safety_manager": {
+            "autoretry_for": (Exception,),
+            "max_retries": messaging_retry_policy.max_retries,
+            "retry_backoff": messaging_retry_policy.base_delay_seconds,
+            "retry_backoff_max": messaging_retry_policy.backoff_cap_seconds,
+            "retry_jitter": True,
+        },
+        "app.tasks.crash_packet_tasks.dispatch_crash_packet": {
             "autoretry_for": (Exception,),
             "max_retries": messaging_retry_policy.max_retries,
             "retry_backoff": messaging_retry_policy.base_delay_seconds,

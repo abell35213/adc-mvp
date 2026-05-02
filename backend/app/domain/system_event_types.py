@@ -76,6 +76,10 @@ class SystemEventType(str, Enum):
     SAFETY_MANAGER_SMS_FAILED = "safety_manager_sms_failed"
     SAFETY_MANAGER_CALL_PLACED = "safety_manager_call_placed"
     SAFETY_MANAGER_CALL_FAILED = "safety_manager_call_failed"
+    CRASH_PACKET_DISPATCHED = "crash_packet_dispatched"
+    CRASH_PACKET_SENT = "crash_packet_sent"
+    CRASH_PACKET_FAILED = "crash_packet_failed"
+    CRASH_PACKET_OVERDUE = "crash_packet_overdue"
 
     # ── Identity / MFA ─────────────────────────────────────────────
     MFA_ENROLLMENT_COMPLETED = "mfa_enrollment_completed"

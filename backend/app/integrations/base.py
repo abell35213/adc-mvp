@@ -57,6 +57,21 @@ class VoiceProvider(Protocol):
 
 
 @runtime_checkable
+class EmailProvider(Protocol):
+    """Transactional email sender (one recipient per call so partial-success is trivial)."""
+
+    def send_email(
+        self,
+        *,
+        to: str,
+        subject: str,
+        html_body: str,
+        text_body: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> str: ...
+
+
+@runtime_checkable
 class StorageProvider(Protocol):
     def file_store(self, key: str, content: bytes, content_type: str | None = None) -> str: ...
 

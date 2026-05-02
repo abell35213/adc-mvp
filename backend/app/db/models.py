@@ -232,13 +232,21 @@ class Incident(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     status = Column(
-        Enum("open", "evidence_capturing", "closed", name="incident_status"),
+        Enum(
+            "open",
+            "evidence_capturing",
+            "accident_occurred",
+            "closed",
+            name="incident_status",
+        ),
         nullable=False,
         default="open",
     )
     adc_vehicle_id = Column(Text, nullable=True)
     samsara_vehicle_id = Column(Text, nullable=True)
     adc_driver_id = Column(Text, nullable=True)
+    # Phase 2: nullable opaque trailer reference; matches trailer.adc_trailer_id.
+    adc_trailer_id = Column(Text, nullable=True)
     severity = Column(Text, nullable=True)
     case_status = Column(
         Enum(
@@ -2145,3 +2153,525 @@ class DriverInstructionStep(Base):
     title = Column(Text, nullable=False)
     body = Column(Text, nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
+
+
+# ── Crash-packet notification (Phase 1 of demo workflow) ───────────
+
+
+class OrgNotificationRecipient(Base):
+    """Per-org control file of recipients for crash packet notifications.
+
+    Acts as the single source of truth for who receives what channel
+    (email today; sms/voice can read this table in a later phase).
+    """
+
+    __tablename__ = "org_notification_recipients"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    email = Column(Text, nullable=False)
+    full_name = Column(Text, nullable=True)
+    role_tag = Column(Text, nullable=True)
+    # JSON array of channel strings: ["email"], ["email","sms"], etc.
+    channels = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[\"email\"]'")
+    )
+    active = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_org_notification_recipients_org_active",
+            "org_id",
+            "active",
+        ),
+    )
+
+
+class CrashPacketDelivery(Base):
+    """Tracks one crash-packet send attempt for an incident.
+
+    Indexed by incident_id for idempotency and by status/dispatched_at
+    for the SLA watchdog scan.
+    """
+
+    __tablename__ = "crash_packet_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(
+        Enum(
+            "queued",
+            "dispatched",
+            "sent",
+            "partial",
+            "failed",
+            "overdue",
+            name="crash_packet_delivery_status",
+        ),
+        nullable=False,
+        default="queued",
+        server_default="queued",
+    )
+    target_sla_seconds = Column(Integer, nullable=False, default=900)
+    idempotency_key = Column(Text, nullable=False, unique=True)
+    payload_hash = Column(Text, nullable=True)
+    sent_to = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    failed_to = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    message_ids = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    error_summary = Column(Text, nullable=True)
+    dispatched_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_crash_packet_deliveries_status_dispatched",
+            "status",
+            "dispatched_at_utc",
+        ),
+    )
+
+
+# ── TMS-cached trailer + maintenance + connection metadata (Phase 2) ──
+
+
+class Trailer(Base):
+    """A trailer record, either entered manually or synced from a TMS."""
+
+    __tablename__ = "trailers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Stable per-org opaque id matching incident.adc_trailer_id.
+    adc_trailer_id = Column(Text, nullable=False)
+    vin = Column(Text, nullable=True)
+    make = Column(Text, nullable=True)
+    model = Column(Text, nullable=True)
+    year = Column(Integer, nullable=True)
+    plate = Column(Text, nullable=True)
+    last_inspection_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    source = Column(
+        Enum("manual", "tms", name="trailer_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    # External id from the source-of-truth TMS (used as upsert key with org_id).
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_trailers_org_adc_trailer_id", "org_id", "adc_trailer_id", unique=True),
+        Index("ix_trailers_org_external_id", "org_id", "external_id"),
+    )
+
+
+class MaintenanceRecord(Base):
+    """A single maintenance event for a tractor or trailer.
+
+    Indexed on ``(org_id, asset_kind, asset_id, performed_at_utc desc)`` for
+    the canonical 1-year lookup.
+    """
+
+    __tablename__ = "maintenance_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_kind = Column(
+        Enum("tractor", "trailer", name="maintenance_asset_kind"),
+        nullable=False,
+    )
+    # Free-form per-org asset id: tractor unit_number or trailer.adc_trailer_id.
+    asset_id = Column(Text, nullable=False)
+    performed_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
+    vendor = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    mileage = Column(Integer, nullable=True)
+    doc_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source = Column(
+        Enum("manual", "tms", name="maintenance_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_maintenance_records_lookup",
+            "org_id",
+            "asset_kind",
+            "asset_id",
+            "performed_at_utc",
+        ),
+        Index(
+            "ix_maintenance_records_external_id",
+            "org_id",
+            "external_id",
+            unique=False,
+        ),
+    )
+
+
+class TmsConnection(Base):
+    """Per-org configuration for an ODBC-based TMS data source."""
+
+    __tablename__ = "tms_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    vendor_hint = Column(
+        Enum(
+            "mcleod",
+            "tmw",
+            "fleetio",
+            "whip_around",
+            "generic",
+            name="tms_vendor_hint",
+        ),
+        nullable=False,
+        default="generic",
+        server_default="generic",
+    )
+    # Reference key into SECRET_PROVIDER (e.g. AWS Secrets Manager). The
+    # actual ODBC DSN / connection string is *never* stored in the DB.
+    odbc_secret_ref = Column(Text, nullable=False)
+    schedule_cron = Column(
+        Text, nullable=False, default="0 3 * * *", server_default="0 3 * * *"
+    )
+    last_synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    status = Column(
+        Enum("active", "disabled", "error", name="tms_connection_status"),
+        nullable=False,
+        default="active",
+        server_default="active",
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = ()
+
+
+class TmsFieldMap(Base):
+    """A single source-column → target-field mapping for a TMS connection."""
+
+    __tablename__ = "tms_field_maps"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tms_connection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tms_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity = Column(
+        Enum("trailer", "maintenance_record", name="tms_field_map_entity"),
+        nullable=False,
+    )
+    source_table = Column(Text, nullable=False)
+    source_column = Column(Text, nullable=False)
+    target_field = Column(Text, nullable=False)
+    transform = Column(
+        Text, nullable=False, default="none", server_default="none"
+    )
+    is_key = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_tms_field_maps_conn_entity",
+            "tms_connection_id",
+            "entity",
+        ),
+    )
+
+
+# ── Insurance form templates + fillings (Phase 3) ──
+
+
+class InsuranceFormTemplate(Base):
+    """Operator-uploaded blank insurance form (org-scoped, not incident-scoped).
+
+    The blank PDF/image lives in S3 referenced by ``s3_bucket`` / ``s3_key``.
+    Once :attr:`status` is ``'finalized'`` the field map is locked; further
+    edits create a new version.
+    """
+
+    __tablename__ = "insurance_form_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    carrier = Column(Text, nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    status = Column(
+        Enum("draft", "finalized", "archived", name="insurance_form_template_status"),
+        nullable=False,
+        default="draft",
+        server_default="draft",
+    )
+    s3_bucket = Column(Text, nullable=True)
+    s3_key = Column(Text, nullable=True)
+    sha256 = Column(Text, nullable=True)
+    page_count = Column(Integer, nullable=True)
+    created_by_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    finalized_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_templates_org_name_version",
+            "org_id",
+            "name",
+            "version",
+            unique=True,
+        ),
+    )
+
+
+class InsuranceFormTemplateField(Base):
+    """One mapped field on an insurance form template.
+
+    ``source_path`` is a dot-notation path into the canonical
+    ``CrashPacketRow`` (e.g. ``incident.adc_vehicle_id``,
+    ``maintenance[0].vendor``). ``transform`` reuses the Phase 2
+    enumeration (``none|date|upper|json_extract:<path>``).
+
+    ``kind`` indicates the AcroForm/visual field type so the renderer can
+    pick a sensible widget. ``page`` and ``bbox_json`` are populated when
+    the operator (or AcroForm detection) has positional information; the
+    MVP renderer only needs ``label`` + resolved value.
+    """
+
+    __tablename__ = "insurance_form_template_fields"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "insurance_form_templates.id", ondelete="CASCADE"
+        ),
+        nullable=False,
+        index=True,
+    )
+    name = Column(Text, nullable=False)
+    label = Column(Text, nullable=True)
+    page = Column(Integer, nullable=True)
+    kind = Column(
+        Enum(
+            "text",
+            "date",
+            "checkbox",
+            "signature",
+            name="insurance_form_field_kind",
+        ),
+        nullable=False,
+        default="text",
+        server_default="text",
+    )
+    bbox_json = Column(JSONB, nullable=True)
+    source_path = Column(Text, nullable=True)
+    transform = Column(
+        Text, nullable=False, default="none", server_default="none"
+    )
+    required = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    default_value = Column(Text, nullable=True)
+    sort_order = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_template_fields_template_name",
+            "template_id",
+            "name",
+            unique=True,
+        ),
+    )
+
+
+class InsuranceFormFilling(Base):
+    """One materialized fill of an insurance form for an incident.
+
+    Idempotent on ``(incident_id, template_id, payload_hash)`` — re-running
+    the fill task with unchanged data does not produce a duplicate
+    Artifact. Errors (missing required fields, render failures) are
+    captured in ``status`` + ``error_message``.
+    """
+
+    __tablename__ = "insurance_form_fillings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("insurance_form_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    template_version = Column(Integer, nullable=False)
+    status = Column(
+        Enum(
+            "pending",
+            "filled",
+            "failed",
+            name="insurance_form_filling_status",
+        ),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    payload_json = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    payload_hash = Column(Text, nullable=True, index=True)
+    output_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    missing_required_fields = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
+    )
+    error_message = Column(Text, nullable=True)
+    filled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_insurance_form_fillings_incident_template_hash",
+            "incident_id",
+            "template_id",
+            "payload_hash",
+        ),
+    )
