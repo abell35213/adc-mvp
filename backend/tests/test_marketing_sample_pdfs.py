@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.pdf_render import TEMPLATE_REGISTRY, render_html, render_pdf
+from app.services.pdf_render import TEMPLATE_REGISTRY, render_html
 from scripts.generate_marketing_sample_pdfs import (
     SAMPLES,
     build_executive_brief_context,
