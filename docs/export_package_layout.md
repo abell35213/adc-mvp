@@ -23,9 +23,41 @@ ADC_Export_{incident_id}_{YYYYMMDD}/
 │   └── vehicle_state.csv            # Snapshots as CSV
 ├── media/
 │   └── *.mp4 / *.jpg                # Dashcam clips & stills (if available)
+├── loading_dock/
+│   └── *.jpg / *.png                # Loading-dock photos + signature scans
+│                                    # (linked many-to-one via
+│                                    # Artifact.loading_dock_report_id)
+├── weigh_tickets/
+│   └── *.pdf / *.jpg                # Scanned weigh tickets
+│                                    # (artifact_type = 'weigh_ticket')
+├── dispatch/
+│   └── *.pdf / *.jpg                # Dispatch sheet packets
+│                                    # (artifact_type = 'dispatch_sheet')
 └── integrity/
     └── checksums.sha256             # SHA-256 checksums of every file above
 ```
+
+> **Phase 3 evidence in the cover-summary PDF.** Dispatch instructions,
+> weigh-station reports, and loading-dock reports are persisted in
+> `dispatch_instructions`, `weigh_station_reports`, and
+> `loading_dock_reports` respectively. They flow into the `Initial Crash
+> Brief` PDF via `app.services.crash_packet_query.fetch_crash_packet_row`
+> (direct `incident_id` FK match, falling back to the 24h trip-context
+> window keyed on driver / vehicle / trailer). They are part of the
+> legal-hold export bundle: the rows are serialized into the brief PDF,
+> and any linked dock photo (`Artifact.loading_dock_report_id IS NOT
+> NULL` with `incident_id` set) is included in the `loading_dock/`
+> subfolder by the standard artifact-bundling pass.
+
+> **Out-of-scope (follow-on imaging-integration project).** External
+> weigh-feed integrations (FMCSA SAFER, PrePass) and TMS imaging
+> products (e.g. McLeod Imaging) that auto-attach digitized scale
+> tickets and dispatch sheets are intentionally not implemented in this
+> milestone. The schema is laid out so they slot in without further
+> churn: an `Artifact` row with `artifact_type='weigh_ticket'` or
+> `'dispatch_sheet'` and a `loading_dock_report_id` FK (or, for weigh
+> tickets, a future direct FK) lands in the corresponding subfolder
+> automatically.
 
 ## Filenames per Artifact Type
 
