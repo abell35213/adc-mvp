@@ -66,6 +66,51 @@ def test_upsert_classifies_high_when_window_and_unit_id(db_session, org):
     assert row.source == "tms"
 
 
+def test_upsert_classifies_high_when_plate_state_only(db_session, org):
+    """A closed-window TMS row identified solely by (plate, state) — with
+    no VIN or unit_number — must still reach HIGH because the FMCSA matcher
+    treats (plate, state) as a strong join key.
+    """
+    from app.db.repo.driver_unit_history import upsert_from_tms
+
+    import uuid as _uuid
+    row, _ = upsert_from_tms(
+        db_session,
+        org_id=org.id,
+        external_id="tms-row-plate",
+        fields={
+            "driver_id": _uuid.uuid4(),
+            "license_plate": "ABC123",
+            "license_state": "TX",
+            "started_at_utc": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "ended_at_utc": datetime(2026, 6, 1, tzinfo=timezone.utc),
+            "unit_kind": "tractor",
+        },
+    )
+    assert row.confidence == "high"
+
+
+def test_upsert_classifies_medium_when_plate_only_no_state(db_session, org):
+    """Plate without state is not a strong identifier on its own — should
+    fall back to MEDIUM (treated as "missing unit_id")."""
+    from app.db.repo.driver_unit_history import upsert_from_tms
+
+    import uuid as _uuid
+    row, _ = upsert_from_tms(
+        db_session,
+        org_id=org.id,
+        external_id="tms-row-plate-only",
+        fields={
+            "driver_id": _uuid.uuid4(),
+            "license_plate": "ABC123",
+            "started_at_utc": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "ended_at_utc": datetime(2026, 6, 1, tzinfo=timezone.utc),
+            "unit_kind": "tractor",
+        },
+    )
+    assert row.confidence == "medium"
+
+
 def test_upsert_classifies_medium_when_open_ended(db_session, org):
     from app.db.repo.driver_unit_history import upsert_from_tms
 

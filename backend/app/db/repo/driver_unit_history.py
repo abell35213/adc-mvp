@@ -38,16 +38,21 @@ ALLOWED_FIELDS = {
 def _classify_confidence(fields: dict[str, Any]) -> tuple[str, str]:
     """Return ``(confidence, reason)`` per the slip-seating rules.
 
-    HIGH   = TMS-sourced, has VIN OR unit_number, has both started/ended,
-             AND ``driver_id`` resolved (Driver row matched).
-    MEDIUM = TMS but open-ended, OR missing one of (VIN, unit_number).
+    HIGH   = TMS-sourced, has a unit identifier (VIN, unit_number, OR
+             a full plate+state pair — all of which the FMCSA matcher
+             can join on), has both started/ended, AND ``driver_id``
+             resolved (Driver row matched).
+    MEDIUM = TMS but open-ended, OR missing a unit identifier.
     LOW    = derived_from_assignment, manual entry, OR unresolved driver.
     """
     source = fields.get("source") or "tms"
     if source in {"manual", "derived_from_assignment"}:
         return "low", f"source={source}"
 
-    has_unit_id = bool(fields.get("vin") or fields.get("unit_number"))
+    has_plate_state = bool(fields.get("license_plate") and fields.get("license_state"))
+    has_unit_id = bool(
+        fields.get("vin") or fields.get("unit_number") or has_plate_state
+    )
     has_window = bool(fields.get("started_at_utc") and fields.get("ended_at_utc"))
     has_driver = bool(fields.get("driver_id"))
 
