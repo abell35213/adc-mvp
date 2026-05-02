@@ -626,7 +626,7 @@ def _seed_crash_with_full_packet_extras(
         payload_hash="demo-payload-hash",
         sent_to=[{"email": recipient.email, "channel": "email"}],
         failed_to=[],
-        message_ids=[{"provider": "noop", "message_id": "demo-msg-1"}],
+        message_ids=["demo-msg-1"],
         delivered_at_utc=now_utc - timedelta(minutes=1),
     )
     db.add(delivery)
