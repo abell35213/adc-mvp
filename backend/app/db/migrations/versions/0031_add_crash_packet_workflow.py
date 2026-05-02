@@ -125,8 +125,7 @@ def upgrade() -> None:
         sa.Column(
             "dispatched_at_utc",
             sa.TIMESTAMP(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
+            nullable=True,
         ),
         sa.Column("delivered_at_utc", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column(
