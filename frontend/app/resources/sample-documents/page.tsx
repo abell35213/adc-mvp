@@ -51,6 +51,7 @@ export default function SampleDocumentsPage() {
                 <iframe
                   src={doc.pdfHref}
                   title={`Inline preview of ${doc.title}`}
+                  loading="lazy"
                   className="block h-[640px] w-full border-0"
                 />
               </div>
