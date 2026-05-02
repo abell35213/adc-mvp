@@ -557,6 +557,7 @@ def fetch_crash_packet_row(
                 .filter(
                     WeighStationReport.org_id == org_id,
                     WeighStationReport.adc_vehicle_id == adc_vehicle_id,
+                    WeighStationReport.incident_id.is_(None),
                     WeighStationReport.weighed_at_utc >= window_start,
                     WeighStationReport.weighed_at_utc <= window_end,
                 )
