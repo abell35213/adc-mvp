@@ -5,6 +5,7 @@ import { ValuePillarCards } from "@/components/marketing/ValuePillarCards";
 import { FeatureGrid } from "@/components/marketing/FeatureGrid";
 import { StatsBar } from "@/components/marketing/StatsBar";
 import { DemoSection } from "@/components/marketing/DemoSection";
+import { SampleDocumentsCarousel } from "@/components/marketing/SampleDocumentsCarousel";
 import { MultiTestimonials } from "@/components/marketing/MultiTestimonials";
 import { ResourcesSection } from "@/components/marketing/ResourcesSection";
 import { SiteFooter } from "@/components/marketing/SiteFooter";
@@ -37,6 +38,10 @@ export default function Home() {
 
       {/* 6. Mid-page demo + pricing CTA */}
       <DemoSection />
+
+      {/* 6b. Sample documents carousel — rotating preview of executive brief,
+              insurance form, and legal defense packet. */}
+      <SampleDocumentsCarousel />
 
       {/* 7. Testimonials — social proof depth */}
       <MultiTestimonials />

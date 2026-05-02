@@ -126,3 +126,69 @@ ol {
 .instructions {
   margin-top: 16px;
 }
+
+/*
+ * Marketing-sample watermark. Applied to <body class="sample-document">,
+ * which causes a fixed-position diagonal "SAMPLE" overlay to appear on
+ * every page via WeasyPrint's CSS Paged Media support.
+ */
+.sample-document::before {
+  content: "SAMPLE — fictitious data, for demonstration only";
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  transform-origin: center center;
+  font-size: 36pt;
+  font-weight: 700;
+  color: rgba(200, 30, 30, 0.18);
+  letter-spacing: 2pt;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.sample-banner {
+  border: 1px solid #c81e1e;
+  background-color: #fdecec;
+  color: #8a2c2c;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  font-size: 10pt;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.cover-page {
+  page-break-after: always;
+  text-align: center;
+  padding-top: 4cm;
+}
+
+.cover-page h1 {
+  font-size: 22pt;
+  margin-bottom: 24px;
+}
+
+.cover-page .case-caption {
+  font-size: 14pt;
+  font-weight: 600;
+  margin: 12px 0;
+}
+
+.cover-page .meta {
+  font-size: 11pt;
+  color: #333;
+  margin: 6px 0;
+}
+
+.kv {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.kv th {
+  width: 30%;
+  background-color: #f7f7f7;
+}

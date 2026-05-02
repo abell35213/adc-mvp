@@ -23,6 +23,7 @@ const footerSections = [
     title: "Resources",
     links: [
       { label: "Resource Hub", href: "/resources" },
+      { label: "Sample Documents", href: "/resources/sample-documents" },
       { label: "Case Studies", href: "/resources/case-studies" },
       { label: "Blog", href: "/resources/blog" },
       { label: "Docs", href: "/resources/docs" },
