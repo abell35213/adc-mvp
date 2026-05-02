@@ -48,7 +48,11 @@ export function Hero() {
     <header className="bg-[#EBF2FA]">
       <MarketingContainer>
         <nav className="flex items-center justify-between py-5" aria-label="Primary">
-          <Link href="/" aria-label="ADC home" className="inline-flex items-center">
+          <Link
+            href="/"
+            aria-label="ADC home"
+            className="inline-flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#EBF2FA]"
+          >
             <Logo variant="mark" height={36} priority />
             <span className="ml-2 text-lg font-bold tracking-tight text-[#062040]">ADC</span>
           </Link>
