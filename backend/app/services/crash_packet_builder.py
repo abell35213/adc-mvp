@@ -37,6 +37,9 @@ def _row_to_template_context(row: CrashPacketRow, *, subject: str) -> dict[str, 
         "eld_logs": row.eld_logs_json,
         "samsara_clip_links": row.samsara_clip_links_json,
         "related_event_count": row.related_event_count,
+        "dispatch_instructions": row.dispatch_instructions_json,
+        "weigh_station_reports": row.weigh_station_reports_json,
+        "loading_dock_reports": row.loading_dock_reports_json,
     }
 
 
@@ -81,6 +84,11 @@ def build_crash_packet(row: CrashPacketRow) -> CrashPacket:
                 "eld_logs": row.eld_logs_json,
                 "samsara_clip_links": row.samsara_clip_links_json,
                 "related_event_count": row.related_event_count,
+                # Phase 3 — included so a late-arriving dispatch sheet,
+                # weigh ticket, or dock report invalidates the prior hash.
+                "dispatch_instructions": row.dispatch_instructions_json,
+                "weigh_station_reports": row.weigh_station_reports_json,
+                "loading_dock_reports": row.loading_dock_reports_json,
             },
             sort_keys=True,
             default=str,

@@ -27,8 +27,17 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from app.db.models import TmsConnection, TmsFieldMap
+from app.db.repo.dispatch_instructions import (
+    upsert_from_tms as upsert_dispatch_instruction,
+)
+from app.db.repo.loading_dock_reports import (
+    upsert_from_tms as upsert_loading_dock_report,
+)
 from app.db.repo.maintenance_records import upsert_from_tms as upsert_maintenance
 from app.db.repo.trailers import upsert_from_tms as upsert_trailer
+from app.db.repo.weigh_station_reports import (
+    upsert_from_tms as upsert_weigh_station_report,
+)
 from app.services.tms_odbc_connector import (
     ConnectionFactory,
     FieldMapEntry,
@@ -216,6 +225,54 @@ def _sync_maintenance(
     return result
 
 
+def _sync_simple_entity(
+    db: Session,
+    *,
+    org_id: _uuid.UUID,
+    factory: ConnectionFactory,
+    entries: list[FieldMapEntry],
+    entity_name: str,
+    upsert_fn,
+) -> EntitySyncResult:
+    """Generic per-entity sync used for the Phase-3 entities.
+
+    Identical shape to :func:`_sync_trailers` / :func:`_sync_maintenance` but
+    parameterized on the upsert callable so we don't duplicate the same
+    select-then-upsert loop four more times.
+    """
+    result = EntitySyncResult(entity=entity_name)
+    if not entries:
+        return result
+    try:
+        rows = run_field_map(factory, entries=entries)
+    except Exception as exc:  # noqa: BLE001
+        result.error = f"select_failed: {exc}"
+        return result
+
+    for row in rows:
+        ext = _key_value(row, entries)
+        if not ext:
+            result.skipped += 1
+            continue
+        try:
+            _, created = upsert_fn(
+                db, org_id=org_id, external_id=ext, fields=row
+            )
+            if created:
+                result.inserted += 1
+            else:
+                result.updated += 1
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "%s upsert failed for org=%s external_id=%s",
+                entity_name,
+                org_id,
+                ext,
+            )
+            result.skipped += 1
+    return result
+
+
 def sync_connection(
     db: Session,
     *,
@@ -280,7 +337,37 @@ def sync_connection(
         factory=factory,
         entries=_entries_for_entity(field_maps, "maintenance_record"),
     )
-    result.entity_results = [trailer_res, maint_res]
+    dispatch_res = _sync_simple_entity(
+        db,
+        org_id=conn.org_id,
+        factory=factory,
+        entries=_entries_for_entity(field_maps, "dispatch_instruction"),
+        entity_name="dispatch_instruction",
+        upsert_fn=upsert_dispatch_instruction,
+    )
+    weigh_res = _sync_simple_entity(
+        db,
+        org_id=conn.org_id,
+        factory=factory,
+        entries=_entries_for_entity(field_maps, "weigh_station_report"),
+        entity_name="weigh_station_report",
+        upsert_fn=upsert_weigh_station_report,
+    )
+    dock_res = _sync_simple_entity(
+        db,
+        org_id=conn.org_id,
+        factory=factory,
+        entries=_entries_for_entity(field_maps, "loading_dock_report"),
+        entity_name="loading_dock_report",
+        upsert_fn=upsert_loading_dock_report,
+    )
+    result.entity_results = [
+        trailer_res,
+        maint_res,
+        dispatch_res,
+        weigh_res,
+        dock_res,
+    ]
 
     finished = datetime.now(timezone.utc)
     result.finished_at_utc = finished

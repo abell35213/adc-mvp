@@ -526,6 +526,16 @@ class Artifact(Base):
     uploaded_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
     unavailable_reason_code = Column(Text, nullable=True)
     unavailable_reason_detail = Column(Text, nullable=True)
+    # Many-to-one link from a dock photo (or, when the imaging-integration
+    # follow-on project lands, a digitized weigh ticket / dispatch sheet) to
+    # a :class:`LoadingDockReport`. Nullable + indexed so existing artifact
+    # queries are unaffected.
+    loading_dock_report_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("loading_dock_reports.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     created_at_utc = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -2383,6 +2393,305 @@ class MaintenanceRecord(Base):
     )
 
 
+# ── Dispatch instructions, weigh tickets, loading dock reports (Phase 3) ──
+#
+# These three tables follow the same TMS-cache pattern as Trailer/MaintenanceRecord:
+# ``(org_id, external_id)`` upsert key, ``source`` enum of ``manual``/``tms``,
+# ``synced_at_utc`` stamp, and indexes for the canonical crash-packet lookups.
+# All three are linked to incidents either via a direct ``incident_id`` FK or
+# via the trip-context fallback (driver / vehicle / trailer + 24h window) in
+# ``app.services.crash_packet_query``.
+
+
+class DispatchInstruction(Base):
+    """Trip dispatch handed to the driver — paper or TMS-recorded."""
+
+    __tablename__ = "dispatch_instructions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Linkage — opaque per-org ids, like Trailer/Incident.
+    adc_driver_id = Column(Text, nullable=True)
+    adc_vehicle_id = Column(Text, nullable=True)
+    adc_trailer_id = Column(Text, nullable=True)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Trip identity.
+    dispatch_id = Column(Text, nullable=True)
+    load_number = Column(Text, nullable=True)
+    dispatched_by = Column(Text, nullable=True)
+
+    # Times.
+    dispatched_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    pickup_appointment_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    delivery_appointment_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    eta_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    # Locations (free text — not a structured address — matches paper dispatch).
+    origin_address = Column(Text, nullable=True)
+    destination_address = Column(Text, nullable=True)
+
+    # Compliance fields used by the crash brief callouts.
+    hos_remaining_drive_minutes = Column(Integer, nullable=True)
+    hos_remaining_duty_minutes = Column(Integer, nullable=True)
+    forced_dispatch_flag = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    notes = Column(Text, nullable=True)
+
+    # Source plumbing.
+    source = Column(
+        Enum("manual", "tms", name="dispatch_instruction_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_dispatch_instructions_org_driver_dispatched",
+            "org_id",
+            "adc_driver_id",
+            "dispatched_at_utc",
+        ),
+        Index(
+            "ix_dispatch_instructions_org_external_id",
+            "org_id",
+            "external_id",
+            unique=True,
+        ),
+        Index(
+            "ix_dispatch_instructions_org_incident",
+            "org_id",
+            "incident_id",
+        ),
+    )
+
+
+class WeighStationReport(Base):
+    """A weigh-ticket entry — paper-entered or TMS-recorded.
+
+    External weigh-feed integrations (FMCSA SAFER, PrePass) and TMS imaging
+    products are intentionally out of scope here; they will plug into this
+    same table in a follow-on project (the ``source`` enum can grow to
+    include ``external_feed``).
+    """
+
+    __tablename__ = "weigh_station_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    adc_vehicle_id = Column(Text, nullable=True)
+    adc_trailer_id = Column(Text, nullable=True)
+    dispatch_instruction_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dispatch_instructions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    weighed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    station_name = Column(Text, nullable=True)
+    station_location = Column(Text, nullable=True)
+    ticket_number = Column(Text, nullable=True)
+
+    # Weights (lb).
+    gross_weight_lb = Column(Integer, nullable=True)
+    steer_axle_weight_lb = Column(Integer, nullable=True)
+    drive_axle_weight_lb = Column(Integer, nullable=True)
+    trailer_axle_weight_lb = Column(Integer, nullable=True)
+    legal_limit_lb = Column(Integer, nullable=True)
+    is_over_legal_limit = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    result = Column(
+        Enum(
+            "pass",
+            "bypass",
+            "cited",
+            "out_of_service",
+            name="weigh_station_result",
+        ),
+        nullable=True,
+    )
+    citation_text = Column(Text, nullable=True)
+    inspector_name = Column(Text, nullable=True)
+
+    doc_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    source = Column(
+        Enum("manual", "tms", name="weigh_station_report_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_weigh_station_reports_org_vehicle_weighed",
+            "org_id",
+            "adc_vehicle_id",
+            "weighed_at_utc",
+        ),
+        Index(
+            "ix_weigh_station_reports_org_external_id",
+            "org_id",
+            "external_id",
+            unique=True,
+        ),
+        Index(
+            "ix_weigh_station_reports_org_incident",
+            "org_id",
+            "incident_id",
+        ),
+    )
+
+
+class LoadingDockReport(Base):
+    """Loading-dock cargo + securement report.
+
+    Photos are linked many-to-one via :attr:`Artifact.loading_dock_report_id`.
+    The same FK pattern is reused by the future imaging-integration project
+    for digitized weigh tickets and dispatch sheets — no further schema
+    churn required.
+    """
+
+    __tablename__ = "loading_dock_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("orgs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    adc_trailer_id = Column(Text, nullable=True)
+    adc_vehicle_id = Column(Text, nullable=True)
+    dispatch_instruction_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dispatch_instructions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.incident_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    loaded_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    facility_name = Column(Text, nullable=True)
+    facility_address = Column(Text, nullable=True)
+
+    # Cargo.
+    commodity = Column(Text, nullable=True)
+    pieces = Column(Integer, nullable=True)
+    gross_weight_lb = Column(Integer, nullable=True)
+    net_weight_lb = Column(Integer, nullable=True)
+    seal_number = Column(Text, nullable=True)
+
+    # Securement / load quality.
+    securement_method = Column(Text, nullable=True)
+    weight_distribution_notes = Column(Text, nullable=True)
+    is_overloaded = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_improperly_loaded = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    # Sign-off.
+    loaded_by = Column(Text, nullable=True)
+    dock_supervisor = Column(Text, nullable=True)
+    signature_artifact_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    source = Column(
+        Enum("manual", "tms", name="loading_dock_report_source"),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    external_id = Column(Text, nullable=True)
+    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at_utc = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_loading_dock_reports_org_trailer_loaded",
+            "org_id",
+            "adc_trailer_id",
+            "loaded_at_utc",
+        ),
+        Index(
+            "ix_loading_dock_reports_org_external_id",
+            "org_id",
+            "external_id",
+            unique=True,
+        ),
+        Index(
+            "ix_loading_dock_reports_org_incident",
+            "org_id",
+            "incident_id",
+        ),
+    )
+
+
 class TmsConnection(Base):
     """Per-org configuration for an ODBC-based TMS data source."""
 
@@ -2452,7 +2761,14 @@ class TmsFieldMap(Base):
         index=True,
     )
     entity = Column(
-        Enum("trailer", "maintenance_record", name="tms_field_map_entity"),
+        Enum(
+            "trailer",
+            "maintenance_record",
+            "dispatch_instruction",
+            "weigh_station_report",
+            "loading_dock_report",
+            name="tms_field_map_entity",
+        ),
         nullable=False,
     )
     source_table = Column(Text, nullable=False)
