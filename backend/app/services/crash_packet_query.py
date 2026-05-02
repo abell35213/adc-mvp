@@ -588,6 +588,7 @@ def fetch_crash_packet_row(
                 .filter(
                     LoadingDockReport.org_id == org_id,
                     LoadingDockReport.adc_trailer_id == adc_trailer_id,
+                    LoadingDockReport.incident_id.is_(None),
                     LoadingDockReport.loaded_at_utc >= window_start,
                     LoadingDockReport.loaded_at_utc <= window_end,
                 )
