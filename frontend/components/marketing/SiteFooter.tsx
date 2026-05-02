@@ -82,7 +82,11 @@ export function SiteFooter() {
         <div className="py-10">
           <div className="grid gap-8 md:grid-cols-6">
             <div>
-              <Link href="/" aria-label="ADC home" className="inline-flex items-center gap-2">
+              <Link
+                href="/"
+                aria-label="ADC home"
+                className="inline-flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3]"
+              >
                 <Logo variant="mark" height={32} />
                 <span className="text-lg font-bold text-[#062040]">ADC</span>
               </Link>
