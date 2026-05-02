@@ -3,8 +3,8 @@ import { marketingTokens } from "@/components/marketing/tokens";
 
 const features = [
   {
-    title: "Incident-triggered capture from Samsara + drivers",
-    body: "Trigger evidence capture from Samsara events, then let drivers upload photos, docs, and statements so every incident starts with complete proof.",
+    title: "Incident-triggered capture via telematics & driver app",
+    body: "Trigger evidence capture from telematics events, then let drivers upload photos, docs, and statements so every incident starts with complete proof.",
     dark: true,
     visual: (
       <div className="rounded-xl bg-[#062040] p-4 text-white">
@@ -30,27 +30,32 @@ const features = [
     dark: false,
     visual: (
       <div className="rounded-xl bg-[#F4F8FC] p-4 border border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 mb-2">Current Driver:</p>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-full bg-[#062040] flex items-center justify-center text-white text-sm font-bold">
-            NB
-          </div>
-          <span className="text-base font-bold text-[#062040]">Noah Blake</span>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-slate-500">Evidence chain-of-custody</p>
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+            VERIFIED
+          </span>
         </div>
-        <div className="grid grid-cols-4 gap-2 text-center text-[10px] text-slate-500 mb-4">
-          {[["2:28", "Break"], ["5:28", "Drive"], ["7:15", "Shift"], ["35:48", "Cycle"]].map(([t, l]) => (
-            <div key={l}>
-              <div className="h-8 w-8 rounded-full border-2 border-[#1B6EF3]/30 mx-auto mb-1 flex items-center justify-center">
-                <div className="h-5 w-5 rounded-full border-2 border-[#1B6EF3]" />
+        <ol className="space-y-3 text-[11px] text-slate-600" aria-label="Custody timeline">
+          {[
+            { time: "14:02:17", actor: "Telematics", action: "Event captured", chip: "SHA-256 9f3a…b2e1" },
+            { time: "14:02:42", actor: "Driver app", action: "Photos uploaded (4)", chip: "SHA-256 1d77…04ac" },
+            { time: "14:08:05", actor: "Risk analyst", action: "Reviewed & sealed", chip: "SHA-256 8b21…77df" },
+            { time: "14:31:22", actor: "Exports", action: "Insurer packet generated", chip: "SHA-256 c5e0…9120" },
+          ].map(({ time, actor, action, chip }) => (
+            <li key={time} className="flex items-start gap-3">
+              <span className="mt-0.5 h-2 w-2 rounded-full bg-[#1B6EF3] shrink-0" aria-hidden="true" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-[#062040]">{actor}</span>
+                  <span className="font-mono text-[10px] text-slate-400">{time}</span>
+                </div>
+                <p>{action}</p>
+                <p className="font-mono text-[10px] text-slate-400 truncate">{chip}</p>
               </div>
-              <p className="font-semibold text-[#062040]">{t}</p>
-              <p>{l}</p>
-            </div>
+            </li>
           ))}
-        </div>
-        <div className="h-24 rounded-lg bg-green-50 border border-green-200 flex items-center justify-center text-green-600 text-xs">
-          🗺️ Route map
-        </div>
+        </ol>
       </div>
     ),
   },
