@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { MarketingSection } from "@/components/marketing/LayoutPrimitives";
 import { marketingTokens } from "@/components/marketing/tokens";
@@ -12,6 +12,7 @@ const ROTATE_INTERVAL_MS = 6000;
 export function SampleDocumentsCarousel() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     if (isPaused) return undefined;
@@ -20,6 +21,44 @@ export function SampleDocumentsCarousel() {
     }, ROTATE_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [isPaused]);
+
+  const focusTab = (index: number) => {
+    const wrapped = (index + SAMPLE_DOCUMENTS.length) % SAMPLE_DOCUMENTS.length;
+    setActiveIndex(wrapped);
+    // Focus the newly-active tab so screen readers announce it and the
+    // visible focus ring follows the keyboard user's selection.
+    tabRefs.current[wrapped]?.focus();
+  };
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    // Per WAI-ARIA Authoring Practices, a tablist should support both
+    // vertical (Up/Down) and horizontal (Left/Right) arrow keys plus
+    // Home/End. We support all four arrow keys since the layout is a
+    // vertical column on small screens and an effectively-vertical column
+    // on large screens.
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        event.preventDefault();
+        focusTab(index + 1);
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        event.preventDefault();
+        focusTab(index - 1);
+        break;
+      case "Home":
+        event.preventDefault();
+        focusTab(0);
+        break;
+      case "End":
+        event.preventDefault();
+        focusTab(SAMPLE_DOCUMENTS.length - 1);
+        break;
+      default:
+        break;
+    }
+  };
 
   const active = SAMPLE_DOCUMENTS[activeIndex];
 
@@ -51,6 +90,9 @@ export function SampleDocumentsCarousel() {
             return (
               <button
                 key={doc.id}
+                ref={(el) => {
+                  tabRefs.current[idx] = el;
+                }}
                 role="tab"
                 type="button"
                 id={`sample-tab-${doc.id}`}
@@ -58,6 +100,7 @@ export function SampleDocumentsCarousel() {
                 aria-controls={`sample-panel-${doc.id}`}
                 tabIndex={isActive ? 0 : -1}
                 onClick={() => setActiveIndex(idx)}
+                onKeyDown={(event) => handleTabKeyDown(event, idx)}
                 className={`rounded-2xl border p-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] ${
                   isActive
                     ? "border-[#1B6EF3] bg-white shadow-md"
