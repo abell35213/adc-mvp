@@ -123,8 +123,11 @@ def _vehicle_match(
     if insp_plate and unit_plate and insp_plate == unit_plate:
         insp_state = _norm(inspection.vehicle_license_state)
         unit_state = _norm(unit.license_state)
-        if insp_state and unit_state and insp_state == unit_state:
-            return ("plate_state", "strong")
+        if insp_state and unit_state:
+            if insp_state == unit_state:
+                return ("plate_state", "strong")
+            # Plate matched but state explicitly conflicts → reject.
+            return None
         # Plate matched but state missing on one side → weak.
         return ("plate_state", "weak")
 
