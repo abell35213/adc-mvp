@@ -64,7 +64,9 @@ def register_default_providers() -> None:
         telematics_dashcam_provider = SamsaraProvider()
 
     inspections_provider: Any
-    if settings.APP_ENV in {"local", "test"} and not settings.SOCRATA_APP_TOKEN.strip():
+    if settings.APP_ENV in {"local", "test"} and not (
+        settings.SOCRATA_APP_TOKEN or ""
+    ).strip():
         inspections_provider = FakeFmcsaProvider()
     else:
         inspections_provider = FmcsaProvider()

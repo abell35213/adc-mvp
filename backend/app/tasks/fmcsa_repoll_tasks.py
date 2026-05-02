@@ -30,6 +30,12 @@ from app.tasks.evidence_tasks import capture_driver_violation_history
 
 logger = logging.getLogger(__name__)
 
+# Sentinel used by the carrier-level cache-warming task: passed in place
+# of a real ``incident_id`` so the worker treats the run as a no-op for
+# incident-scoped persistence (snapshot upsert still runs and warms the
+# per-org cache for the next real incident).
+CACHE_WARMING_INCIDENT_SENTINEL = _uuid.UUID(int=0)
+
 
 def _get_db():
     return SessionLocal()
@@ -123,7 +129,7 @@ def refresh_carrier_inspections_periodic() -> dict:
                 operation_id=synthetic_op,
                 evidence_request_id=synthetic_op,
                 org_id=str(org.id),
-                incident_id=str(_uuid.UUID(int=0)),
+                incident_id=str(CACHE_WARMING_INCIDENT_SENTINEL),
                 adc_driver_id=None,
                 usdot_number=usdot,
             )

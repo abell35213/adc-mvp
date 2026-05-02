@@ -64,12 +64,15 @@ def _classify_confidence(fields: dict[str, Any]) -> tuple[str, str]:
 def _resolve_driver_id(
     db: Session, *, org_id: _uuid.UUID, adc_driver_id: str | None
 ) -> _uuid.UUID | None:
-    """Try to find a ``Driver`` row from a TMS adc_driver_id (best-effort)."""
+    """Try to find a ``Driver`` row from a TMS adc_driver_id (best-effort).
+
+    TODO: when per-tenant TMS adc_driver_id ↔ Driver mapping ships,
+    plumb the lookup here. For now this is a stub that always returns
+    ``None``; ``upsert_from_tms`` will then mark the row LOW with
+    ``confidence_reason='driver_unresolved'``.
+    """
     if not adc_driver_id:
         return None
-    # We don't have a strong adc_driver_id ↔ Driver mapping; fall back to
-    # phone-or-display-name only when explicitly stored. For now, just
-    # return None; the capture service will treat unresolved as LOW.
     _ = db
     _ = org_id
     return None
