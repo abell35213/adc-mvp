@@ -256,8 +256,15 @@ def get_meta_for_incident(
         .order_by(FmcsaInspectionSnapshot.fetched_at_utc.desc())
         .first()
     )
+    total_inspections_pulled = (
+        db.query(FmcsaInspection)
+        .filter(FmcsaInspection.snapshot_id == snapshot.snapshot_id)
+        .count()
+        if snapshot
+        else 0
+    )
     return {
-        "total_inspections_pulled": len(rows),
+        "total_inspections_pulled": total_inspections_pulled,
         "included_count": included,
         "low_confidence_excluded_count": excluded_low,
         "last_refreshed_at_utc": (
