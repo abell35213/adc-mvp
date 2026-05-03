@@ -51,11 +51,8 @@ test('login demo mode is gated on env vars and non-production builds', () => {
   assert.match(loginPage, /isDemoRequest && DEMO_PREFILL_ENABLED/);
 });
 
-test('Hero component exposes a "Try the demo" CTA pointing at /login?demo=1', () => {
-  assert.match(heroComponent, /href="\/login\?demo=1"/);
-  assert.match(heroComponent, /Try the demo/);
-  assert.match(heroComponent, /data-testid="hero-try-demo"/);
-  // The standalone "Login" link is still present so existing users can sign in.
+test('Hero header still exposes a Login link to /login', () => {
+  // The standalone "Login" link is present so existing users can sign in.
   assert.match(heroComponent, /href="\/login"\s+className/);
 });
 

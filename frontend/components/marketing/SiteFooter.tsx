@@ -6,6 +6,7 @@ const footerSections = [
   {
     title: "Solutions",
     links: [
+      { label: "Solutions Overview", href: "/solutions" },
       { label: "Fleet Safety", href: "/solutions/fleet-safety" },
       { label: "Claims Defense", href: "/solutions/claims-defense" },
       { label: "Compliance", href: "/solutions/compliance" },
@@ -14,10 +15,12 @@ const footerSections = [
   {
     title: "Platform",
     links: [
+      { label: "Product", href: "/product" },
       { label: "Platform Overview", href: "/platform" },
       { label: "Evidence Vault", href: "/platform/evidence-vault" },
       { label: "Driver Protocol", href: "/platform/driver-protocol" },
       { label: "Exports", href: "/platform/exports" },
+      { label: "Pricing", href: "/pricing" },
     ],
   },
   {

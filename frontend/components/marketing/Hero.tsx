@@ -7,15 +7,6 @@ import { Logo } from "@/components/marketing/Logo";
 import { marketingTokens } from "@/components/marketing/tokens";
 import { trackCtaClick } from "@/lib/tracking";
 
-const primaryNavLinks = [
-  { label: "Product", href: "/product" },
-  { label: "Solutions", href: "/solutions" },
-  { label: "Platform", href: "/platform" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Resources", href: "/resources" },
-  { label: "Company", href: "/company" },
-];
-
 const bulletFeatures = [
   {
     title: "Incident-triggered evidence capture",
@@ -47,47 +38,28 @@ export function Hero() {
   return (
     <header className="bg-[#EBF2FA]">
       <MarketingContainer>
-        <nav className="flex items-center justify-between py-5" aria-label="Primary">
+        <nav className="flex items-center justify-between gap-4 py-5" aria-label="Primary">
           <Link
             href="/"
             aria-label="ADC home"
             className="inline-flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#EBF2FA]"
           >
-            <Logo variant="mark" height={36} priority />
-            <span className="ml-2 text-lg font-bold tracking-tight text-[#062040]">ADC</span>
+            <Logo variant="mark" height={72} priority />
           </Link>
 
-          <ul className="hidden items-center gap-8 text-sm font-medium text-[#062040] md:flex" role="list">
-            {primaryNavLinks.map(({ label, href }) => (
-              <li key={label}>
-                <Link className="transition hover:text-[#1B6EF3]" href={href}>
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-3 lg:flex">
-            <Link href="/resources/docs" className={marketingTokens.buttonVariants.ghost}>
-              Docs
-            </Link>
-            <Link href="/company/contact" className={marketingTokens.buttonVariants.ghost}>
-              Contact
-            </Link>
-            </div>
+          <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
               Login
             </Link>
-            <Link
-              href="/login?demo=1"
-              className={marketingTokens.buttonVariants.secondary}
-              data-testid="hero-try-demo"
-            >
-              Try the demo
+            <span
+              aria-hidden="true"
+              className="h-6 w-px bg-slate-300"
+            />
+            <Link href="/pricing" className={marketingTokens.buttonVariants.primary}>
+              Check our Prices
             </Link>
             <Link href="/company/contact" className={marketingTokens.buttonVariants.primary}>
-              Book demo
+              Book a Demo
             </Link>
           </div>
         </nav>
