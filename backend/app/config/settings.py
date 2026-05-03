@@ -87,7 +87,6 @@ class AppSettings(BaseSettings):
     DATABASE_URL: str = LOCAL_DATABASE_DEFAULT
     REDIS_URL: str = LOCAL_REDIS_DEFAULT
     SAMSARA_API_KEY: str = ""
-    S3_BUCKET: str = ""
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
