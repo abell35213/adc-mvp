@@ -51,9 +51,13 @@ test('login demo mode is gated on env vars and non-production builds', () => {
   assert.match(loginPage, /isDemoRequest && DEMO_PREFILL_ENABLED/);
 });
 
-test('Hero header still exposes a Login link to /login', () => {
+test('Hero header exposes Login, Check our Prices, and Book a Demo links with the correct routes', () => {
   // The standalone "Login" link is present so existing users can sign in.
-  assert.match(heroComponent, /href="\/login"\s+className/);
+  assert.match(heroComponent, /href="\/login"[\s\S]{0,200}>[\s\S]*?Login[\s\S]*?</);
+  // Primary marketing CTA should still send users to pricing.
+  assert.match(heroComponent, /href="\/pricing"[\s\S]{0,200}>[\s\S]*?Check our Prices[\s\S]*?</);
+  // Secondary CTA should still point to the demo/contact flow.
+  assert.match(heroComponent, /href="\/company\/contact"[\s\S]{0,200}>[\s\S]*?Book a Demo[\s\S]*?</);
 });
 
 test('DemoSection "Explore interactive demo" CTA points at the demo login flow', () => {
