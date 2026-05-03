@@ -7,15 +7,6 @@ import { Logo } from "@/components/marketing/Logo";
 import { marketingTokens } from "@/components/marketing/tokens";
 import { trackCtaClick } from "@/lib/tracking";
 
-const primaryNavLinks = [
-  { label: "Product", href: "/product" },
-  { label: "Solutions", href: "/solutions" },
-  { label: "Platform", href: "/platform" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Resources", href: "/resources" },
-  { label: "Company", href: "/company" },
-];
-
 const bulletFeatures = [
   {
     title: "Incident-triggered evidence capture",
@@ -47,47 +38,42 @@ export function Hero() {
   return (
     <header className="bg-[#EBF2FA]">
       <MarketingContainer>
-        <nav className="flex items-center justify-between py-5" aria-label="Primary">
+        <nav
+          className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-4 sm:gap-x-4 sm:py-5"
+          aria-label="Primary"
+        >
           <Link
             href="/"
             aria-label="ADC home"
-            className="inline-flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#EBF2FA]"
+            className="inline-flex shrink-0 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#EBF2FA]"
           >
-            <Logo variant="mark" height={36} priority />
-            <span className="ml-2 text-lg font-bold tracking-tight text-[#062040]">ADC</span>
+            <span className="block sm:hidden">
+              <Logo variant="mark" height={48} priority />
+            </span>
+            <span className="hidden sm:block">
+              <Logo variant="mark" height={72} priority />
+            </span>
           </Link>
 
-          <ul className="hidden items-center gap-8 text-sm font-medium text-[#062040] md:flex" role="list">
-            {primaryNavLinks.map(({ label, href }) => (
-              <li key={label}>
-                <Link className="transition hover:text-[#1B6EF3]" href={href}>
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-3 lg:flex">
-            <Link href="/resources/docs" className={marketingTokens.buttonVariants.ghost}>
-              Docs
-            </Link>
-            <Link href="/company/contact" className={marketingTokens.buttonVariants.ghost}>
-              Contact
-            </Link>
-            </div>
-            <Link href="/login" className={marketingTokens.buttonVariants.ghost}>
+          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-2 sm:gap-x-4">
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center px-2 py-2 text-sm font-semibold text-[#062040] transition hover:text-[#1B6EF3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B6EF3] focus-visible:ring-offset-2 sm:px-4"
+            >
               Login
             </Link>
+            <span aria-hidden="true" className="h-6 w-px bg-slate-300" />
             <Link
-              href="/login?demo=1"
-              className={marketingTokens.buttonVariants.secondary}
-              data-testid="hero-try-demo"
+              href="/pricing"
+              className="inline-flex items-center justify-center rounded-full bg-[#062040] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0a3060] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#062040] focus-visible:ring-offset-2 sm:px-6 sm:py-3 sm:text-sm"
             >
-              Try the demo
+              Check our Prices
             </Link>
-            <Link href="/company/contact" className={marketingTokens.buttonVariants.primary}>
-              Book demo
+            <Link
+              href="/company/contact"
+              className="inline-flex items-center justify-center rounded-full bg-[#062040] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0a3060] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#062040] focus-visible:ring-offset-2 sm:px-6 sm:py-3 sm:text-sm"
+            >
+              Book a Demo
             </Link>
           </div>
         </nav>
