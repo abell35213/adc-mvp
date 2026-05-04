@@ -1,4 +1,8 @@
 # Phase 1 Infrastructure Inventory
+- Staging Redis is ElastiCache Serverless (Valkey-compatible endpoint)
+- Current backend code still contains legacy S3_BUCKET references; temporary compatibility field retained in AppSettings
+- Frontend env uses NEXT_PUBLIC_API_BASE_URL and optional API_INTERNAL_BASE_URL
+- Root .env.example is reference-only; service-specific templates live under backend/, frontend/, and driver-app/
 
 ## Region
 us-east-1
