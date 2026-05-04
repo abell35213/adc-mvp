@@ -90,6 +90,7 @@ class AppSettings(BaseSettings):
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
+    S3_BUCKET: str = "adc-mvp-artifacts"
     S3_ARTIFACTS_BUCKET: str = "adc-mvp-artifacts"
     S3_EXPORTS_BUCKET: str = "adc-mvp-exports"
     DEBUG: bool = False
