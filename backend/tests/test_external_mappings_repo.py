@@ -164,6 +164,23 @@ def test_list_external_mappings_filters_by_incident_status_provider_and_ref(
     by_ref = repo.list_external_mappings(db_session, external_reference="ext-A")
     assert [m.mapping_id for m in by_ref] == [a.mapping_id]
 
+    by_incident_status_provider = repo.list_external_mappings(
+        db_session,
+        incident_id=incident.incident_id,
+        status="active",
+        provider="samsara",
+    )
+    assert [m.mapping_id for m in by_incident_status_provider] == [a.mapping_id]
+
+    by_all_filters = repo.list_external_mappings(
+        db_session,
+        incident_id=incident.incident_id,
+        status="active",
+        provider="samsara",
+        external_reference="ext-A",
+    )
+    assert [m.mapping_id for m in by_all_filters] == [a.mapping_id]
+
 
 def test_list_external_mappings_no_filters_returns_all_ordered_desc(db_session, org):
     first = repo.create_external_mapping(
