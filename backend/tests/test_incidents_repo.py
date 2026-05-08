@@ -369,7 +369,7 @@ def test_count_incident_alerts_classifies_each_alert_type(db_session, org, owner
     assert out == {"stalled": 1, "unassigned": 1, "blocked": 1, "export_aging": 1}
 
 
-def test_count_incident_alerts_ignores_recent_activity_and_recent_export_ready(
+def test_count_incident_alerts_handles_recent_and_boundary_timestamps(
     db_session, org, owner_user
 ):
     now = datetime.now(timezone.utc)
@@ -381,6 +381,14 @@ def test_count_incident_alerts_ignores_recent_activity_and_recent_export_ready(
         owner_user_id=owner_user.id,
         last_activity_at=now - timedelta(hours=1),
     )
+    # exactly 72h old activity should be stalled (inclusive boundary)
+    _make_incident(
+        db_session,
+        org,
+        case_status="in_review",
+        owner_user_id=owner_user.id,
+        last_activity_at=now - timedelta(hours=72),
+    )
     # ready_for_export less than 48h ago -> not export_aging
     _make_incident(
         db_session,
@@ -389,6 +397,15 @@ def test_count_incident_alerts_ignores_recent_activity_and_recent_export_ready(
         owner_user_id=owner_user.id,
         ready_for_export_at=now - timedelta(hours=1),
     )
+    # exactly 48h ready_for_export timestamp should be export_aging (inclusive boundary)
+    _make_incident(
+        db_session,
+        org,
+        case_status="ready_for_export",
+        owner_user_id=owner_user.id,
+        ready_for_export_at=now - timedelta(hours=48),
+    )
+
     out = repo.count_incident_alerts(db_session, org_ids=[org.id], now_utc=now)
-    assert out["stalled"] == 0
-    assert out["export_aging"] == 0
+    assert out["stalled"] == 1
+    assert out["export_aging"] == 1
