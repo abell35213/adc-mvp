@@ -131,6 +131,7 @@ def test_list_integration_connections_combined_filters(db_session, org, other_or
         db_session,
         org_id=org.id,
         provider="samsara",
+        domain="dashcam",
         status="active",
         external_reference="want",
     )
@@ -138,6 +139,15 @@ def test_list_integration_connections_combined_filters(db_session, org, other_or
         db_session,
         org_id=other_org.id,
         provider="samsara",
+        domain="dashcam",
+        status="active",
+        external_reference="want",
+    )
+    repo.create_integration_connection(
+        db_session,
+        org_id=org.id,
+        provider="samsara",
+        domain="telematics",
         status="active",
         external_reference="want",
     )
@@ -145,6 +155,7 @@ def test_list_integration_connections_combined_filters(db_session, org, other_or
         db_session,
         org_id=org.id,
         provider="samsara",
+        domain="dashcam",
         status="active",
         external_reference="want",
     )
