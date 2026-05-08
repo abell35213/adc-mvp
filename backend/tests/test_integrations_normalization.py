@@ -84,8 +84,7 @@ class TestParseIsoDatetime:
 
     def test_parses_offset_aware_iso(self) -> None:
         result = parse_iso_datetime("2024-05-06T07:08:09+00:00")
-        assert result is not None
-        assert result.tzinfo is not None
+        assert result == datetime(2024, 5, 6, 7, 8, 9, tzinfo=timezone.utc)
 
     def test_invalid_string_raises(self) -> None:
         with pytest.raises(ValueError):
