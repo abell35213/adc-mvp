@@ -200,7 +200,7 @@ def test_list_external_mappings_no_filters_returns_all_ordered_desc(db_session, 
         external_reference="ref-2",
     )
     rows = repo.list_external_mappings(db_session)
-    assert {r.mapping_id for r in rows} == {first.mapping_id, second.mapping_id}
+    assert [r.mapping_id for r in rows] == [second.mapping_id, first.mapping_id]
 
 
 def test_list_external_mappings_returns_empty_when_no_matches(db_session, org):
