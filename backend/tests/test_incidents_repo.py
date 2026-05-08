@@ -289,10 +289,18 @@ def test_list_incident_queue_default_sort_is_newest_first(db_session, org):
 
 
 def test_list_incident_queue_pagination(db_session, org):
-    for _ in range(5):
-        _make_incident(db_session, org)
+    now = datetime.now(timezone.utc)
+    incidents = [
+        _make_incident(db_session, org, created_at=now - timedelta(days=4)),
+        _make_incident(db_session, org, created_at=now - timedelta(days=3)),
+        _make_incident(db_session, org, created_at=now - timedelta(days=2)),
+        _make_incident(db_session, org, created_at=now - timedelta(days=1)),
+        _make_incident(db_session, org, created_at=now),
+    ]
+    expected_ids = [i.incident_id for i in reversed(incidents)]
     rows = repo.list_incident_queue(db_session, org_ids=[org.id], skip=2, limit=2)
     assert len(rows) == 2
+    assert [i.incident_id for i in rows] == expected_ids[2:4]
 
 
 # --- count_incident_alerts ---
