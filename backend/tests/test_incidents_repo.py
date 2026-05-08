@@ -131,10 +131,18 @@ def test_list_incidents_excludes_test_incidents(db_session, org):
 
 
 def test_list_incidents_respects_pagination(db_session, org):
-    created = [_make_incident(db_session, org) for _ in range(3)]
+    base_time = datetime.now(timezone.utc)
+    created = [
+        _make_incident(db_session, org, created_at=base_time + timedelta(minutes=i))
+        for i in range(3)
+    ]
     rows = repo.list_incidents(db_session, skip=1, limit=1, org_ids=[org.id])
     assert len(rows) == 1
-    assert rows[0].incident_id in {i.incident_id for i in created}
+    assert rows[0].incident_id != created[0].incident_id
+    assert rows[0].incident_id in {
+        created[1].incident_id,
+        created[2].incident_id,
+    }
 
 
 def test_create_incident_persists_optional_fields(db_session, org):
