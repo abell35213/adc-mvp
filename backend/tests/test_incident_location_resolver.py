@@ -111,3 +111,21 @@ def test_returns_unavailable_sentinel(monkeypatch):
         "source": "unavailable",
         "fallback_reason": "no_location_available",
     }
+
+
+def test_does_not_match_telematics_rows_without_incident_vehicle_ids(monkeypatch):
+    db = _db_session()
+    incident = _incident(db, adc_vehicle_id=None)
+    monkeypatch.setattr(
+        resolver,
+        "get_telematics_provider",
+        lambda: _Provider(gps_rows=[{"vehicleId": "veh-999", "lat": 40.0, "lon": -74.0}], state_rows=[]),
+    )
+
+    result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
+    assert result == {
+        "lat": None,
+        "lon": None,
+        "source": "unavailable",
+        "fallback_reason": "no_location_available",
+    }

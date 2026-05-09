@@ -89,11 +89,14 @@ def _extract_from_rows(rows: list[dict[str, Any]], *, incident: Incident) -> tup
 
 
 def _row_matches_incident(row: dict[str, Any], *, incident: Incident) -> bool:
+    if incident.samsara_vehicle_id is None and incident.adc_vehicle_id is None:
+        return False
+
     if incident.samsara_vehicle_id and str(row.get("vehicleId")) == str(incident.samsara_vehicle_id):
         return True
     if incident.adc_vehicle_id and str(row.get("vehicleId")) == str(incident.adc_vehicle_id):
         return True
-    return incident.samsara_vehicle_id is None and incident.adc_vehicle_id is None
+    return False
 
 
 def _extract_lat_lon(payload: Any) -> tuple[float, float] | None:
