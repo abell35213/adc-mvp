@@ -1,6 +1,7 @@
 """Repository layer for external mappings."""
 
 import uuid as _uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,7 @@ def create_external_mapping(
         domain=domain,
         status=status,
         metadata_json=metadata_json or {},
+        created_at_utc=datetime.now(UTC),
     )
     db.add(mapping)
     db.commit()

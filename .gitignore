@@ -9,6 +9,10 @@ build/
 .venv/
 venv/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 node_modules/
 frontend/.next/
 frontend/out/
