@@ -55,4 +55,4 @@ def list_external_mappings(
         query = query.filter(ExternalMapping.provider == provider)
     if external_reference is not None:
         query = query.filter(ExternalMapping.external_reference == external_reference)
-    return query.order_by(ExternalMapping.created_at_utc.desc()).all()
+    return query.order_by(ExternalMapping.mapping_id.desc()).all()
