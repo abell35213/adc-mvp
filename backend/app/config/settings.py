@@ -157,6 +157,9 @@ class AppSettings(BaseSettings):
     FMCSA_INCIDENT_REFRESH_INTERVAL_HOURS: int = 24
     FMCSA_BASE_URL: str = "https://data.transportation.gov"
 
+    NWS_REQUEST_TIMEOUT_SECONDS: float = 10.0
+    NWS_REQUEST_MAX_RETRIES: int = 2
+
     # API rate limits (per subject/IP sliding windows)
     AUTH_LOGIN_RATE_LIMIT: int = 20
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 300
