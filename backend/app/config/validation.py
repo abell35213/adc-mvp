@@ -40,6 +40,22 @@ def validate_startup_config(settings: AppSettings) -> None:
             errors.append("DATABASE_URL cannot use local default outside local")
         if settings.REDIS_URL.strip() == LOCAL_REDIS_DEFAULT:
             errors.append("REDIS_URL cannot use local default outside local")
+        if settings.NWS_REQUEST_TIMEOUT_SECONDS <= 0:
+            errors.append("NWS_REQUEST_TIMEOUT_SECONDS must be > 0")
+        if settings.NWS_REQUEST_MAX_RETRIES < 0:
+            errors.append("NWS_REQUEST_MAX_RETRIES must be >= 0")
+        if settings.WEATHER_DEFAULT_UNITS not in {"e", "m", "h"}:
+            errors.append("WEATHER_DEFAULT_UNITS must be one of: e, m, h")
+        if settings.WEATHER_DEFAULT_MAP_DIMENSIONS != "1280x720@2x":
+            errors.append("WEATHER_DEFAULT_MAP_DIMENSIONS must be 1280x720@2x")
+        if settings.WEATHER_RETRY_BASE_BACKOFF_SECONDS <= 0:
+            errors.append("WEATHER_RETRY_BASE_BACKOFF_SECONDS must be > 0")
+        if settings.WEATHER_RETRY_BACKOFF_MULTIPLIER < 1:
+            errors.append("WEATHER_RETRY_BACKOFF_MULTIPLIER must be >= 1")
+        if settings.WEATHER_RETRY_MAX_BACKOFF_SECONDS < settings.WEATHER_RETRY_BASE_BACKOFF_SECONDS:
+            errors.append(
+                "WEATHER_RETRY_MAX_BACKOFF_SECONDS must be >= WEATHER_RETRY_BASE_BACKOFF_SECONDS"
+            )
 
     if settings.is_prod:
         if _looks_like_insecure_placeholder(settings.JWT_SECRET_KEY):

@@ -157,8 +157,16 @@ class AppSettings(BaseSettings):
     FMCSA_INCIDENT_REFRESH_INTERVAL_HOURS: int = 24
     FMCSA_BASE_URL: str = "https://data.transportation.gov"
 
+    NWS_BASE_URL: str = "https://api.weather.gov"
     NWS_REQUEST_TIMEOUT_SECONDS: float = 10.0
     NWS_REQUEST_MAX_RETRIES: int = 2
+    MAPBOX_TOKEN: str = ""
+    TWC_API_KEY: str = ""
+    WEATHER_DEFAULT_UNITS: str = "e"
+    WEATHER_DEFAULT_MAP_DIMENSIONS: str = "1280x720@2x"
+    WEATHER_RETRY_BASE_BACKOFF_SECONDS: float = 0.5
+    WEATHER_RETRY_BACKOFF_MULTIPLIER: float = 2.0
+    WEATHER_RETRY_MAX_BACKOFF_SECONDS: float = 8.0
 
     # API rate limits (per subject/IP sliding windows)
     AUTH_LOGIN_RATE_LIMIT: int = 20
@@ -264,6 +272,30 @@ class AppSettings(BaseSettings):
 
         if not 0.0 <= self.SENTRY_TRACES_SAMPLE_RATE <= 1.0:
             raise ValueError("SENTRY_TRACES_SAMPLE_RATE must be between 0.0 and 1.0")
+
+        if not self.NWS_BASE_URL.strip().lower().startswith(("http://", "https://")):
+            raise ValueError("NWS_BASE_URL must be a valid http(s) URL")
+
+        if self.NWS_REQUEST_TIMEOUT_SECONDS <= 0:
+            raise ValueError("NWS_REQUEST_TIMEOUT_SECONDS must be > 0")
+        if self.NWS_REQUEST_MAX_RETRIES < 0:
+            raise ValueError("NWS_REQUEST_MAX_RETRIES must be >= 0")
+
+        self.WEATHER_DEFAULT_UNITS = self.WEATHER_DEFAULT_UNITS.strip().lower() or "e"
+        if self.WEATHER_DEFAULT_UNITS not in {"e", "m", "h"}:
+            raise ValueError("WEATHER_DEFAULT_UNITS must be one of: e, m, h")
+
+        if self.WEATHER_DEFAULT_MAP_DIMENSIONS != "1280x720@2x":
+            raise ValueError("WEATHER_DEFAULT_MAP_DIMENSIONS must be 1280x720@2x")
+
+        if self.WEATHER_RETRY_BASE_BACKOFF_SECONDS <= 0:
+            raise ValueError("WEATHER_RETRY_BASE_BACKOFF_SECONDS must be > 0")
+        if self.WEATHER_RETRY_BACKOFF_MULTIPLIER < 1:
+            raise ValueError("WEATHER_RETRY_BACKOFF_MULTIPLIER must be >= 1")
+        if self.WEATHER_RETRY_MAX_BACKOFF_SECONDS < self.WEATHER_RETRY_BASE_BACKOFF_SECONDS:
+            raise ValueError(
+                "WEATHER_RETRY_MAX_BACKOFF_SECONDS must be >= WEATHER_RETRY_BASE_BACKOFF_SECONDS"
+            )
 
         self.RELEASE = self.RELEASE.strip() or "dev"
 

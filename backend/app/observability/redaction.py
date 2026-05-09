@@ -14,6 +14,8 @@ SENSITIVE_CLASS_A_KEYS = frozenset(
         "jwt_secret_key",
         "otp_hash_pepper",
         "api_key",
+        "mapbox_token",
+        "twc_api_key",
         "authorization",
         "access_token",
         "refresh_token",

@@ -22,6 +22,8 @@ class TestSettingsValidation:
             "SAMSARA_API_KEY": "samsara-key",
             "JWT_SECRET_KEY": "super-secret",
             "OTP_HASH_PEPPER": "pepper-secret",
+            "MAPBOX_TOKEN": "pk.mapbox",
+            "TWC_API_KEY": "twc-key",
             "COOKIE_SECURE": True,
             "FRONTEND_ORIGIN": "https://app.example.com",
             "PUBLIC_APP_BASE_URL": "https://app.example.com",
@@ -94,6 +96,33 @@ class TestSettingsValidation:
         with pytest.raises(ValueError, match="must be set outside local"):
             validate_startup_config(settings)
 
+    def test_invalid_weather_defaults_fail_fast(self):
+        with pytest.raises(ValueError, match="WEATHER_DEFAULT_UNITS"):
+            Settings(WEATHER_DEFAULT_UNITS="kelvin")
+
+        with pytest.raises(ValueError, match="WEATHER_DEFAULT_MAP_DIMENSIONS"):
+            Settings(WEATHER_DEFAULT_MAP_DIMENSIONS="640x480")
+
+    def test_invalid_retry_controls_fail_fast(self):
+        with pytest.raises(ValueError, match="NWS_REQUEST_TIMEOUT_SECONDS must be > 0"):
+            Settings(NWS_REQUEST_TIMEOUT_SECONDS=0)
+
+        with pytest.raises(ValueError, match="WEATHER_RETRY_MAX_BACKOFF_SECONDS"):
+            Settings(
+                WEATHER_RETRY_BASE_BACKOFF_SECONDS=2.0,
+                WEATHER_RETRY_MAX_BACKOFF_SECONDS=1.0,
+            )
+
+
+    def test_startup_validation_does_not_require_weather_secrets_yet(self):
+        settings_dict = self._non_local_minimum()
+        settings_dict["MAPBOX_TOKEN"] = ""
+        settings_dict["TWC_API_KEY"] = ""
+
+        settings = Settings(**settings_dict)
+
+        validate_startup_config(settings)
+
     def test_startup_validation_accepts_complete_staging_config(self):
         settings = Settings(**self._non_local_minimum())
 
@@ -161,3 +190,16 @@ class TestAwsSecretsManagerSource:
 
         with pytest.raises(ValueError, match="AWS_SECRETS_MANAGER_SECRET_ID"):
             Settings()
+
+
+def test_redaction_masks_weather_provider_secrets():
+    from app.observability.redaction import redact_payload_for_storage
+
+    redacted = redact_payload_for_storage(
+        {
+            "MAPBOX_TOKEN": "pk.secret-mapbox",
+            "TWC_API_KEY": "twc-secret",
+        }
+    )
+    assert redacted["MAPBOX_TOKEN"] == "[REDACTED]"
+    assert redacted["TWC_API_KEY"] == "[REDACTED]"
