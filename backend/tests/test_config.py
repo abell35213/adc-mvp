@@ -113,6 +113,16 @@ class TestSettingsValidation:
                 WEATHER_RETRY_MAX_BACKOFF_SECONDS=1.0,
             )
 
+
+    def test_startup_validation_does_not_require_weather_secrets_yet(self):
+        settings_dict = self._non_local_minimum()
+        settings_dict["MAPBOX_TOKEN"] = ""
+        settings_dict["TWC_API_KEY"] = ""
+
+        settings = Settings(**settings_dict)
+
+        validate_startup_config(settings)
+
     def test_startup_validation_accepts_complete_staging_config(self):
         settings = Settings(**self._non_local_minimum())
 

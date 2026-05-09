@@ -31,8 +31,6 @@ def validate_startup_config(settings: AppSettings) -> None:
             "SAMSARA_API_KEY": settings.SAMSARA_API_KEY,
             "JWT_SECRET_KEY": settings.JWT_SECRET_KEY,
             "OTP_HASH_PEPPER": settings.OTP_HASH_PEPPER,
-            "MAPBOX_TOKEN": settings.MAPBOX_TOKEN,
-            "TWC_API_KEY": settings.TWC_API_KEY,
         }
         for key, value in critical_required.items():
             if not _require_non_empty(value):
