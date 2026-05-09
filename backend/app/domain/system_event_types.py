@@ -38,6 +38,12 @@ class SystemEventType(str, Enum):
     EVIDENCE_CAPTURE_SUCCEEDED = "evidence_capture_succeeded"
     EVIDENCE_CAPTURE_FAILED = "evidence_capture_failed"
     MCMIS_INSPECTIONS_FETCHED = "mcmis_inspections_fetched"
+    WEATHER_SNAPSHOT_REQUESTED = "weather_snapshot_requested"
+    WEATHER_SNAPSHOT_CAPTURED = "weather_snapshot_captured"
+    WEATHER_SNAPSHOT_FAILED = "weather_snapshot_failed"
+    WEATHER_MAP_SNAPSHOT_REQUESTED = "weather_map_snapshot_requested"
+    WEATHER_MAP_SNAPSHOT_CAPTURED = "weather_map_snapshot_captured"
+    WEATHER_MAP_SNAPSHOT_FAILED = "weather_map_snapshot_failed"
 
     # ── Artifacts ───────────────────────────────────────────────────
     ARTIFACT_RECORDED = "artifact_recorded"

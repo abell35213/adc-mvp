@@ -1,5 +1,6 @@
 """Tests for SystemEventType enum."""
 
+from app.api.schemas import EventSummary
 from app.domain.system_event_types import SystemEventType
 
 
@@ -7,8 +8,8 @@ class TestSystemEventType:
     """Validate the SystemEventType contract."""
 
     def test_total_count(self):
-        """There must be exactly 63 system event types."""
-        assert len(SystemEventType) == 63
+        """There must be exactly 69 system event types."""
+        assert len(SystemEventType) == 69
 
     def test_is_str_enum(self):
         """Every member must be usable as a plain string."""
@@ -55,6 +56,36 @@ class TestSystemEventType:
     def test_mcmis_inspections_fetched(self):
         assert (
             SystemEventType.MCMIS_INSPECTIONS_FETCHED == "mcmis_inspections_fetched"
+        )
+
+    def test_weather_snapshot_requested(self):
+        assert (
+            SystemEventType.WEATHER_SNAPSHOT_REQUESTED
+            == "weather_snapshot_requested"
+        )
+
+    def test_weather_snapshot_captured(self):
+        assert SystemEventType.WEATHER_SNAPSHOT_CAPTURED == "weather_snapshot_captured"
+
+    def test_weather_snapshot_failed(self):
+        assert SystemEventType.WEATHER_SNAPSHOT_FAILED == "weather_snapshot_failed"
+
+    def test_weather_map_snapshot_requested(self):
+        assert (
+            SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED
+            == "weather_map_snapshot_requested"
+        )
+
+    def test_weather_map_snapshot_captured(self):
+        assert (
+            SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED
+            == "weather_map_snapshot_captured"
+        )
+
+    def test_weather_map_snapshot_failed(self):
+        assert (
+            SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED
+            == "weather_map_snapshot_failed"
         )
 
     # ── Artifacts ───────────────────────────────────────────────────
@@ -160,6 +191,19 @@ class TestSystemEventType:
         values = {m.value for m in SystemEventType}
         assert expected.issubset(values)
 
+    def test_weather_capture_types_exist(self):
+        """All weather snapshot capture types must be present."""
+        expected = {
+            "weather_snapshot_requested",
+            "weather_snapshot_captured",
+            "weather_snapshot_failed",
+            "weather_map_snapshot_requested",
+            "weather_map_snapshot_captured",
+            "weather_map_snapshot_failed",
+        }
+        values = {m.value for m in SystemEventType}
+        assert expected.issubset(values)
+
     def test_artifact_types_exist(self):
         """All artifact types must be present."""
         expected = {
@@ -202,3 +246,13 @@ class TestSystemEventType:
         """No two members should share the same value."""
         values = [m.value for m in SystemEventType]
         assert len(values) == len(set(values))
+
+    def test_event_summary_accepts_new_event_types_without_schema_change(self):
+        """Timeline schema remains tolerant because event_type is free-form text."""
+        event = EventSummary(
+            occurred_at_utc="2026-01-01T00:00:00Z",
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED,
+            actor_type="system",
+            payload={"detail": "Weather map snapshot saved."},
+        )
+        assert event.event_type == "weather_map_snapshot_captured"
