@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -22,6 +23,7 @@ def patch_incident_owner(
 ) -> Incident:
     """Apply owner assign/reassign/clear operation and mutate queue metadata."""
     now = datetime.now(timezone.utc)
+    incident_row = cast(Any, incident)
 
     if operation in {"assign", "reassign"}:
         assert owner_user_id is not None
@@ -34,15 +36,15 @@ def patch_incident_owner(
         if not is_user_in_org:
             raise HTTPException(status_code=404, detail="Owner user not found")
 
-        incident.owner_user_id = owner_user_id
-        incident.owner_assigned_at_utc = now
-        incident.owner_assigned_by_user_id = actor_user_id
+        incident_row.owner_user_id = owner_user_id
+        incident_row.owner_assigned_at_utc = now
+        incident_row.owner_assigned_by_user_id = actor_user_id
     else:
-        incident.owner_user_id = None
-        incident.owner_assigned_at_utc = None
-        incident.owner_assigned_by_user_id = None
-        incident.team_queue = "Unassigned"
+        incident_row.owner_user_id = None
+        incident_row.owner_assigned_at_utc = None
+        incident_row.owner_assigned_by_user_id = None
+        incident_row.team_queue = "Unassigned"
 
-    incident.last_activity_at_utc = now
+    incident_row.last_activity_at_utc = now
     db.flush()
     return incident

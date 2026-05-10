@@ -26,7 +26,7 @@ class _OrgPlanRepository:
 
     def get_plan_for_org(self, org_id: uuid.UUID) -> str | None:
         row = get_org_plan_entitlement(self._db, org_id)
-        return row.plan_code if row is not None else None
+        return str(row.plan_code) if row is not None and row.plan_code is not None else None
 
 
 class _OrgEntitlementRepository:

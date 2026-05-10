@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.case_ops.models import TransitionValidationResult
+from typing import cast
+
+from app.case_ops.models import CaseStatus, TransitionValidationResult
 
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "new": {"in_review", "awaiting_evidence"},
@@ -32,8 +34,26 @@ _PRIVILEGED_TRANSITIONS: dict[str, set[str]] = {
 def validate_transition(
     from_status: str, to_status: str, *, allow_privileged: bool = False
 ) -> TransitionValidationResult:
-    source = str(from_status)
-    target = str(to_status)
+    source = _as_case_status(str(from_status))
+    target = _as_case_status(str(to_status))
+
+    if source is None:
+        return TransitionValidationResult(
+            allowed=False,
+            from_status="new",
+            to_status=target or "new",
+            reason=f"Unknown source status '{from_status}'.",
+            validated_at_utc=datetime.now(timezone.utc),
+        )
+
+    if target is None:
+        return TransitionValidationResult(
+            allowed=False,
+            from_status=source,
+            to_status="new",
+            reason=f"Unknown target status '{to_status}'.",
+            validated_at_utc=datetime.now(timezone.utc),
+        )
 
     if source == target:
         return TransitionValidationResult(
@@ -90,3 +110,19 @@ def validate_transition(
         to_status=target,
         validated_at_utc=datetime.now(timezone.utc),
     )
+
+
+_ALL_CASE_STATUSES: set[CaseStatus] = {
+    "new",
+    "in_review",
+    "awaiting_evidence",
+    "awaiting_follow_up",
+    "ready_for_export",
+    "exported",
+    "escalated",
+    "closed",
+}
+
+
+def _as_case_status(value: str) -> CaseStatus | None:
+    return cast(CaseStatus, value) if value in _ALL_CASE_STATUSES else None

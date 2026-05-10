@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -53,13 +54,11 @@ from app.domain.packet_profiles import DEFAULT_PROFILE_BY_EXPORT_TYPE
 
 
 def _organization_basics_complete(org: Org) -> bool:
-    contacts = org.contacts_json or []
-    implementation_contact = org.implementation_contact_json or {}
-    has_contact = any(
-        bool((contact or {}).get("name")) and bool((contact or {}).get("email"))
-        for contact in contacts
-        if isinstance(contact, dict)
-    )
+    org = cast(Any, org)
+    raw_contacts = cast(Any, org.contacts_json)
+    contacts: list[dict[str, Any]] = [c for c in (raw_contacts if isinstance(raw_contacts, list) else []) if isinstance(c, dict)]
+    implementation_contact: dict[str, Any] = dict(org.implementation_contact_json or {})
+    has_contact = any(bool(contact.get("name")) and bool(contact.get("email")) for contact in contacts)
     has_implementation_contact = bool(implementation_contact.get("name")) and bool(
         implementation_contact.get("email")
     )
@@ -92,11 +91,11 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
     active_users = [
         user for user in user_rows if bool(getattr(user, "is_active", True))
     ]
-    org_admin_count = sum(1 for user in active_users if str(user.role) == "org_admin")
+    org_admin_count = sum(1 for user in active_users if str(cast(Any, user).role) == "org_admin")
     safety_capable_user_count = sum(
         1
         for user in active_users
-        if has_capability(user.role, Capability.INCIDENT_WRITE)
+        if has_capability(str(cast(Any, user).role), Capability.INCIDENT_WRITE)
     )
 
     import_operations = (
@@ -330,7 +329,7 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         qr_codes_generated=qr_codes_generated,
         qr_codes_distributed=qr_codes_distributed,
         qr_codes_confirmed=qr_codes_confirmed,
-        last_qr_rotation_at_utc=max(qr_rotation_times) if qr_rotation_times else None,
+        last_qr_rotation_at_utc=cast(Any, max(qr_rotation_times) if qr_rotation_times else None),
         protocol_instruction_set_active=protocol_instruction_set_active,
         safety_contact_configured=safety_contact_configured,
         export_profiles_available=export_profiles_available,
@@ -347,12 +346,12 @@ def collect_onboarding_signals(db: Session, *, org_id: uuid.UUID) -> OnboardingS
         integration_validation_total_count=len(integration_validation_rows),
         valid_driver_phone_count=valid_driver_phone_count,
         total_driver_count=total_driver_count,
-        onboarding_started_at_utc=min(onboarding_activity_timestamps)
+        onboarding_started_at_utc=cast(Any, min(onboarding_activity_timestamps)
         if onboarding_activity_timestamps
-        else None,
-        latest_activity_at_utc=max(onboarding_activity_timestamps)
+        else None),
+        latest_activity_at_utc=cast(Any, max(onboarding_activity_timestamps)
         if onboarding_activity_timestamps
-        else None,
+        else None),
         repeated_integration_failures=repeated_integration_failures,
         has_started_activity=has_started_activity,
         usdot_number_set=bool((org.usdot_number or "").strip()) if org else False,
@@ -487,7 +486,7 @@ def build_onboarding_readiness(
         signals=signals, blocked_step_keys=blocked_step_keys(classified)
     )
     for step in steps:
-        completion = (step_completion_overrides or {}).get(step.key)
+        completion = cast(Any, (step_completion_overrides or {}).get(step.key))
         if completion is None:
             continue
         if completion.is_completed:
@@ -655,9 +654,9 @@ def get_protocol_setup_step(
         )
     return ProtocolSetupStep(
         instruction_set_selected=signals.protocol_instruction_set_active,
-        instruction_source=org.instruction_source or "default",
+        instruction_source=str(cast(Any, org).instruction_source or "default"),
         safety_contact_configured=signals.safety_contact_configured,
-        safety_manager_phone=org.safety_manager_phone,
+        safety_manager_phone=cast(Any, org).safety_manager_phone,
         required_media_prompts_defaulted=signals.required_media_prompts_defaulted,
         export_profile_defaulted=signals.export_profile_defaulted,
         export_profiles_available=sorted(DEFAULT_PROFILE_BY_EXPORT_TYPE.values()),
@@ -672,7 +671,7 @@ def list_step_completion_overrides(
         .filter(OrgOnboardingStepCompletion.org_id == org_id)
         .all()
     )
-    return {row.step_key: row for row in rows}
+    return {str(cast(Any, row).step_key): row for row in cast(list[Any], rows)}
 
 
 def set_step_completion_override(
@@ -694,6 +693,7 @@ def set_step_completion_override(
     )
     if row is None:
         row = OrgOnboardingStepCompletion(org_id=org_id, step_key=step_key)
+    row = cast(Any, row)
     row.is_completed = is_completed
     row.completed_by_user_id = actor_user_id if is_completed else None
     row.completed_at_utc = datetime.now(timezone.utc) if is_completed else None
@@ -706,12 +706,13 @@ def set_step_completion_override(
 
 
 def _to_test_incident_run_model(row: OrgTestIncidentRun) -> TestIncidentRun:
+    row = cast(Any, row)
     return TestIncidentRun(
-        run_id=row.run_id,
-        status=row.status,
+        run_id=cast(Any, row.run_id),
+        status=cast(Any, row.status),
         incident_id=str(row.incident_id) if row.incident_id is not None else None,
-        started_at_utc=row.started_at_utc,
-        completed_at_utc=row.completed_at_utc,
+        started_at_utc=cast(Any, row.started_at_utc),
+        completed_at_utc=cast(Any, row.completed_at_utc),
         step_results=list(row.step_results_json or []),
         findings=list(row.findings_json or []),
     )
@@ -770,13 +771,14 @@ def get_latest_export_validation_run(
 
 
 def _to_export_validation_model(row: OrgExportValidationRun) -> ExportValidationRun:
-    results = row.results_json if isinstance(row.results_json, dict) else {}
+    row = cast(Any, row)
+    results: dict[str, Any] = row.results_json if isinstance(row.results_json, dict) else {}
     return ExportValidationRun(
-        validation_run_id=row.validation_run_id,
-        export_id=row.export_id,
+        validation_run_id=cast(Any, row.validation_run_id),
+        export_id=cast(Any, row.export_id),
         incident_id=str(row.incident_id) if row.incident_id is not None else None,
         status="completed" if row.status == "passed" else "blocked",
-        validated_at_utc=row.validated_at_utc,
+        validated_at_utc=cast(Any, row.validated_at_utc),
         checks=results.get("checks", {}) if isinstance(results.get("checks", {}), dict) else {},
         details=results.get("details", {}) if isinstance(results.get("details", {}), dict) else {},
         warnings=list(row.warnings_json or []),
@@ -820,6 +822,7 @@ def create_test_incident_run(
             .first()
         )
         if incident is not None:
+            incident = cast(Any, incident)
             incident.is_test_incident = True
             db.add(incident)
     db.commit()
@@ -848,7 +851,7 @@ def complete_test_incident_run_step(
     source: str,
     actor_user_id: uuid.UUID,
 ) -> TestIncidentRun:
-    row = get_test_incident_run_by_id(db, org_id=org_id, run_id=run_id)
+    row = cast(Any, get_test_incident_run_by_id(db, org_id=org_id, run_id=run_id))
     if row is None:
         raise ValueError("not_found")
 

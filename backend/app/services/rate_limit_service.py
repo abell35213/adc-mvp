@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import logging
 import time
+from typing import Any, cast
 
 import redis
 from fastapi import HTTPException, Request, status
@@ -42,7 +43,7 @@ redis.call('EXPIRE', key .. ':seq', ttl_seconds)
 return {1, 0}
 """
 
-_rate_limit_script_sha: str | None = None
+_rate_limit_script_sha: Any = None
 _redis_client: redis.Redis | None = None
 
 
@@ -73,10 +74,10 @@ def _run_rate_limit_script(redis_client: redis.Redis, redis_key: str, max_calls:
     if _rate_limit_script_sha is None:
         _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
     try:
-        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+        return redis_client.evalsha(cast(str, _rate_limit_script_sha), 1, redis_key, *args)
     except redis.exceptions.NoScriptError:
         _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
-        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+        return redis_client.evalsha(cast(str, _rate_limit_script_sha), 1, redis_key, *args)
 
 
 def _request_identity(request: Request) -> str:

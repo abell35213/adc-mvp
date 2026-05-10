@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -25,13 +26,13 @@ def capture_weather_snapshot_if_missing(
 
     Never raises; failures are recorded as lifecycle events.
     """
-    if _snapshot_exists(db, incident_id=incident.incident_id):
+    if _snapshot_exists(db, incident_id=cast(uuid.UUID, incident.incident_id)):
         return
 
     try:
         location = resolve_incident_location(
             db,
-            incident_id=incident.incident_id,
+            incident_id=cast(uuid.UUID, incident.incident_id),
             window_start=request_window_start,
             window_end=request_window_end,
         )
@@ -111,7 +112,7 @@ def _emit_event(db: Session, *, incident: Incident, event_type: SystemEventType,
     db.add(
         Event(
             org_id=incident.org_id,
-            incident_id=incident.incident_id,
+            incident_id=cast(uuid.UUID, incident.incident_id),
             event_type=event_type.value,
             actor_type="system",
             actor_id="weather_snapshot_service",

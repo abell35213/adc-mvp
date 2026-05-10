@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
+import uuid
+from typing import Any, cast
 
 from fastapi import Header, HTTPException, status
 from sqlalchemy.orm import Session
@@ -46,8 +48,8 @@ def find_event_by_idempotency(
     actor_type: str,
     actor_id: str,
     idempotency_key_hash: str,
-    incident_id=None,
-):
+    incident_id: uuid.UUID | None = None,
+) -> Event | None:
     events = (
         db.query(Event)
         .filter(
@@ -60,7 +62,7 @@ def find_event_by_idempotency(
         .all()
     )
     for ev in events:
-        payload = ev.payload or {}
+        payload = cast(dict[str, Any], ev.payload or {})
         if payload.get("idempotency_key_hash") == idempotency_key_hash:
             return ev
     return None

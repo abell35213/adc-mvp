@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import cast
 from typing import Literal
 
 import httpx
@@ -162,7 +163,7 @@ def get_policy_for_task(task_name: str) -> RetryPolicy:
 
 def get_policy_for_capability(capability: str | None) -> RetryPolicy:
     """Return retry/backoff policy for an integration capability."""
-    key: Capability = capability if capability in CAPABILITY_POLICY else "unknown"
+    key: Capability = cast(Capability, capability) if capability in CAPABILITY_POLICY else "unknown"
     return CAPABILITY_POLICY[key]
 
 

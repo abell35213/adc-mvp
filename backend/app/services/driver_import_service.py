@@ -6,6 +6,7 @@ import csv
 import io
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Sequence, cast
 
 from sqlalchemy.orm import Session
 
@@ -42,7 +43,7 @@ def _normalize_header(name: str) -> str:
 
 
 def _build_header_map(
-    fieldnames: list[str], explicit: dict[str, str]
+    fieldnames: Sequence[str], explicit: dict[str, str]
 ) -> tuple[dict[str, str], list[str]]:
     warnings: list[str] = []
     normalized_to_original = {_normalize_header(name): name for name in fieldnames}
@@ -127,11 +128,11 @@ def run_driver_import_job(
     header_mapping: dict[str, str],
     inactive_phones: set[str],
 ) -> DriverImportJob:
-    job = (
+    job = cast(Any, (
         db.query(DriverImportJob)
         .filter(DriverImportJob.job_id == job_id, DriverImportJob.org_id == org_id)
         .first()
-    )
+    ))
     if job is None:
         raise ValueError("job_not_found")
 
@@ -168,28 +169,23 @@ def run_driver_import_job(
             "inactive_count": 0,
         }
 
-        existing_by_phone = {
-            row.phone_e164: row for row in db.query(Driver).all() if row.phone_e164
-        }
-        assigned_driver_ids = {
-            str(row.driver_id)
-            for row in db.query(DriverVehicleAssignment)
+        existing_driver_rows = cast(list[Any], db.query(Driver).all())
+        existing_by_phone = {str(row.phone_e164): row for row in existing_driver_rows if row.phone_e164}
+        assignment_rows = cast(list[Any], db.query(DriverVehicleAssignment)
             .filter(
                 DriverVehicleAssignment.org_id == org_id,
                 DriverVehicleAssignment.unassigned_at_utc.is_(None),
             )
-            .all()
-        }
-        provider_mapped_driver_ids = {
-            row.internal_entity_id.lower()
-            for row in db.query(ExternalMapping)
+            .all())
+        assigned_driver_ids = {str(row.driver_id) for row in assignment_rows}
+        mapped_driver_rows = cast(list[Any], db.query(ExternalMapping)
             .filter(
                 ExternalMapping.org_id == org_id,
                 ExternalMapping.internal_entity_type == "driver",
                 ExternalMapping.status == "active",
             )
-            .all()
-        }
+            .all())
+        provider_mapped_driver_ids = {str(row.internal_entity_id).lower() for row in mapped_driver_rows}
 
         seen_phone_to_line: dict[str, int] = {}
         staged_rows: list[dict[str, str | bool | None]] = []

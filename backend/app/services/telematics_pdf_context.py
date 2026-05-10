@@ -7,7 +7,7 @@ and the context-shaping logic is independently testable.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 
 # Cap how many records we render in-line in the PDF.
@@ -43,7 +43,7 @@ def _dataset_label(dataset_name: str) -> str:
     return _DATASET_LABELS.get(dataset_name, dataset_name.replace("_", " ").title())
 
 
-def _columns_from(records: list[Mapping[str, Any]]) -> list[str]:
+def _columns_from(records: Sequence[Mapping[str, Any]]) -> list[str]:
     columns: list[str] = []
     seen: set[str] = set()
     for record in records:

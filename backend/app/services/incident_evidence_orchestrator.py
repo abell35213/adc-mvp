@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -139,7 +140,7 @@ class IncidentEvidenceOrchestrator:
                     org_id=org_id,
                     incident_id=incident_id,
                     adc_driver_id=(
-                        incident.adc_driver_id if incident is not None else None
+                        cast(str | None, incident.adc_driver_id) if incident is not None else None
                     ),
                     usdot_number=usdot,
                     api_correlation_id=correlation_id,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import uuid
+from typing import Any, cast
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -154,7 +155,7 @@ def _safe_percent(covered: int, total: int) -> int:
 
 def _normalize_scope(raw_scope: str | None) -> DeploymentScopeKey:
     if raw_scope in DEPLOYMENT_SCOPE_KEYS:
-        return raw_scope
+        return cast(DeploymentScopeKey, raw_scope)
     return "pilot"
 
 
@@ -171,18 +172,18 @@ def _merge_targets(
 def get_deployment_scope(db: Session, *, org_id: uuid.UUID) -> DeploymentScope:
     latest = get_latest_deployment_scope_snapshot(db, org_id)
     if latest is None:
-        scope = "pilot"
+        scope: DeploymentScopeKey = "pilot"
         return DeploymentScope(scope=scope, targets=_merge_targets(scope, None))
 
-    payload = latest.scope_json or {}
+    payload: dict[str, Any] = dict(cast(Any, latest.scope_json) or {})
     scope = _normalize_scope(payload.get("scope"))
     return DeploymentScope(
         scope=scope,
-        scope_version=latest.scope_version,
+        scope_version=str(latest.scope_version),
         targets=_merge_targets(scope, payload.get("targets")),
         readiness_override=payload.get("readiness_override"),
         source=payload.get("source") or "manual",
-        captured_at_utc=latest.captured_at_utc,
+        captured_at_utc=cast(Any, latest.captured_at_utc),
     )
 
 
@@ -213,11 +214,11 @@ def set_deployment_scope(
     )
     return DeploymentScope(
         scope=normalized_scope,
-        scope_version=snapshot.scope_version,
+        scope_version=str(snapshot.scope_version),
         targets=merged_targets,
         readiness_override=readiness_override,
         source=source,
-        captured_at_utc=snapshot.captured_at_utc,
+        captured_at_utc=cast(Any, snapshot.captured_at_utc),
     )
 
 

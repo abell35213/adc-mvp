@@ -30,7 +30,7 @@ class ExportPdfContext:
     artifact_count: int
     timeline_event_count: int
     key_events: list[dict[str, str]]
-    evidence_summary_counts: list[dict[str, int]]
+    evidence_summary_counts: list[dict[str, str | int]]
     missing_unavailable_warnings: list[dict[str, str]]
     verification_instructions: list[str]
 
@@ -77,7 +77,7 @@ def build_export_pdf_context(
         kind = str(getattr(artifact, "artifact_type", "unknown") or "unknown")
         counts[kind] = counts.get(kind, 0) + 1
 
-    evidence_summary_counts = [
+    evidence_summary_counts: list[dict[str, str | int]] = [
         {"artifact_type": kind, "count": count}
         for kind, count in sorted(counts.items(), key=lambda item: item[0])
     ]
