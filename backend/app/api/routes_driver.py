@@ -71,6 +71,32 @@ OTP_EXPIRATION_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
 
 
+def _weather_snapshot_terminal_event_exists(db: Session, *, incident_id: uuid.UUID) -> bool:
+    return (
+        db.query(Event.id)
+        .filter(
+            Event.incident_id == incident_id,
+            Event.event_type.in_(["weather_snapshot_captured", "weather_snapshot_failed"]),
+        )
+        .first()
+        is not None
+    )
+
+
+def _weather_map_snapshot_terminal_event_exists(db: Session, *, incident_id: uuid.UUID) -> bool:
+    return (
+        db.query(Event.id)
+        .filter(
+            Event.incident_id == incident_id,
+            Event.event_type.in_(
+                ["weather_map_snapshot_captured", "weather_map_snapshot_failed"]
+            ),
+        )
+        .first()
+        is not None
+    )
+
+
 def _generate_otp_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
@@ -486,18 +512,40 @@ def initiate_incident(
         idempotency_key=idempotency.raw_key if idempotency else None,
     )
 
-    if not initiation.protocol_already_started:
-        str_id = str(initiation.incident.incident_id)
-        window_start_iso = body.window_start.isoformat() if body.window_start else None
-        window_end_iso = body.window_end.isoformat() if body.window_end else None
+    should_enqueue_weather = (not initiation.protocol_already_started) or (
+        not _weather_snapshot_terminal_event_exists(
+            db, incident_id=initiation.incident.incident_id
+        )
+    )
+    should_enqueue_weather_map = (not initiation.protocol_already_started) or (
+        not _weather_map_snapshot_terminal_event_exists(
+            db, incident_id=initiation.incident.incident_id
+        )
+    )
+
+    str_id = str(initiation.incident.incident_id)
+    window_start_iso = body.window_start.isoformat() if body.window_start else None
+    window_end_iso = body.window_end.isoformat() if body.window_end else None
+
+    if should_enqueue_weather:
         try:
             capture_weather_snapshot.delay(str_id, window_start_iso, window_end_iso)
-            capture_weather_map_snapshot.delay(str_id, window_start_iso, window_end_iso)
         except Exception:  # noqa: BLE001 - weather snapshot failures must never block incident initiation
             logger.exception(
                 "Weather snapshot task enqueue failed during incident initiation for %s",
                 initiation.incident.incident_id,
             )
+
+    if should_enqueue_weather_map:
+        try:
+            capture_weather_map_snapshot.delay(str_id, window_start_iso, window_end_iso)
+        except Exception:  # noqa: BLE001 - weather snapshot failures must never block incident initiation
+            logger.exception(
+                "Weather map snapshot task enqueue failed during incident initiation for %s",
+                initiation.incident.incident_id,
+            )
+
+    if not initiation.protocol_already_started:
         capture_dashcam.delay(str_id, body.window_start, body.window_end)
         capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
         notify_safety_manager.delay(str_id)

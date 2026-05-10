@@ -512,7 +512,7 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.capture_dashcam")
     @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
-    def test_driver_initiate_retry_does_not_recapture_weather_snapshot(
+    def test_driver_initiate_retry_recaptures_weather_snapshot_until_terminal_event(
         self,
         mock_weather,
         mock_weather_map,
@@ -542,8 +542,8 @@ class TestDriverInitiate:
 
         assert first.status_code == 200
         assert second.status_code == 200
-        assert mock_weather.delay.call_count == 1
-        assert mock_weather_map.delay.call_count == 1
+        assert mock_weather.delay.call_count == 2
+        assert mock_weather_map.delay.call_count == 2
 
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
@@ -575,6 +575,7 @@ class TestDriverInitiate:
         )
 
         assert resp.status_code == 200
+        mock_weather_map.delay.assert_called_once()
 
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")

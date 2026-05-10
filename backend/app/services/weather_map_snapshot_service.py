@@ -24,10 +24,11 @@ def capture_weather_map_snapshot_if_missing(
     Current implementation records request + capture/failure lifecycle events
     and remains non-blocking for incident workflows.
     """
-    if _snapshot_exists(db, incident_id=incident.incident_id):
-        return
-
     try:
+        db.query(Incident.incident_id).filter(Incident.incident_id == incident.incident_id).with_for_update().first()
+        if _snapshot_exists(db, incident_id=incident.incident_id):
+            return
+
         location = resolve_incident_location(
             db,
             incident_id=incident.incident_id,
@@ -47,25 +48,31 @@ def capture_weather_map_snapshot_if_missing(
             },
             "request_window": window,
         }
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED,
-            payload=base_payload,
-        )
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED,
-            payload={**base_payload, "capture_status": "ok"},
-        )
+        _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED, payload=base_payload)
+        if location.get("lat") is None or location.get("lon") is None:
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload={**base_payload, "capture_status": "failed", "reason": "location_unavailable"},
+            )
+        else:
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED,
+                payload={**base_payload, "capture_status": "ok"},
+            )
+        db.commit()
     except Exception as exc:  # noqa: BLE001
+        db.rollback()
         _emit_event(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
             payload={"capture_status": "failed", "reason": type(exc).__name__},
         )
+        db.commit()
 
 
 def _snapshot_exists(db: Session, *, incident_id: uuid.UUID) -> bool:
@@ -96,4 +103,3 @@ def _emit_event(db: Session, *, incident: Incident, event_type: SystemEventType,
             payload=payload,
         )
     )
-    db.commit()
