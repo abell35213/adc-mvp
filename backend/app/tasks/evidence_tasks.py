@@ -4,6 +4,7 @@ import hashlib
 import logging
 import uuid as _uuid
 from datetime import datetime, timezone
+from typing import Any, Callable, cast
 
 from app.core.metrics import MetricNames, increment
 from app.integrations.errors import as_normalized_error
@@ -808,10 +809,14 @@ def capture_telematics_bundle(
                         status="in_progress",
                     )
                 # 1. Fetch raw data
-                fetcher = getattr(samsara, spec["fetcher"], None)
+                fetcher_name = cast(str, spec["fetcher"])
+                fetcher = cast(
+                    Callable[..., list[dict[str, Any]] | None] | None,
+                    getattr(samsara, fetcher_name, None),
+                )
                 if fetcher is None:
                     raise AttributeError(
-                        f"SamsaraClient has no method {spec['fetcher']}"
+                        f"SamsaraClient has no method {fetcher_name}"
                     )
                 dataset_window = dataset_windows.get(dataset_name, {})
                 start = dataset_window.get("start") or window_start
@@ -824,13 +829,17 @@ def capture_telematics_bundle(
                 ]
 
                 # 2. Normalize
-                normalized = [spec["normalizer"](r) for r in raw_records]
+                normalizer = cast(
+                    Callable[[dict[str, Any]], dict[str, Any]],
+                    spec["normalizer"],
+                )
+                normalized = [normalizer(r) for r in raw_records]
                 capture_status = "available" if normalized else "unavailable"
                 reason_code = None if normalized else "data_not_found"
 
                 # 3. Validate JSON schema
                 for record in normalized:
-                    validate_payload(record, spec["schema_name"])
+                    validate_payload(record, cast(str, spec["schema_name"]))
 
                 # 4. Upload JSON to S3
                 json_bytes = json.dumps(normalized, default=str).encode()
