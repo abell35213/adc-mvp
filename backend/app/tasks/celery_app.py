@@ -66,6 +66,8 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.evidence_tasks.capture_dashcam": {"queue": "evidence"},
         "app.tasks.evidence_tasks.capture_telematics_bundle": {"queue": "evidence"},
+        "app.tasks.evidence_tasks.capture_weather_snapshot": {"queue": "evidence"},
+        "app.tasks.evidence_tasks.capture_weather_map_snapshot": {"queue": "evidence"},
         "app.tasks.evidence_tasks.capture_driver_violation_history": {"queue": "evidence"},
         "app.tasks.export_tasks.build_export": {"queue": "exports"},
         "app.tasks.notification_tasks.notify_safety_manager": {

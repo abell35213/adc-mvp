@@ -155,6 +155,34 @@ def capture_weather_snapshot(
         db.close()
 
 
+@celery_app.task(bind=True, acks_late=True, max_retries=0, soft_time_limit=120, time_limit=150)
+def capture_weather_map_snapshot(
+    self,
+    incident_id: str,
+    window_start: str | None,
+    window_end: str | None,
+):
+    """Capture incident weather map snapshot asynchronously."""
+    from app.db.models import Incident
+    from app.services.weather_map_snapshot_service import capture_weather_map_snapshot_if_missing
+
+    db = _get_db()
+    try:
+        incident = db.query(Incident).filter(Incident.incident_id == _uuid.UUID(incident_id)).first()
+        if incident is None:
+            logger.warning("Weather map snapshot task skipped: incident %s not found", incident_id)
+            return {"incident_id": incident_id, "status": "incident_not_found"}
+        capture_weather_map_snapshot_if_missing(
+            db,
+            incident=incident,
+            request_window_start=_parse_iso(window_start),
+            request_window_end=_parse_iso(window_end),
+        )
+        return {"incident_id": incident_id, "status": "ok"}
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Task: capture_dashcam
 # ---------------------------------------------------------------------------
