@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import desc
@@ -28,7 +29,13 @@ _ELD_LAST_KNOWN_SOURCE = "eld_last_known"
 _UNAVAILABLE_SOURCE = "unavailable"
 
 
-def resolve_incident_location(db: Session, *, incident_id: uuid.UUID) -> dict[str, Any]:
+def resolve_incident_location(
+    db: Session,
+    *,
+    incident_id: uuid.UUID,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
+) -> dict[str, Any]:
     incident = db.query(Incident).filter(Incident.incident_id == incident_id).first()
     if incident is None:
         return _unavailable("incident_not_found")
@@ -37,7 +44,7 @@ def resolve_incident_location(db: Session, *, incident_id: uuid.UUID) -> dict[st
     if device_location is not None:
         return device_location
 
-    telematics = _resolve_telematics_location(incident)
+    telematics = _resolve_telematics_location(incident, window_start=window_start, window_end=window_end)
     if telematics is not None:
         return telematics
 
@@ -65,13 +72,17 @@ def _resolve_device_location(db: Session, *, incident_id: uuid.UUID) -> dict[str
     return _resolved(*coords, source=_DEVICE_LOCATION_SOURCE)
 
 
-def _resolve_telematics_location(incident: Incident) -> dict[str, Any] | None:
+def _resolve_telematics_location(
+    incident: Incident, *, window_start: datetime | None, window_end: datetime | None
+) -> dict[str, Any] | None:
     provider = get_telematics_provider()
-    current = _extract_from_rows(provider.fetch_gps_window(), incident=incident)
+    start = window_start.isoformat() if window_start else None
+    end = window_end.isoformat() if window_end else None
+    current = _extract_from_rows(provider.fetch_gps_window(start=start, end=end), incident=incident)
     if current is not None:
         return _resolved(*current, source=_ELD_CURRENT_SOURCE)
 
-    last_known = _extract_from_rows(provider.fetch_vehicle_state(), incident=incident)
+    last_known = _extract_from_rows(provider.fetch_vehicle_state(start=start, end=end), incident=incident)
     if last_known is not None:
         return _resolved(*last_known, source=_ELD_LAST_KNOWN_SOURCE)
 

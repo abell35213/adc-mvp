@@ -28,33 +28,37 @@ def capture_weather_snapshot_if_missing(
     if _snapshot_exists(db, incident_id=incident.incident_id):
         return
 
-    location = resolve_incident_location(db, incident_id=incident.incident_id)
-    window = {
-        "start": request_window_start.isoformat() if request_window_start else None,
-        "end": request_window_end.isoformat() if request_window_end else None,
-    }
-    requested_payload = {
-        "location": {
-            "lat": location.get("lat"),
-            "lon": location.get("lon"),
-            "source": location.get("source"),
-            "fallback_reason": location.get("fallback_reason"),
-        },
-        "request_window": window,
-    }
-    _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_SNAPSHOT_REQUESTED, payload=requested_payload)
-
-    lat, lon = location.get("lat"), location.get("lon")
-    if lat is None or lon is None or request_window_start is None or request_window_end is None:
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_SNAPSHOT_FAILED,
-            payload={**requested_payload, "capture_status": "failed", "reason": "insufficient_request_context"},
-        )
-        return
-
     try:
+        location = resolve_incident_location(
+            db,
+            incident_id=incident.incident_id,
+            window_start=request_window_start,
+            window_end=request_window_end,
+        )
+        window = {
+            "start": request_window_start.isoformat() if request_window_start else None,
+            "end": request_window_end.isoformat() if request_window_end else None,
+        }
+        requested_payload = {
+            "location": {
+                "lat": location.get("lat"),
+                "lon": location.get("lon"),
+                "source": location.get("source"),
+                "fallback_reason": location.get("fallback_reason"),
+            },
+            "request_window": window,
+        }
+        _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_SNAPSHOT_REQUESTED, payload=requested_payload)
+
+        lat, lon = location.get("lat"), location.get("lon")
+        if lat is None or lon is None or request_window_start is None or request_window_end is None:
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_SNAPSHOT_FAILED,
+                payload={**requested_payload, "capture_status": "failed", "reason": "insufficient_request_context"},
+            )
+            return
         raw_payload = fetch_nws_time_series_xml(lat=float(lat), lon=float(lon), begin=request_window_start, end=request_window_end)
         normalized = parse_nws_time_series_xml(raw_payload)
         _emit_event(
@@ -115,4 +119,3 @@ def _emit_event(db: Session, *, incident: Incident, event_type: SystemEventType,
         )
     )
     db.commit()
-

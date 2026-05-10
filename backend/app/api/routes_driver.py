@@ -54,11 +54,10 @@ from app.services.incident_workflow_service import (
 )
 from app.security.authn import build_driver_auth_context
 from app.security.authz import can_access_driver_incident, require_policy
-from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle
+from app.tasks.evidence_tasks import capture_dashcam, capture_telematics_bundle, capture_weather_snapshot
 from app.tasks.notification_tasks import notify_safety_manager
 from app.services.idempotency_service import optional_idempotency_key
 from app.services.rate_limit_service import enforce_rate_limit
-from app.services.weather_snapshot_service import capture_weather_snapshot_if_missing
 
 logger = logging.getLogger(__name__)
 
@@ -482,19 +481,19 @@ def initiate_incident(
         idempotency_key=idempotency.raw_key if idempotency else None,
     )
 
+    try:
+        capture_weather_snapshot.delay(
+            str(initiation.incident.incident_id),
+            body.window_start.isoformat() if body.window_start else None,
+            body.window_end.isoformat() if body.window_end else None,
+        )
+    except Exception:  # noqa: BLE001 - weather snapshot failures must never block incident initiation
+        logger.exception(
+            "Weather snapshot task enqueue failed during incident initiation for %s",
+            initiation.incident.incident_id,
+        )
+
     if not initiation.protocol_already_started:
-        try:
-            capture_weather_snapshot_if_missing(
-                db,
-                incident=initiation.incident,
-                request_window_start=body.window_start,
-                request_window_end=body.window_end,
-            )
-        except Exception:  # noqa: BLE001 - weather snapshot failures must never block incident initiation
-            logger.exception(
-                "Weather snapshot capture failed during incident initiation for %s",
-                initiation.incident.incident_id,
-            )
         str_id = str(initiation.incident.incident_id)
         capture_dashcam.delay(str_id, body.window_start, body.window_end)
         capture_telematics_bundle.delay(str_id, body.window_start, body.window_end)
