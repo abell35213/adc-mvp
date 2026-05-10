@@ -370,10 +370,12 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
     def test_driver_initiate_creates_incident_and_events(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
@@ -384,6 +386,7 @@ class TestDriverInitiate:
         test_assignment,
     ):
         mock_weather.delay = MagicMock()
+        mock_weather_map.delay = MagicMock()
         mock_dash.delay = MagicMock()
         mock_tele.delay = MagicMock()
         mock_notify_manager.delay = MagicMock()
@@ -405,6 +408,7 @@ class TestDriverInitiate:
         mock_tele.delay.assert_called_once_with(str(incident.incident_id), None, None)
         mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
         mock_weather.delay.assert_called_once()
+        mock_weather_map.delay.assert_called_once()
 
         events = (
             db_session.query(Event)
@@ -418,10 +422,12 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
     def test_driver_initiate_resolves_vehicle_by_qr(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
@@ -450,10 +456,12 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
     def test_driver_initiate_retry_returns_existing_without_duplicate_tasks(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
@@ -502,10 +510,12 @@ class TestDriverInitiate:
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
-    def test_driver_initiate_retry_does_not_recapture_weather_snapshot(
+    def test_driver_initiate_retry_recaptures_weather_snapshot_until_terminal_event(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
@@ -533,14 +543,17 @@ class TestDriverInitiate:
         assert first.status_code == 200
         assert second.status_code == 200
         assert mock_weather.delay.call_count == 2
+        assert mock_weather_map.delay.call_count == 2
 
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
     def test_driver_initiate_weather_failure_does_not_block(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
@@ -562,14 +575,17 @@ class TestDriverInitiate:
         )
 
         assert resp.status_code == 200
+        mock_weather_map.delay.assert_called_once()
 
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
     @patch("app.api.routes_driver.capture_weather_snapshot")
     def test_driver_initiate_reuses_existing_active_incident_for_driver(
         self,
         mock_weather,
+        mock_weather_map,
         mock_dash,
         mock_tele,
         mock_notify_manager,
