@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import uuid as _uuid
 from datetime import datetime, timezone
+from typing import cast
 
 from app.core.config import settings
 from app.core.metrics import MetricNames, increment
@@ -151,7 +152,7 @@ def dispatch_crash_packet(self, incident_id: str):
         for recipient in recipients:
             try:
                 msg_id = send_email(
-                    to=recipient.email,
+                    to=cast(str, recipient.email),
                     subject=packet.subject,
                     html_body=packet.html_body,
                 )

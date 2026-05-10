@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import secrets
 import uuid
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -37,7 +38,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 def _require_qr_access(user: User, *, write: bool = False) -> None:
     capability = Capability.VEHICLE_QR_WRITE if write else Capability.VEHICLE_QR_READ
-    if not has_capability(user.role, capability):
+    if not has_capability(cast(str | None, user.role), capability):
         raise_api_error(
             status_code=403,
             message="You do not have permission to manage vehicle QR deployment.",
@@ -57,7 +58,7 @@ def _get_required_vehicle(db: Session, *, org_id: uuid.UUID, vehicle_id: str) ->
     )
     if vehicle is None:
         raise_api_error(status_code=404, message="Vehicle not found.", code="RESOURCE_NOT_FOUND")
-    return vehicle
+    return cast(OrgVehicleRegistry, vehicle)
 
 
 def _emit_vehicle_qr_event(
@@ -125,12 +126,13 @@ def generate_vehicle_qr(
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+    vehicle_row = cast(Any, vehicle)
 
     active_token = (
         db.query(VehicleQrToken)
         .filter(
             VehicleQrToken.org_id == org_id,
-            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.adc_vehicle_id == vehicle_row.unit_number,
             VehicleQrToken.status == "active",
         )
         .first()
@@ -139,27 +141,28 @@ def generate_vehicle_qr(
         active_token = VehicleQrToken(
             qr_token=secrets.token_urlsafe(32),
             org_id=org_id,
-            adc_vehicle_id=vehicle.unit_number,
+            adc_vehicle_id=vehicle_row.unit_number,
             status="active",
         )
         db.add(active_token)
 
-    vehicle.qr_deployment_status = "generated"
-    vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
-    token_hash = hashlib.sha256(active_token.qr_token.encode()).hexdigest()
+    vehicle_row.qr_deployment_status = "generated"
+    vehicle_row.qr_generated_at_utc = datetime.now(timezone.utc)
+    token_row = cast(Any, active_token)
+    token_hash = hashlib.sha256(cast(str, token_row.qr_token).encode()).hexdigest()
     _emit_vehicle_qr_event(
         db,
         org_id=org_id,
-        actor_id=current_user.id,
+        actor_id=cast(uuid.UUID, current_user.id),
         action="vehicle_qr_generated",
-        vehicle_id=vehicle.unit_number,
+        vehicle_id=cast(str, vehicle_row.unit_number),
         payload={"token_sha256": token_hash},
     )
     db.commit()
     return VehicleQrGenerateResponse(
-        vehicle_id=vehicle.unit_number,
-        qr_token=active_token.qr_token,
-        deployment_status=vehicle.qr_deployment_status,
+        vehicle_id=cast(str, vehicle_row.unit_number),
+        qr_token=cast(str, token_row.qr_token),
+        deployment_status=cast(Any, vehicle_row.qr_deployment_status),
     )
 
 
@@ -192,11 +195,12 @@ def bulk_generate_vehicle_qr(
         if vehicle is None:
             skipped.append(vehicle_id)
             continue
+        vehicle_row = cast(Any, vehicle)
         token = (
             db.query(VehicleQrToken)
             .filter(
                 VehicleQrToken.org_id == org_id,
-                VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+                VehicleQrToken.adc_vehicle_id == vehicle_row.unit_number,
                 VehicleQrToken.status == "active",
             )
             .first()
@@ -205,24 +209,24 @@ def bulk_generate_vehicle_qr(
             token = VehicleQrToken(
                 qr_token=secrets.token_urlsafe(32),
                 org_id=org_id,
-                adc_vehicle_id=vehicle.unit_number,
+                adc_vehicle_id=vehicle_row.unit_number,
                 status="active",
             )
             db.add(token)
-        vehicle.qr_deployment_status = "generated"
-        vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
+        vehicle_row.qr_deployment_status = "generated"
+        vehicle_row.qr_generated_at_utc = datetime.now(timezone.utc)
         _emit_vehicle_qr_event(
             db,
             org_id=org_id,
-            actor_id=current_user.id,
+            actor_id=cast(uuid.UUID, current_user.id),
             action="vehicle_qr_generated",
-            vehicle_id=vehicle.unit_number,
+            vehicle_id=cast(str, vehicle_row.unit_number),
             payload={"bulk": True},
         )
         generated.append(
             VehicleQrGenerateResponse(
-                vehicle_id=vehicle.unit_number,
-                qr_token=token.qr_token,
+                vehicle_id=cast(str, vehicle_row.unit_number),
+                qr_token=cast(str, cast(Any, token).qr_token),
                 deployment_status="generated",
             )
         )
@@ -250,39 +254,40 @@ def rotate_vehicle_qr(
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+    vehicle_row = cast(Any, vehicle)
 
     active_tokens = (
         db.query(VehicleQrToken)
         .filter(
             VehicleQrToken.org_id == org_id,
-            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.adc_vehicle_id == vehicle_row.unit_number,
             VehicleQrToken.status == "active",
         )
         .all()
     )
     for row in active_tokens:
-        row.status = "rotated"
+        cast(Any, row).status = "rotated"
 
     token = VehicleQrToken(
         qr_token=secrets.token_urlsafe(32),
         org_id=org_id,
-        adc_vehicle_id=vehicle.unit_number,
+        adc_vehicle_id=vehicle_row.unit_number,
         status="active",
         rotated_from_token=active_tokens[0].qr_token if active_tokens else None,
     )
     db.add(token)
-    vehicle.qr_deployment_status = "generated"
-    vehicle.qr_generated_at_utc = datetime.now(timezone.utc)
+    vehicle_row.qr_deployment_status = "generated"
+    vehicle_row.qr_generated_at_utc = datetime.now(timezone.utc)
     _emit_vehicle_qr_event(
         db,
         org_id=org_id,
-        actor_id=current_user.id,
+        actor_id=cast(uuid.UUID, current_user.id),
         action=SystemEventType.VEHICLE_QR_ROTATED.value,
-        vehicle_id=vehicle.unit_number,
+        vehicle_id=cast(str, vehicle_row.unit_number),
         payload={"token_sha256": hashlib.sha256(token.qr_token.encode()).hexdigest()},
     )
     db.commit()
-    return VehicleQrGenerateResponse(vehicle_id=vehicle.unit_number, qr_token=token.qr_token, deployment_status="generated")
+    return VehicleQrGenerateResponse(vehicle_id=cast(str, vehicle_row.unit_number), qr_token=cast(str, cast(Any, token).qr_token), deployment_status="generated")
 
 
 @router.get(
@@ -299,12 +304,13 @@ def download_vehicle_qr_printable(
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     vehicle = _get_required_vehicle(db, org_id=org_id, vehicle_id=vehicle_id)
+    vehicle_row = cast(Any, vehicle)
 
     token = (
         db.query(VehicleQrToken)
         .filter(
             VehicleQrToken.org_id == org_id,
-            VehicleQrToken.adc_vehicle_id == vehicle.unit_number,
+            VehicleQrToken.adc_vehicle_id == vehicle_row.unit_number,
             VehicleQrToken.status == "active",
         )
         .first()
@@ -312,22 +318,23 @@ def download_vehicle_qr_printable(
     if token is None:
         raise_api_error(status_code=404, message="QR token not generated for vehicle.", code="RESOURCE_NOT_FOUND")
 
-    vehicle.qr_deployment_status = "distributed"
-    vehicle.qr_distributed_at_utc = datetime.now(timezone.utc)
+    vehicle_row.qr_deployment_status = "distributed"
+    vehicle_row.qr_distributed_at_utc = datetime.now(timezone.utc)
+    token_row = cast(Any, token)
     pdf_bytes = render_pdf(
         "vehicle_qr_printable",
         {
-            "vehicle_id": vehicle.unit_number,
-            "qr_token": token.qr_token,
-            "qr_image_data_uri": qr_png_data_uri(token.qr_token),
+            "vehicle_id": cast(str, vehicle_row.unit_number),
+            "qr_token": cast(str, token_row.qr_token),
+            "qr_image_data_uri": qr_png_data_uri(cast(str, token_row.qr_token)),
         },
     )
     _emit_vehicle_qr_event(
         db,
         org_id=org_id,
-        actor_id=current_user.id,
+        actor_id=cast(uuid.UUID, current_user.id),
         action="vehicle_qr_distributed",
-        vehicle_id=vehicle.unit_number,
+        vehicle_id=cast(str, vehicle_row.unit_number),
         payload={"artifact_type": "printable_pdf"},
     )
     db.commit()
@@ -335,7 +342,7 @@ def download_vehicle_qr_printable(
     return StreamingResponse(
         iter([pdf_bytes]),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="vehicle-{vehicle.unit_number}-qr.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="vehicle-{vehicle_row.unit_number}-qr.pdf"'},
     )
 
 
