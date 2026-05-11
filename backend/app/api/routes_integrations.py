@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import tempfile
 from pathlib import Path
+from typing import cast
 
 from fastapi import (
     APIRouter,
@@ -220,6 +221,28 @@ def _to_test_run_response_row(row) -> TestIncidentRunResponse:
         completed_at_utc=row.completed_at_utc,
         step_results=list(row.step_results_json or []),
         findings=list(row.findings_json or []),
+    )
+
+
+def _to_org_user_summary(row: User) -> OrgUserSummary:
+    return OrgUserSummary(
+        user_id=cast(uuid.UUID, row.id),
+        email=str(row.email),
+        role=normalize_role(cast(str | None, row.role)).value,
+        is_active=bool(row.is_active),
+        created_at_utc=cast(datetime | None, row.created_at_utc),
+    )
+
+
+def _to_org_user_invite_summary(row: OrgUserInvite) -> OrgUserInviteSummary:
+    return OrgUserInviteSummary(
+        invite_id=cast(uuid.UUID, row.invite_id),
+        email=str(row.email),
+        role=normalize_role(cast(str | None, row.role)).value,
+        status=cast(str, row.status),
+        created_at_utc=cast(datetime | None, row.created_at_utc),
+        last_sent_at_utc=cast(datetime | None, row.last_sent_at_utc),
+        deactivated_at_utc=cast(datetime | None, row.deactivated_at_utc),
     )
 
 
@@ -1573,28 +1596,8 @@ def list_org_users(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgUsersResponse(
-        users=[
-            OrgUserSummary(
-                user_id=row.id,
-                email=row.email,
-                role=normalize_role(row.role).value,
-                is_active=bool(row.is_active),
-                created_at_utc=row.created_at_utc,
-            )
-            for row in users
-        ],
-        invites=[
-            OrgUserInviteSummary(
-                invite_id=row.invite_id,
-                email=row.email,
-                role=normalize_role(row.role).value,
-                status=row.status,
-                created_at_utc=row.created_at_utc,
-                last_sent_at_utc=row.last_sent_at_utc,
-                deactivated_at_utc=row.deactivated_at_utc,
-            )
-            for row in invites
-        ],
+        users=[_to_org_user_summary(row) for row in users],
+        invites=[_to_org_user_invite_summary(row) for row in invites],
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1633,15 +1636,7 @@ def invite_org_user(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=invite.invite_id,
-            email=invite.email,
-            role=normalize_role(invite.role).value,
-            status=invite.status,
-            created_at_utc=invite.created_at_utc,
-            last_sent_at_utc=invite.last_sent_at_utc,
-            deactivated_at_utc=invite.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(invite),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1722,15 +1717,7 @@ def resend_org_user_invite(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=row.invite_id,
-            email=row.email,
-            role=normalize_role(row.role).value,
-            status=row.status,
-            created_at_utc=row.created_at_utc,
-            last_sent_at_utc=row.last_sent_at_utc,
-            deactivated_at_utc=row.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(row),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1773,15 +1760,7 @@ def deactivate_org_user_invite(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=row.invite_id,
-            email=row.email,
-            role=normalize_role(row.role).value,
-            status=row.status,
-            created_at_utc=row.created_at_utc,
-            last_sent_at_utc=row.last_sent_at_utc,
-            deactivated_at_utc=row.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(row),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
