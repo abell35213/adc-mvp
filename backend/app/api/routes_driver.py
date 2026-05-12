@@ -125,6 +125,38 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _to_instruction_step_response(
+    step: DriverInstructionStepModel,
+) -> DriverInstructionStepResponse:
+    return DriverInstructionStepResponse(
+        step_id=step.step_id,
+        step_order=step.step_order,
+        title=step.title,
+        body=step.body,
+    )
+
+
+def _to_driver_incident_status_response(
+    *,
+    incident: Incident,
+    summary: dict[str, datetime | None | list[Event]],
+) -> DriverIncidentStatusResponse:
+    events = summary["events"]
+    safety_notified = summary["protocol_started_at_utc"] is not None
+    return DriverIncidentStatusResponse(
+        incident_id=incident.incident_id,
+        status=incident.status,
+        safety_notified=safety_notified,
+        capture_state=_evidence_capture_state(events, incident.status),
+        adc_vehicle_id=incident.adc_vehicle_id,
+        adc_driver_id=incident.adc_driver_id,
+        created_at_utc=incident.created_at_utc,
+        protocol_started_at_utc=summary["protocol_started_at_utc"],
+        evidence_requested_at_utc=summary["evidence_requested_at_utc"],
+        last_evidence_update_utc=summary["last_evidence_update_utc"],
+    )
+
+
 @router.post("/legacy/auth/request-otp", response_model=DriverOtpRequestResponse)
 def request_driver_otp(body: DriverOtpRequest, db: Session = Depends(get_db)):
     phone_e164 = body.phone_e164.strip()
@@ -595,15 +627,7 @@ def get_active_instructions(
         instruction_set_id=instruction_set.instruction_set_id,
         scope=instruction_set.scope,
         require_ack=instruction_set.require_ack,
-        steps=[
-            DriverInstructionStepResponse(
-                step_id=step.step_id,
-                step_order=step.step_order,
-                title=step.title,
-                body=step.body,
-            )
-            for step in steps
-        ],
+        steps=[_to_instruction_step_response(step) for step in steps],
     )
 
 
@@ -708,18 +732,7 @@ def driver_incident_status(
     )
 
     summary = incident_status_summary(db, incident_id=incident_id)
-    events = summary["events"]
-    safety_notified = summary["protocol_started_at_utc"] is not None
-
-    return DriverIncidentStatusResponse(
-        incident_id=incident.incident_id,
-        status=incident.status,
-        safety_notified=safety_notified,
-        capture_state=_evidence_capture_state(events, incident.status),
-        adc_vehicle_id=incident.adc_vehicle_id,
-        adc_driver_id=incident.adc_driver_id,
-        created_at_utc=incident.created_at_utc,
-        protocol_started_at_utc=summary["protocol_started_at_utc"],
-        evidence_requested_at_utc=summary["evidence_requested_at_utc"],
-        last_evidence_update_utc=summary["last_evidence_update_utc"],
+    return _to_driver_incident_status_response(
+        incident=incident,
+        summary=summary,
     )
