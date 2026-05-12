@@ -246,6 +246,26 @@ def _to_org_user_invite_summary(row: OrgUserInvite) -> OrgUserInviteSummary:
     )
 
 
+def _to_integration_connection_health_response(
+    row: IntegrationConnection,
+    *,
+    reason_override: str | None = None,
+) -> IntegrationConnectionHealthResponse:
+    status = cast(str, row.status)
+    is_healthy = status in {"active", "pending"}
+    reason = reason_override if reason_override is not None else (None if is_healthy else "Connection not healthy")
+    return IntegrationConnectionHealthResponse(
+        integration_id=cast(uuid.UUID, row.connection_id),
+        provider=str(row.provider),
+        domain=cast(str | None, row.domain),
+        status=status,
+        healthy=is_healthy,
+        reason=reason,
+        last_synced_at_utc=cast(datetime | None, row.last_synced_at_utc),
+        updated_at_utc=cast(datetime | None, row.updated_at_utc),
+    )
+
+
 def _role_counts_for_org(db: Session, *, org_id: uuid.UUID) -> dict[str, int]:
     rows = (
         db.query(User.role)
@@ -1783,21 +1803,7 @@ def list_org_integrations(
         .order_by(IntegrationConnection.updated_at_utc.desc())
         .all()
     )
-    return [
-        IntegrationConnectionHealthResponse(
-            integration_id=row.connection_id,
-            provider=row.provider,
-            domain=row.domain,
-            status=row.status,
-            healthy=row.status in {"active", "pending"},
-            reason=None
-            if row.status in {"active", "pending"}
-            else "Connection not healthy",
-            last_synced_at_utc=row.last_synced_at_utc,
-            updated_at_utc=row.updated_at_utc,
-        )
-        for row in rows
-    ]
+    return [_to_integration_connection_health_response(row) for row in rows]
 
 
 @router.post(
@@ -1853,18 +1859,7 @@ def upsert_org_integration(
         },
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.get(
@@ -1986,18 +1981,7 @@ def get_org_integration(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Integration not found")
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.post(
@@ -2123,18 +2107,7 @@ def patch_org_integration(
         metadata={"updated_fields": sorted(updates.keys()), "status": row.status},
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.post(
@@ -2176,15 +2149,9 @@ def disable_org_integration(
         metadata={"status": row.status},
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=False,
-        reason="Connection disabled",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
+    return _to_integration_connection_health_response(
+        row,
+        reason_override="Connection disabled",
     )
 
 
