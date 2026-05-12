@@ -780,6 +780,12 @@ def capture_telematics_bundle(
         for dataset_name, spec in datasets.items():
             evidence_request = None
             try:
+                artifact_type = cast(str, spec["artifact_type"])
+                schema_name = cast(str, spec["schema_name"])
+                normalizer = cast(
+                    Callable[[dict[str, Any]], dict[str, Any]],
+                    spec["normalizer"],
+                )
                 evidence_request = (
                     db.query(EvidenceRequest)
                     .filter(
@@ -829,28 +835,24 @@ def capture_telematics_bundle(
                 ]
 
                 # 2. Normalize
-                normalizer = cast(
-                    Callable[[dict[str, Any]], dict[str, Any]],
-                    spec["normalizer"],
-                )
                 normalized = [normalizer(r) for r in raw_records]
                 capture_status = "available" if normalized else "unavailable"
                 reason_code = None if normalized else "data_not_found"
 
                 # 3. Validate JSON schema
                 for record in normalized:
-                    validate_payload(record, cast(str, spec["schema_name"]))
+                    validate_payload(record, schema_name)
 
                 # 4. Upload JSON to S3
                 json_bytes = json.dumps(normalized, default=str).encode()
                 json_key_id = _idempotency_key(
-                    workflow_key, dataset_name, spec["artifact_type"], "json"
+                    workflow_key, dataset_name, artifact_type, "json"
                 )
                 json_art_id = _deterministic_uuid(json_key_id)
                 json_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
-                    artifact_type=spec["artifact_type"],
+                    artifact_type=artifact_type,
                     artifact_id=str(json_art_id),
                     extension="json",
                 )
@@ -864,7 +866,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_RECORDED,
                         json_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "json",
                             "s3_key": json_key,
                             "status": "captured",
@@ -878,7 +880,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_HASHED,
                         json_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "json",
                             "sha256": json_sha,
                             "correlation_id": correlation_id or workflow_key,
@@ -889,7 +891,7 @@ def capture_telematics_bundle(
                     create_artifact(
                         db,
                         incident_id=inc_uuid,
-                        artifact_type=spec["artifact_type"],
+                        artifact_type=artifact_type,
                         status="captured",
                         artifact_id=json_art_id,
                         capture_window_start_utc=ws_dt,
@@ -911,13 +913,13 @@ def capture_telematics_bundle(
                     csv_bytes = b""
 
                 csv_key_id = _idempotency_key(
-                    workflow_key, dataset_name, spec["artifact_type"], "csv"
+                    workflow_key, dataset_name, artifact_type, "csv"
                 )
                 csv_art_id = _deterministic_uuid(csv_key_id)
                 csv_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
-                    artifact_type=spec["artifact_type"],
+                    artifact_type=artifact_type,
                     artifact_id=str(csv_art_id),
                     extension="csv",
                 )
@@ -931,7 +933,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_RECORDED,
                         csv_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "csv",
                             "s3_key": csv_key,
                             "status": "captured",
@@ -945,7 +947,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_HASHED,
                         csv_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "csv",
                             "sha256": csv_sha,
                             "correlation_id": correlation_id or workflow_key,
@@ -956,7 +958,7 @@ def capture_telematics_bundle(
                     create_artifact(
                         db,
                         incident_id=inc_uuid,
-                        artifact_type=spec["artifact_type"],
+                        artifact_type=artifact_type,
                         status="captured",
                         artifact_id=csv_art_id,
                         capture_window_start_utc=ws_dt,
@@ -979,13 +981,13 @@ def capture_telematics_bundle(
                     ),
                 )
                 pdf_key_id = _idempotency_key(
-                    workflow_key, dataset_name, spec["artifact_type"], "pdf"
+                    workflow_key, dataset_name, artifact_type, "pdf"
                 )
                 pdf_art_id = _deterministic_uuid(pdf_key_id)
                 pdf_key = s3_key_builder.telematics_key(
                     org_id=org_id,
                     incident_id=incident_id,
-                    artifact_type=spec["artifact_type"],
+                    artifact_type=artifact_type,
                     artifact_id=str(pdf_art_id),
                     extension="pdf",
                 )
@@ -999,7 +1001,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_RECORDED,
                         pdf_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "pdf",
                             "s3_key": pdf_key,
                             "status": "captured",
@@ -1013,7 +1015,7 @@ def capture_telematics_bundle(
                         SystemEventType.ARTIFACT_HASHED,
                         pdf_key_id,
                         {
-                            "artifact_type": spec["artifact_type"],
+                            "artifact_type": artifact_type,
                             "format": "pdf",
                             "sha256": pdf_sha,
                             "correlation_id": correlation_id or workflow_key,
@@ -1024,7 +1026,7 @@ def capture_telematics_bundle(
                     create_artifact(
                         db,
                         incident_id=inc_uuid,
-                        artifact_type=spec["artifact_type"],
+                        artifact_type=artifact_type,
                         status="captured",
                         artifact_id=pdf_art_id,
                         capture_window_start_utc=ws_dt,
@@ -1078,7 +1080,7 @@ def capture_telematics_bundle(
                     SystemEventType.ARTIFACT_RECORDED,
                     _idempotency_key(workflow_key, dataset_name, "unavailable"),
                     {
-                        "artifact_type": spec["artifact_type"],
+                        "artifact_type": artifact_type,
                         "status": "unavailable",
                         "reason": reason,
                         "reason_code": reason_code,
@@ -1095,7 +1097,7 @@ def capture_telematics_bundle(
                     create_artifact(
                         db,
                         incident_id=inc_uuid,
-                        artifact_type=spec["artifact_type"],
+                        artifact_type=artifact_type,
                         status="unavailable",
                         artifact_id=unavailable_art_id,
                         capture_window_start_utc=ws_dt,
