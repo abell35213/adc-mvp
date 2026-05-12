@@ -65,6 +65,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _isoformat_or_none(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
 def _required_transition_capability(
     from_status: str, to_status: str
 ) -> Capability | None:
@@ -105,6 +109,28 @@ def _event_context_payload(
     }
 
 
+def _to_incident_list_item(*, incident, artifact_count: int, captured_count: int, snapshot) -> IncidentListItem:
+    return IncidentListItem(
+        incident_id=incident.incident_id,
+        status=incident.status,
+        severity=incident.severity,
+        adc_vehicle_id=incident.adc_vehicle_id,
+        samsara_vehicle_id=incident.samsara_vehicle_id,
+        adc_driver_id=incident.adc_driver_id,
+        created_at_utc=_isoformat_or_none(incident.created_at_utc),
+        evidence_captured=captured_count,
+        evidence_total=artifact_count,
+        completeness_percent=snapshot.completeness.percent,
+        completeness_status=snapshot.completeness.status,
+        readiness_state=snapshot.readiness.state,
+        blocker_counts={
+            "critical": snapshot.blockers.critical_count,
+            "important": snapshot.blockers.important_count,
+            "optional": snapshot.blockers.optional_count,
+        },
+    )
+
+
 @router.get("/", response_model=list[IncidentListItem])
 def list_incidents_endpoint(
     db: Session = Depends(get_db),
@@ -136,26 +162,11 @@ def list_incidents_endpoint(
             exports=[],
         )
         result.append(
-            IncidentListItem(
-                incident_id=inc.incident_id,
-                status=inc.status,
-                severity=inc.severity,
-                adc_vehicle_id=inc.adc_vehicle_id,
-                samsara_vehicle_id=inc.samsara_vehicle_id,
-                adc_driver_id=inc.adc_driver_id,
-                created_at_utc=inc.created_at_utc.isoformat()
-                if inc.created_at_utc
-                else None,
-                evidence_captured=captured,
-                evidence_total=len(artifacts),
-                completeness_percent=snapshot.completeness.percent,
-                completeness_status=snapshot.completeness.status,
-                readiness_state=snapshot.readiness.state,
-                blocker_counts={
-                    "critical": snapshot.blockers.critical_count,
-                    "important": snapshot.blockers.important_count,
-                    "optional": snapshot.blockers.optional_count,
-                },
+            _to_incident_list_item(
+                incident=inc,
+                artifact_count=len(artifacts),
+                captured_count=captured,
+                snapshot=snapshot,
             )
         )
     return result
