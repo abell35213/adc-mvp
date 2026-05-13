@@ -128,6 +128,30 @@ def _reason_from_normalized_error(normalized_error) -> str:
     return normalized_error.code.lower()
 
 
+def _artifact_event_payload(
+    *,
+    artifact_type: str,
+    payload_format: str,
+    correlation_id: str,
+    operation_id: str | None,
+    s3_key: str | None = None,
+    sha256: str | None = None,
+    status: str = "captured",
+) -> dict[str, str | None]:
+    payload: dict[str, str | None] = {
+        "artifact_type": artifact_type,
+        "format": payload_format,
+        "status": status,
+        "correlation_id": correlation_id,
+        "operation_id": operation_id,
+    }
+    if s3_key is not None:
+        payload["s3_key"] = s3_key
+    if sha256 is not None:
+        payload["sha256"] = sha256
+    return payload
+
+
 @celery_app.task(bind=True, acks_late=True, max_retries=0, soft_time_limit=120, time_limit=150)
 def capture_weather_snapshot(
     self,
@@ -865,27 +889,26 @@ def capture_telematics_bundle(
                         inc_uuid,
                         SystemEventType.ARTIFACT_RECORDED,
                         json_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "json",
-                            "s3_key": json_key,
-                            "status": "captured",
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="json",
+                            s3_key=json_key,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
                     _emit_once(
                         db,
                         inc_uuid,
                         SystemEventType.ARTIFACT_HASHED,
                         json_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "json",
-                            "sha256": json_sha,
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="json",
+                            sha256=json_sha,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
 
                     create_artifact(
@@ -932,27 +955,26 @@ def capture_telematics_bundle(
                         inc_uuid,
                         SystemEventType.ARTIFACT_RECORDED,
                         csv_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "csv",
-                            "s3_key": csv_key,
-                            "status": "captured",
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="csv",
+                            s3_key=csv_key,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
                     _emit_once(
                         db,
                         inc_uuid,
                         SystemEventType.ARTIFACT_HASHED,
                         csv_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "csv",
-                            "sha256": csv_sha,
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="csv",
+                            sha256=csv_sha,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
 
                     create_artifact(
@@ -1000,27 +1022,26 @@ def capture_telematics_bundle(
                         inc_uuid,
                         SystemEventType.ARTIFACT_RECORDED,
                         pdf_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "pdf",
-                            "s3_key": pdf_key,
-                            "status": "captured",
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="pdf",
+                            s3_key=pdf_key,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
                     _emit_once(
                         db,
                         inc_uuid,
                         SystemEventType.ARTIFACT_HASHED,
                         pdf_key_id,
-                        {
-                            "artifact_type": artifact_type,
-                            "format": "pdf",
-                            "sha256": pdf_sha,
-                            "correlation_id": correlation_id or workflow_key,
-                            "operation_id": str(operation.operation_id) if operation is not None else None,
-                        },
+                        _artifact_event_payload(
+                            artifact_type=artifact_type,
+                            payload_format="pdf",
+                            sha256=pdf_sha,
+                            correlation_id=correlation_id or workflow_key,
+                            operation_id=str(operation.operation_id) if operation is not None else None,
+                        ),
                     )
 
                     create_artifact(
