@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -39,7 +40,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 def _require_test_run_access(user: User, *, write: bool = False) -> None:
     capability = Capability.TEST_RUNS_WRITE if write else Capability.TEST_RUNS_READ
-    if not has_capability(user.role, capability):
+    if not has_capability(cast(str | None, user.role), capability):
         raise_api_error(
             status_code=403,
             message="You do not have permission to access test runs.",
@@ -76,7 +77,7 @@ def create_org_test_run(
     run = create_test_incident_run(
         db,
         org_id=_first_org_id(context),
-        actor_user_id=current_user.id,
+        actor_user_id=cast(uuid.UUID, current_user.id),
         incident_id=payload.incident_id,
         findings=payload.findings,
     )
@@ -157,7 +158,7 @@ def complete_org_test_run_step(
             step_status=payload.status,
             result=payload.result,
             source=payload.source,
-            actor_user_id=current_user.id,
+            actor_user_id=cast(uuid.UUID, current_user.id),
         )
     except ValueError as exc:
         if str(exc) == "not_found":

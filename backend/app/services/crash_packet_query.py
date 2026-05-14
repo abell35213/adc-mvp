@@ -360,7 +360,7 @@ def fetch_crash_packet_row(
     driver_obj = None
     if adc_driver_id and org_id:
         try:
-            driver_uuid = _uuid.UUID(adc_driver_id)
+            driver_uuid = _uuid.UUID(str(adc_driver_id))
         except (ValueError, AttributeError):
             driver_uuid = None
         if driver_uuid is not None:
@@ -479,7 +479,7 @@ def fetch_crash_packet_row(
     )
     samsara_links = [
         _build_samsara_clip_link(
-            samsara_vehicle_id=incident.samsara_vehicle_id, artifact=a
+            samsara_vehicle_id=str(incident.samsara_vehicle_id) if incident.samsara_vehicle_id else None, artifact=a
         )
         for a in dashcam_artifacts
     ]

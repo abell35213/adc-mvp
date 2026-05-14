@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import tempfile
 from pathlib import Path
+from typing import cast
 
 from fastapi import (
     APIRouter,
@@ -220,6 +221,48 @@ def _to_test_run_response_row(row) -> TestIncidentRunResponse:
         completed_at_utc=row.completed_at_utc,
         step_results=list(row.step_results_json or []),
         findings=list(row.findings_json or []),
+    )
+
+
+def _to_org_user_summary(row: User) -> OrgUserSummary:
+    return OrgUserSummary(
+        user_id=cast(uuid.UUID, row.id),
+        email=str(row.email),
+        role=normalize_role(cast(str | None, row.role)).value,
+        is_active=bool(row.is_active),
+        created_at_utc=cast(datetime | None, row.created_at_utc),
+    )
+
+
+def _to_org_user_invite_summary(row: OrgUserInvite) -> OrgUserInviteSummary:
+    return OrgUserInviteSummary(
+        invite_id=cast(uuid.UUID, row.invite_id),
+        email=str(row.email),
+        role=normalize_role(cast(str | None, row.role)).value,
+        status=cast(str, row.status),
+        created_at_utc=cast(datetime | None, row.created_at_utc),
+        last_sent_at_utc=cast(datetime | None, row.last_sent_at_utc),
+        deactivated_at_utc=cast(datetime | None, row.deactivated_at_utc),
+    )
+
+
+def _to_integration_connection_health_response(
+    row: IntegrationConnection,
+    *,
+    reason_override: str | None = None,
+) -> IntegrationConnectionHealthResponse:
+    status = cast(str, row.status)
+    is_healthy = status in {"active", "pending"}
+    reason = reason_override if reason_override is not None else (None if is_healthy else "Connection not healthy")
+    return IntegrationConnectionHealthResponse(
+        integration_id=cast(uuid.UUID, row.connection_id),
+        provider=str(row.provider),
+        domain=cast(str | None, row.domain),
+        status=status,
+        healthy=is_healthy,
+        reason=reason,
+        last_synced_at_utc=cast(datetime | None, row.last_synced_at_utc),
+        updated_at_utc=cast(datetime | None, row.updated_at_utc),
     )
 
 
@@ -1573,28 +1616,8 @@ def list_org_users(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgUsersResponse(
-        users=[
-            OrgUserSummary(
-                user_id=row.id,
-                email=row.email,
-                role=normalize_role(row.role).value,
-                is_active=bool(row.is_active),
-                created_at_utc=row.created_at_utc,
-            )
-            for row in users
-        ],
-        invites=[
-            OrgUserInviteSummary(
-                invite_id=row.invite_id,
-                email=row.email,
-                role=normalize_role(row.role).value,
-                status=row.status,
-                created_at_utc=row.created_at_utc,
-                last_sent_at_utc=row.last_sent_at_utc,
-                deactivated_at_utc=row.deactivated_at_utc,
-            )
-            for row in invites
-        ],
+        users=[_to_org_user_summary(row) for row in users],
+        invites=[_to_org_user_invite_summary(row) for row in invites],
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1633,15 +1656,7 @@ def invite_org_user(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=invite.invite_id,
-            email=invite.email,
-            role=normalize_role(invite.role).value,
-            status=invite.status,
-            created_at_utc=invite.created_at_utc,
-            last_sent_at_utc=invite.last_sent_at_utc,
-            deactivated_at_utc=invite.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(invite),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1722,15 +1737,7 @@ def resend_org_user_invite(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=row.invite_id,
-            email=row.email,
-            role=normalize_role(row.role).value,
-            status=row.status,
-            created_at_utc=row.created_at_utc,
-            last_sent_at_utc=row.last_sent_at_utc,
-            deactivated_at_utc=row.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(row),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1773,15 +1780,7 @@ def deactivate_org_user_invite(
     )
     role_counts = _role_counts_for_org(db, org_id=org_id)
     return OrgInviteUserResponse(
-        invite=OrgUserInviteSummary(
-            invite_id=row.invite_id,
-            email=row.email,
-            role=normalize_role(row.role).value,
-            status=row.status,
-            created_at_utc=row.created_at_utc,
-            last_sent_at_utc=row.last_sent_at_utc,
-            deactivated_at_utc=row.deactivated_at_utc,
-        ),
+        invite=_to_org_user_invite_summary(row),
         role_counts=role_counts,
         violations=_role_violations(role_counts=role_counts),
     )
@@ -1804,21 +1803,7 @@ def list_org_integrations(
         .order_by(IntegrationConnection.updated_at_utc.desc())
         .all()
     )
-    return [
-        IntegrationConnectionHealthResponse(
-            integration_id=row.connection_id,
-            provider=row.provider,
-            domain=row.domain,
-            status=row.status,
-            healthy=row.status in {"active", "pending"},
-            reason=None
-            if row.status in {"active", "pending"}
-            else "Connection not healthy",
-            last_synced_at_utc=row.last_synced_at_utc,
-            updated_at_utc=row.updated_at_utc,
-        )
-        for row in rows
-    ]
+    return [_to_integration_connection_health_response(row) for row in rows]
 
 
 @router.post(
@@ -1874,18 +1859,7 @@ def upsert_org_integration(
         },
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.get(
@@ -2007,18 +1981,7 @@ def get_org_integration(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Integration not found")
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.post(
@@ -2144,18 +2107,7 @@ def patch_org_integration(
         metadata={"updated_fields": sorted(updates.keys()), "status": row.status},
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=row.status in {"active", "pending"},
-        reason=None
-        if row.status in {"active", "pending"}
-        else "Connection not healthy",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
-    )
+    return _to_integration_connection_health_response(row)
 
 
 @router.post(
@@ -2197,15 +2149,9 @@ def disable_org_integration(
         metadata={"status": row.status},
     )
 
-    return IntegrationConnectionHealthResponse(
-        integration_id=row.connection_id,
-        provider=row.provider,
-        domain=row.domain,
-        status=row.status,
-        healthy=False,
-        reason="Connection disabled",
-        last_synced_at_utc=row.last_synced_at_utc,
-        updated_at_utc=row.updated_at_utc,
+    return _to_integration_connection_health_response(
+        row,
+        reason_override="Connection disabled",
     )
 
 

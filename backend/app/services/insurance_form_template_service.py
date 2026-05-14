@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid as _uuid
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 
 from sqlalchemy.orm import Session
 
@@ -137,7 +137,8 @@ def update_field(
     )
     if field is None:
         raise LookupError(f"Field {field_id} not found")
-    template = repo.get_template(db, field.template_id)
+    field_row = cast(Any, field)
+    template = repo.get_template(db, cast(_uuid.UUID, field_row.template_id))
     if template is None:
         raise LookupError(f"Template {field.template_id} not found")
     _ensure_draft(template)
@@ -157,16 +158,16 @@ def update_field(
     )
     _validate_spec(merged)
 
-    field.name = merged.name
-    field.label = merged.label
-    field.page = merged.page
-    field.kind = merged.kind
-    field.bbox_json = merged.bbox
-    field.source_path = merged.source_path
-    field.transform = merged.transform
-    field.required = merged.required
-    field.default_value = merged.default_value
-    field.sort_order = merged.sort_order
+    field_row.name = merged.name
+    field_row.label = merged.label
+    field_row.page = merged.page
+    field_row.kind = merged.kind
+    field_row.bbox_json = merged.bbox
+    field_row.source_path = merged.source_path
+    field_row.transform = merged.transform
+    field_row.required = merged.required
+    field_row.default_value = merged.default_value
+    field_row.sort_order = merged.sort_order
     db.commit()
     db.refresh(field)
     return field
@@ -180,7 +181,7 @@ def remove_field(db: Session, *, field_id: _uuid.UUID) -> None:
     )
     if field is None:
         return
-    template = repo.get_template(db, field.template_id)
+    template = repo.get_template(db, cast(_uuid.UUID, cast(Any, field).template_id))
     if template is not None:
         _ensure_draft(template)
     db.delete(field)
@@ -248,7 +249,7 @@ def finalize_template(
             f"Template {template_id} has no fields; add at least one before finalize"
         )
     missing = [
-        f.name for f in fields if f.required and not (f.source_path or "").strip()
+        cast(str, f.name) for f in fields if cast(bool, f.required) and not cast(str, f.source_path or "").strip()
     ]
     if missing:
         raise TemplateNotReadyError(
@@ -267,14 +268,14 @@ def clone_for_edit(
 
     new = repo.create_template(
         db,
-        org_id=src.org_id,
-        name=src.name,
-        carrier=src.carrier,
-        s3_bucket=src.s3_bucket,
-        s3_key=src.s3_key,
-        sha256=src.sha256,
-        page_count=src.page_count,
-        created_by_user_id=src.created_by_user_id,
+        org_id=cast(_uuid.UUID, src.org_id),
+        name=cast(str, src.name),
+        carrier=cast(str | None, src.carrier),
+        s3_bucket=cast(str | None, src.s3_bucket),
+        s3_key=cast(str | None, src.s3_key),
+        sha256=cast(str | None, src.sha256),
+        page_count=cast(int | None, src.page_count),
+        created_by_user_id=cast(_uuid.UUID | None, src.created_by_user_id),
     )
     for f in repo.list_template_fields(db, template_id):
         db.add(

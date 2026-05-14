@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
 from app.core.metrics import MetricNames, increment
-from app.db.models import EvidenceRequest, IntegrationConnection, IntegrationOperation
+from app.db.models import IntegrationConnection
 from app.db.repo.integration_operation_status_history import create_operation_status_history
 
 
@@ -21,13 +22,14 @@ def _safe_duration_ms(start: datetime, end: datetime) -> int:
 def transition_operation_status(
     db: Session,
     *,
-    operation: IntegrationOperation,
+    operation: Any,
     to_status: str,
     message: str | None = None,
     external_reference_id: str | None = None,
 ):
     """Transition an operation status and write history."""
-    from_status = operation.status
+    operation = cast(Any, operation)
+    from_status = str(operation.status)
     if external_reference_id:
         operation.external_reference_id = external_reference_id
         operation.external_reference = external_reference_id
@@ -81,11 +83,12 @@ def transition_operation_status(
 def set_evidence_request_status(
     db: Session,
     *,
-    evidence_request: EvidenceRequest,
+    evidence_request: Any,
     status: str,
     response_payload_json: dict | None = None,
 ):
     """Update evidence request status and timestamps."""
+    evidence_request = cast(Any, evidence_request)
     evidence_request.status = status
     if response_payload_json is not None:
         evidence_request.response_payload_json = response_payload_json
@@ -120,7 +123,7 @@ def mark_connection_intervention_required(
     )
     if domain is not None:
         query = query.filter(IntegrationConnection.domain == domain)
-    connections = query.all()
+    connections = cast(list[Any], query.all())
     for connection in connections:
         config_json = dict(connection.config_json or {})
         config_json["admin_action_required"] = admin_action

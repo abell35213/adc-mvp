@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -105,7 +105,7 @@ class SAMLIdentityProviderStrategy:
 
 def build_user_auth_context(db: Session, user: User) -> UserAuthContext:
     """Resolve org memberships from DB for an authenticated user."""
-    org_ids = tuple(get_user_org_ids(db, user.id))
+    org_ids = tuple(get_user_org_ids(db, cast(uuid.UUID, user.id)))
     if not org_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -121,4 +121,4 @@ def build_driver_auth_context(driver: Driver) -> DriverAuthContext:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Organization membership required",
         )
-    return DriverAuthContext(driver=driver, org_id=driver.org_id)
+    return DriverAuthContext(driver=driver, org_id=cast(uuid.UUID, driver.org_id))

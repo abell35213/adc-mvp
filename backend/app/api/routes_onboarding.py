@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, Depends
 from fastapi import HTTPException
@@ -39,7 +40,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 def _require_onboarding_access(user: User, *, write: bool = False) -> None:
     capability = Capability.ONBOARDING_WRITE if write else Capability.READINESS_VIEW
-    if not has_capability(user.role, capability):
+    if not has_capability(cast(str | None, user.role), capability):
         raise_api_error(
             status_code=403,
             message="You do not have permission to access onboarding endpoints.",
@@ -177,7 +178,7 @@ def mark_org_onboarding_step(
         org_id=org_id,
         step_key=payload.step_key,
         is_completed=payload.completed,
-        actor_user_id=current_user.id,
+        actor_user_id=cast(uuid.UUID, current_user.id),
         source=payload.source,
     )
     emit_standard_audit_event(

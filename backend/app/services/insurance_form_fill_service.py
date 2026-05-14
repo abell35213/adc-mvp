@@ -27,7 +27,7 @@ import logging
 import uuid as _uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from sqlalchemy.orm import Session
 
@@ -146,17 +146,20 @@ def _resolve_fields(
     out: list[ResolvedField] = []
     for f in fields:
         value: Any
-        if f.source_path:
-            value = resolve_with_transform(root, f.source_path, f.transform)
+        source_path = cast(str | None, f.source_path)
+        transform = cast(str | None, f.transform)
+        default_value = cast(Any, f.default_value)
+        if source_path:
+            value = resolve_with_transform(root, source_path, transform or "")
             if value is None and f.default_value is not None:
-                value = f.default_value
+                value = default_value
         else:
-            value = f.default_value
+            value = default_value
         out.append(
             ResolvedField(
-                name=f.name,
-                label=f.label,
-                source_path=f.source_path,
+                name=cast(str, f.name),
+                label=cast(str | None, f.label),
+                source_path=source_path,
                 value=value,
                 required=bool(f.required),
             )
@@ -225,7 +228,7 @@ def fill_form_for_incident(
         for r in resolved
     ]
 
-    payload_hash = _payload_hash(template_id, template.version, serialized)
+    payload_hash = _payload_hash(template_id, cast(int, template.version), serialized)
 
     existing = fillings_repo.find_existing(
         db,

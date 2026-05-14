@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
@@ -13,7 +15,9 @@ from app.api.schemas import (
     ImportJobStatus,
     VehicleImportJobCreateRequest,
     VehicleImportJobCreateResponse,
+    VehicleImportJobOutcome,
     VehicleImportJobResponse,
+    VehicleImportJobSummary,
 )
 from app.core.deps import get_current_user
 from app.db.models import User, VehicleImportJob
@@ -31,7 +35,7 @@ def _first_org_id(user_context) -> uuid.UUID:
 
 def _require_vehicle_import_access(user: User, *, write: bool = False) -> None:
     capability = Capability.IMPORTS_WRITE if write else Capability.IMPORTS_READ
-    if not has_capability(user.role, capability):
+    if not has_capability(cast(str | None, user.role), capability):
         raise_api_error(
             status_code=403,
             message="You do not have permission to manage vehicle imports.",
@@ -59,22 +63,23 @@ def _run_vehicle_import_background(
 
 
 def _to_vehicle_import_job_response(job: VehicleImportJob) -> VehicleImportJobResponse:
+    status = cast(ImportJobStatus, job.status)
     return VehicleImportJobResponse(
-        job_id=job.job_id,
-        provider=job.provider,
-        status=job.status,
-        started_at_utc=job.started_at_utc,
-        completed_at_utc=job.completed_at_utc,
-        records_total=job.records_total,
-        records_processed=job.records_processed,
-        records_imported=job.records_imported,
-        records_updated=job.records_updated,
-        records_skipped=job.records_skipped,
-        records_errored=job.records_errored,
-        warnings=job.warnings_json or [],
-        outcomes=job.outcomes_json or {},
-        summary=job.summary_json or {},
-        error_message=job.error_message,
+        job_id=cast(uuid.UUID, job.job_id),
+        provider=cast(str, job.provider),
+        status=status,
+        started_at_utc=cast(datetime | None, job.started_at_utc),
+        completed_at_utc=cast(datetime | None, job.completed_at_utc),
+        records_total=cast(int, job.records_total),
+        records_processed=cast(int, job.records_processed),
+        records_imported=cast(int, job.records_imported),
+        records_updated=cast(int, job.records_updated),
+        records_skipped=cast(int, job.records_skipped),
+        records_errored=cast(int, job.records_errored),
+        warnings=cast(list[str], job.warnings_json or []),
+        outcomes=VehicleImportJobOutcome.model_validate(job.outcomes_json or {}),
+        summary=VehicleImportJobSummary.model_validate(job.summary_json or {}),
+        error_message=cast(str | None, job.error_message),
     )
 
 
@@ -98,13 +103,16 @@ def create_org_vehicle_import_job(
     background_tasks.add_task(
         _run_vehicle_import_background,
         db,
-        job_id=job.job_id,
+        job_id=cast(uuid.UUID, job.job_id),
         org_id=org_id,
         csv_content=payload.csv_content,
         header_mapping=payload.header_mapping,
         inactive_unit_numbers=payload.inactive_unit_numbers,
     )
-    return VehicleImportJobCreateResponse(job_id=job.job_id, status=job.status)
+    return VehicleImportJobCreateResponse(
+        job_id=cast(uuid.UUID, job.job_id),
+        status=cast(ImportJobStatus, job.status),
+    )
 
 
 @router.get(
@@ -125,7 +133,10 @@ def list_org_vehicle_import_jobs(
     query = db.query(VehicleImportJob).filter(VehicleImportJob.org_id == _first_org_id(context))
     if status is not None:
         query = query.filter(VehicleImportJob.status == status)
-    rows = query.order_by(VehicleImportJob.created_at_utc.desc()).offset(offset).limit(limit).all()
+    rows = cast(
+        list[VehicleImportJob],
+        query.order_by(VehicleImportJob.created_at_utc.desc()).offset(offset).limit(limit).all(),
+    )
     return [_to_vehicle_import_job_response(row) for row in rows]
 
 
@@ -142,11 +153,15 @@ def get_org_vehicle_import_job(
 ):
     _require_vehicle_import_access(current_user)
     context = build_user_auth_context(db, current_user)
-    row = (
+    row = cast(
+        VehicleImportJob | None,
+        (
         db.query(VehicleImportJob)
         .filter(VehicleImportJob.job_id == job_id, VehicleImportJob.org_id == _first_org_id(context))
         .first()
+        ),
     )
     if row is None:
         raise_api_error(status_code=404, message="Import job not found.", code="RESOURCE_NOT_FOUND")
+    row = cast(VehicleImportJob, row)
     return _to_vehicle_import_job_response(row)

@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import boto3
 from fastapi import HTTPException, status
@@ -75,8 +76,9 @@ def issue_driver_artifact_upload_url(
         incident_id=incident_id,
         driver=driver,
     )
+    incident_row = cast(Any, incident)
 
-    validate_incident_transition(current_status=incident.status, next_status="evidence_capturing", actor="driver_api")
+    validate_incident_transition(current_status=cast(str, incident_row.status), next_status="evidence_capturing", actor="driver_api")
 
     normalized_artifact_type = artifact_type.strip().lower()
     if normalized_artifact_type not in ALLOWED_ARTIFACT_CONTENT_TYPES:
@@ -99,16 +101,17 @@ def issue_driver_artifact_upload_url(
         )
 
     artifact = Artifact(
-        org_id=incident.org_id,
-        incident_id=incident.incident_id,
+        org_id=cast(uuid.UUID, incident_row.org_id),
+        incident_id=cast(uuid.UUID, incident_row.incident_id),
         artifact_type=normalized_artifact_type,
         status="pending",
         capture_window_end_utc=datetime.now(timezone.utc),
     )
     ext = _file_extension(file_name)
-    artifact.s3_bucket = settings.S3_ARTIFACTS_BUCKET
-    artifact.s3_key = (
-        f"org/{incident.org_id}/incidents/{incident.incident_id}/"
+    artifact_row = cast(Any, artifact)
+    artifact_row.s3_bucket = settings.S3_ARTIFACTS_BUCKET
+    artifact_row.s3_key = (
+        f"org/{incident_row.org_id}/incidents/{incident_row.incident_id}/"
         f"driver/{normalized_artifact_type}/{artifact.artifact_id}.{ext}"
     )
 
@@ -169,10 +172,11 @@ def complete_driver_artifact_upload(
             detail=f"Artifact is not completable from status={artifact.status}",
         )
 
-    artifact.status = "captured"
-    artifact.byte_size = byte_size
-    artifact.sha256 = sha256
-    artifact.uploaded_at_utc = datetime.now(timezone.utc)
+    artifact_row = cast(Any, artifact)
+    artifact_row.status = "captured"
+    artifact_row.byte_size = byte_size
+    artifact_row.sha256 = sha256
+    artifact_row.uploaded_at_utc = datetime.now(timezone.utc)
     db.commit()
     db.refresh(artifact)
     return artifact

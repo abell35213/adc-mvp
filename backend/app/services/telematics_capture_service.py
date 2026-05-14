@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 from datetime import timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -73,7 +74,7 @@ def _resolve_external_mappings(db: Session, *, incident: Incident) -> dict[str, 
         )
         if driver_mapping is not None:
             resolved_driver = driver_mapping.external_reference
-    return {"vehicle_id": resolved_vehicle, "driver_id": resolved_driver}
+    return {"vehicle_id": cast(str | None, resolved_vehicle), "driver_id": cast(str | None, resolved_driver)}
 
 
 def queue_telematics_capture(

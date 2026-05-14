@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from threading import Lock
+from typing import Any, Protocol
 
 from app.core.config import settings
 
@@ -36,6 +37,24 @@ class MetricNames:
     CELERY_TASK_FAILURES = "celery.task.failures"
 
 
+
+
+class _CounterLike(Protocol):
+    def inc(self, amount: int) -> None: ...
+
+
+class _HistogramLike(Protocol):
+    def observe(self, value: float) -> None: ...
+
+
+class _OtelCounterLike(Protocol):
+    def add(self, amount: int) -> None: ...
+
+
+class _OtelHistogramLike(Protocol):
+    def record(self, value: int) -> None: ...
+
+
 class _InMemoryExporter:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -61,8 +80,8 @@ class _PrometheusExporter:
 
         self._counter_cls = Counter
         self._histogram_cls = Histogram
-        self._counters: dict[str, object] = {}
-        self._histograms: dict[str, object] = {}
+        self._counters: dict[str, _CounterLike] = {}
+        self._histograms: dict[str, _HistogramLike] = {}
         self._available = True
 
     def increment(self, metric: str, value: int) -> int:
@@ -99,8 +118,8 @@ class _OtelExporter:
             return
 
         self._meter = otel_metrics.get_meter("adc_mvp")
-        self._counters: dict[str, object] = {}
-        self._histograms: dict[str, object] = {}
+        self._counters: dict[str, _OtelCounterLike] = {}
+        self._histograms: dict[str, _OtelHistogramLike] = {}
         self._available = True
 
     def increment(self, metric: str, value: int) -> int:
@@ -149,7 +168,7 @@ class _DatadogExporter:
         self._statsd.timing(metric, elapsed_ms)
 
 
-def _build_exporter():
+def _build_exporter() -> Any:
     backend = settings.METRICS_BACKEND.strip().lower()
     if backend == "prometheus":
         return _PrometheusExporter()

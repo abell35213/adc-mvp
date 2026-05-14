@@ -55,6 +55,16 @@ router = APIRouter()
 STABLE_EXPORT_CONTENT_KINDS: tuple[str, ...] = ("summary_pdf", "raw_telemetry", "photo")
 
 
+def _to_create_export_enqueue_response(export) -> CreateExportEnqueueResponse:
+    return CreateExportEnqueueResponse(
+        export_id=export.export_id,
+        incident_id=export.incident_id,
+        export_type=export.export_type,
+        status=export.status,
+        created_at_utc=export.created_at_utc,
+    )
+
+
 @router.post("/", response_model=CreateExportEnqueueResponse, status_code=201)
 def create_export_endpoint(
     body: CreateExportRequest,
@@ -125,13 +135,7 @@ def create_export_endpoint(
         if existing_event and (existing_event.payload or {}).get("export_id"):
             prior = get_export(db, uuid.UUID(str(existing_event.payload["export_id"])))
             if prior is not None:
-                return CreateExportEnqueueResponse(
-                    export_id=prior.export_id,
-                    incident_id=prior.incident_id,
-                    export_type=prior.export_type,
-                    status=prior.status,
-                    created_at_utc=prior.created_at_utc,
-                )
+                return _to_create_export_enqueue_response(prior)
 
     export = create_export(
         db,
@@ -196,13 +200,7 @@ def create_export_endpoint(
         },
     )
 
-    return CreateExportEnqueueResponse(
-        export_id=export.export_id,
-        incident_id=export.incident_id,
-        export_type=export.export_type,
-        status=export.status,
-        created_at_utc=export.created_at_utc,
-    )
+    return _to_create_export_enqueue_response(export)
 
 
 @router.post("/{export_id}/retry", response_model=CreateExportEnqueueResponse, status_code=201)
@@ -307,13 +305,7 @@ def retry_export_endpoint(
             "actor": {"type": "system", "id": "api"},
         },
     )
-    return CreateExportEnqueueResponse(
-        export_id=new_export.export_id,
-        incident_id=new_export.incident_id,
-        export_type=new_export.export_type,
-        status=new_export.status,
-        created_at_utc=new_export.created_at_utc,
-    )
+    return _to_create_export_enqueue_response(new_export)
 
 
 def _get_export_owner_org_id(db: Session, export):

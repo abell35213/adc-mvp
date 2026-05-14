@@ -7,6 +7,7 @@ import io
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any, Sequence, cast
 
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,7 @@ def _normalize_header(name: str) -> str:
     return "".join(ch for ch in name.strip().lower() if ch.isalnum() or ch == "_")
 
 
-def _build_header_map(fieldnames: list[str], explicit: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+def _build_header_map(fieldnames: Sequence[str], explicit: dict[str, str]) -> tuple[dict[str, str], list[str]]:
     warnings: list[str] = []
     normalized_to_original = {_normalize_header(name): name for name in fieldnames}
 
@@ -100,7 +101,7 @@ def run_vehicle_import_job(
     header_mapping: dict[str, str],
     inactive_unit_numbers: set[str],
 ) -> VehicleImportJob:
-    job = db.query(VehicleImportJob).filter(VehicleImportJob.job_id == job_id, VehicleImportJob.org_id == org_id).first()
+    job = cast(Any, db.query(VehicleImportJob).filter(VehicleImportJob.job_id == job_id, VehicleImportJob.org_id == org_id).first())
     if job is None:
         raise ValueError("job_not_found")
 
@@ -116,7 +117,7 @@ def run_vehicle_import_job(
         resolved_headers, mapping_warnings = _build_header_map(reader.fieldnames, header_mapping)
         warnings = list(mapping_warnings)
 
-        outcomes = {"imported": [], "updated": [], "skipped": [], "errored": []}
+        outcomes: dict[str, list[str]] = {"imported": [], "updated": [], "skipped": [], "errored": []}
         summary = {
             "missing_qr_count": 0,
             "missing_provider_mapping_count": 0,
@@ -124,26 +125,20 @@ def run_vehicle_import_job(
             "inactive_count": 0,
         }
 
-        existing_by_unit = {
-            row.unit_number.lower(): row
-            for row in db.query(OrgVehicleRegistry).filter(OrgVehicleRegistry.org_id == org_id).all()
-        }
-        unit_to_qr = {
-            row.adc_vehicle_id.lower()
-            for row in db.query(VehicleQrToken)
+        existing_rows = cast(list[Any], db.query(OrgVehicleRegistry).filter(OrgVehicleRegistry.org_id == org_id).all())
+        existing_by_unit = {str(row.unit_number).lower(): row for row in existing_rows}
+        qr_rows = cast(list[Any], db.query(VehicleQrToken)
             .filter(VehicleQrToken.org_id == org_id, VehicleQrToken.status == "active")
-            .all()
-        }
-        provider_mapped_units = {
-            row.internal_entity_id.lower()
-            for row in db.query(ExternalMapping)
+            .all())
+        unit_to_qr = {str(row.adc_vehicle_id).lower() for row in qr_rows}
+        mapping_rows = cast(list[Any], db.query(ExternalMapping)
             .filter(
                 ExternalMapping.org_id == org_id,
                 ExternalMapping.internal_entity_type == "vehicle",
                 ExternalMapping.status == "active",
             )
-            .all()
-        }
+            .all())
+        provider_mapped_units = {str(row.internal_entity_id).lower() for row in mapping_rows}
 
         seen_units: set[str] = set()
         vin_to_units: defaultdict[str, set[str]] = defaultdict(set)

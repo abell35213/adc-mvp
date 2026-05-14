@@ -9,7 +9,7 @@ import uuid as _uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from app.core.metrics import increment
 from app.tasks.celery_app import celery_app
@@ -462,7 +462,7 @@ def build_export(
             }
 
         if export_row.status == "processing":
-            existing_attempt = (export_row.options_json or {}).get("attempt_id")
+            existing_attempt = cast(dict[str, Any], export_row.options_json or {}).get("attempt_id")
             if existing_attempt and existing_attempt != attempt_id:
                 return {
                     "export_id": export_id,
@@ -484,7 +484,7 @@ def build_export(
             error_message=None,
             options_json=options,
         )
-        export_row.options_json = options
+        cast(Any, export_row).options_json = options
         emit_audit_event(
             db,
             org_id=_uuid.UUID(org_id),

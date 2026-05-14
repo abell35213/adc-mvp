@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
@@ -13,10 +14,12 @@ from app.api.schemas import (
     DriverImportJobCreateRequest,
     DriverImportJobCreateResponse,
     DriverImportJobResponse,
+    DriverImportJobOutcome,
+    DriverImportJobSummary,
     ImportJobStatus,
 )
 from app.core.deps import get_current_user
-from app.db.models import DriverImportJob, User
+from app.db.models import DriverImportJob
 from app.db.session import get_db
 from app.security.authn import build_user_auth_context
 from app.security.permissions import Capability, has_capability
@@ -30,7 +33,7 @@ def _first_org_id(user_context) -> uuid.UUID:
     return user_context.org_ids[0]
 
 
-def _require_driver_import_access(user: User, *, write: bool = False) -> None:
+def _require_driver_import_access(user: Any, *, write: bool = False) -> None:
     capability = Capability.IMPORTS_WRITE if write else Capability.IMPORTS_READ
     if not has_capability(user.role, capability):
         raise_api_error(
@@ -67,7 +70,10 @@ def _run_driver_import_background(
     )
 
 
-def _to_driver_import_job_response(job: DriverImportJob) -> DriverImportJobResponse:
+def _to_driver_import_job_response(job: Any) -> DriverImportJobResponse:
+    outcomes = cast(DriverImportJobOutcome, job.outcomes_json or {})
+    summary = cast(DriverImportJobSummary, job.summary_json or {})
+
     return DriverImportJobResponse(
         job_id=job.job_id,
         provider=job.provider,
@@ -81,8 +87,8 @@ def _to_driver_import_job_response(job: DriverImportJob) -> DriverImportJobRespo
         records_skipped=job.records_skipped,
         records_errored=job.records_errored,
         warnings=job.warnings_json or [],
-        outcomes=job.outcomes_json or {},
-        summary=job.summary_json or {},
+        outcomes=outcomes,
+        summary=summary,
         error_message=job.error_message,
     )
 
@@ -98,12 +104,13 @@ def create_org_driver_import_job(
     payload: DriverImportJobCreateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Any = Depends(get_current_user),
 ):
     _require_driver_import_access(current_user, write=True)
     context = build_user_auth_context(db, current_user)
     org_id = _first_org_id(context)
     job = create_driver_import_job(db, org_id=org_id, provider=payload.provider)
+    job = cast(Any, job)
     background_tasks.add_task(
         _run_driver_import_background,
         db,
@@ -127,14 +134,14 @@ def list_org_driver_import_jobs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Any = Depends(get_current_user),
 ):
     _require_driver_import_access(current_user)
     context = build_user_auth_context(db, current_user)
     query = db.query(DriverImportJob).filter(DriverImportJob.org_id == _first_org_id(context))
     if status is not None:
         query = query.filter(DriverImportJob.status == status)
-    rows = query.order_by(DriverImportJob.created_at_utc.desc()).offset(offset).limit(limit).all()
+    rows = cast(list[Any], query.order_by(DriverImportJob.created_at_utc.desc()).offset(offset).limit(limit).all())
     return [_to_driver_import_job_response(row) for row in rows]
 
 
@@ -147,15 +154,15 @@ def list_org_driver_import_jobs(
 def get_org_driver_import_job(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Any = Depends(get_current_user),
 ):
     _require_driver_import_access(current_user)
     context = build_user_auth_context(db, current_user)
-    row = (
+    row = cast(Any, (
         db.query(DriverImportJob)
         .filter(DriverImportJob.job_id == job_id, DriverImportJob.org_id == _first_org_id(context))
         .first()
-    )
+    ))
     if row is None:
         raise_api_error(status_code=404, message="Import job not found.", code="RESOURCE_NOT_FOUND")
     return _to_driver_import_job_response(row)

@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -129,7 +130,7 @@ def require_user_role(*allowed_roles: str) -> Callable[[User], User]:
     allowed = {normalize_role(role) for role in allowed_roles}
 
     def _require_role(current_user: User = Depends(get_current_user)) -> User:
-        if normalize_role(current_user.role) not in allowed:
+        if normalize_role(cast(Any, current_user).role) not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient role",
@@ -150,7 +151,7 @@ def require_capabilities(*required_capabilities: Capability | str) -> Callable[[
     }
 
     def _require_capabilities(current_user: User = Depends(get_current_user)) -> User:
-        granted = get_user_capabilities(current_user.role)
+        granted = get_user_capabilities(cast(Any, current_user).role)
         if not required.issubset(granted):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -178,7 +179,7 @@ def get_current_user_org_ids(
     current_user: User = Depends(get_current_user),
 ) -> list[uuid.UUID]:
     """Return org IDs for the current user and require at least one membership."""
-    org_ids = get_user_org_ids(db, current_user.id)
+    org_ids = get_user_org_ids(db, cast(uuid.UUID, current_user.id))
     if not org_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

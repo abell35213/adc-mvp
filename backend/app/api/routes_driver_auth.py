@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import time
+from typing import Any, cast
 import uuid
 from datetime import datetime, timezone
 
@@ -71,7 +72,7 @@ redis.call('EXPIRE', key .. ':seq', ttl_seconds)
 return {1, 0}
 """
 
-_rate_limit_script_sha: str | None = None
+_rate_limit_script_sha: Any = None
 _redis_client: redis.Redis | None = None
 
 
@@ -103,10 +104,10 @@ def _run_rate_limit_script(redis_client: redis.Redis, redis_key: str, max_calls:
     if _rate_limit_script_sha is None:
         _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
     try:
-        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+        return redis_client.evalsha(cast(str, _rate_limit_script_sha), 1, redis_key, *args)
     except redis.exceptions.NoScriptError:
         _rate_limit_script_sha = redis_client.script_load(_RATE_LIMIT_SCRIPT)
-        return redis_client.evalsha(_rate_limit_script_sha, 1, redis_key, *args)
+        return redis_client.evalsha(cast(str, _rate_limit_script_sha), 1, redis_key, *args)
 
 
 def _enforce_rate_limit(bucket_name: str, phone_e164: str, max_calls: int):
@@ -247,6 +248,7 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     else:
         expires = challenge.expires_at_utc
     if now > expires:
+        challenge = cast(Any, challenge)
         challenge.status = "expired"
         db.commit()
         emit_audit_event(
@@ -356,7 +358,7 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     access_token, refresh_token, _sid = create_session(
         db,
         user_id=None,
-        org_id=driver.org_id,
+        org_id=cast(uuid.UUID | None, driver.org_id),
         client_type="driver_mobile",
         device_descriptor=body.device_descriptor,
         token_subject=str(driver.driver_id),
@@ -373,7 +375,7 @@ def verify_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db)):
     )
     emit_audit_event(
         db,
-        org_id=driver.org_id,
+        org_id=cast(uuid.UUID | None, driver.org_id),
         actor_type="driver",
         actor_id=str(driver.driver_id),
         action="auth.driver_login",

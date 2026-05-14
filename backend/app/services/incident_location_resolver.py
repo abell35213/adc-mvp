@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -64,7 +64,7 @@ def _resolve_device_location(db: Session, *, incident_id: uuid.UUID) -> dict[str
     if event is None:
         return None
 
-    payload = event.payload or {}
+    payload: dict[str, Any] = dict(cast(Any, event.payload) or {})
     maybe_device_location = payload.get("device_location") if isinstance(payload, dict) else None
     coords = _extract_lat_lon(maybe_device_location)
     if coords is None:

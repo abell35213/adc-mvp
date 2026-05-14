@@ -6,6 +6,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -141,7 +142,7 @@ def rotate_refresh_token(
         # Reuse of a previously-consumed/revoked refresh token is treated as a
         # likely token-theft signal: revoke the entire session so any sibling
         # refresh-token chain is invalidated as well.
-        revoke_session(db, token_row.session_id)
+        revoke_session(db, cast(uuid.UUID, token_row.session_id))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token already used")
 
     if token_row.expires_at < now:
@@ -189,6 +190,7 @@ def revoke_session(db: Session, session_id: uuid.UUID) -> None:
     session = db.query(SessionRecord).filter(SessionRecord.session_id == session_id).first()
     if session is None:
         return
+    session = cast(Any, session)
     session.revoked_at = now
     (
         db.query(RefreshToken)

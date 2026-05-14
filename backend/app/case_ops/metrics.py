@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any, cast
 from typing import Literal
 
 from sqlalchemy.orm import Session
@@ -109,20 +110,20 @@ def query_incident_queue(
     artifacts_by_incident: dict[uuid.UUID, list[Artifact]] = {}
     events_by_incident: dict[uuid.UUID, list[Event]] = {}
     exports_by_incident: dict[uuid.UUID, list[Export]] = {}
-    for artifact in db.query(Artifact).filter(Artifact.incident_id.in_(incident_ids)).all():
-        artifacts_by_incident.setdefault(artifact.incident_id, []).append(artifact)
-    for event in db.query(Event).filter(Event.incident_id.in_(incident_ids)).all():
-        events_by_incident.setdefault(event.incident_id, []).append(event)
-    for export in db.query(Export).filter(Export.incident_id.in_(incident_ids)).all():
-        exports_by_incident.setdefault(export.incident_id, []).append(export)
+    for artifact in cast(list[Any], db.query(Artifact).filter(Artifact.incident_id.in_(incident_ids)).all()):
+        artifacts_by_incident.setdefault(cast(uuid.UUID, artifact.incident_id), []).append(artifact)
+    for event in cast(list[Any], db.query(Event).filter(Event.incident_id.in_(incident_ids)).all()):
+        events_by_incident.setdefault(cast(uuid.UUID, event.incident_id), []).append(event)
+    for export in cast(list[Any], db.query(Export).filter(Export.incident_id.in_(incident_ids)).all()):
+        exports_by_incident.setdefault(cast(uuid.UUID, export.incident_id), []).append(export)
 
     queue_items: list[dict] = []
     for incident in incidents:
         snapshot = _build_snapshot(
             incident=incident,
-            artifacts=artifacts_by_incident.get(incident.incident_id, []),
-            events=events_by_incident.get(incident.incident_id, []),
-            exports=exports_by_incident.get(incident.incident_id, []),
+            artifacts=artifacts_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
+            events=events_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
+            exports=exports_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
         )
         queue_item = _build_queue_item(incident=incident, snapshot=snapshot)
         if _matches_blocker_filter(snapshot=snapshot, blockers=blockers):

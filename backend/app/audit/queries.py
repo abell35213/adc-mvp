@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -109,6 +110,7 @@ def update_audit_event_retention(
     if audit_event is None:
         return None
 
+    audit_event = cast(Any, audit_event)
     audit_event.retention_expires_at_utc = retention.retention_expires_at_utc
     audit_event.retention_purged_at_utc = retention.retention_purged_at_utc
     db.commit()

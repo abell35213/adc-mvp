@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any, Literal, Optional
+from typing import cast, Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -815,7 +815,7 @@ class ImportJobResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class IntegrationValidationResultResponse(BaseModel):
+class IntegrationValidationSummaryResponse(BaseModel):
     integration_key: ShortText
     status: OnboardingReadinessStepStatus
     checked_at_utc: datetime
@@ -928,7 +928,7 @@ class OrgLaunchReadinessResponse(BaseModel):
     steps: list[ReadinessStepResponse] = Field(default_factory=list)
     blockers: list[ReadinessBlockerResponse] = Field(default_factory=list)
     import_jobs: list[ImportJobResponse] = Field(default_factory=list)
-    integration_validations: list[IntegrationValidationResultResponse] = Field(
+    integration_validations: list[IntegrationValidationSummaryResponse] = Field(
         default_factory=list
     )
     vehicle_qr_deployment: Optional[VehicleQrDeploymentResponse] = None
@@ -1182,15 +1182,15 @@ class RetryExportRequest(BaseModel):
     def validate_retry_options(self):
         if self.export_type is None and self.options_json is None:
             return self
-        target_export_type = self.export_type
+        target_export_type: ExportType | None = self.export_type
         if target_export_type is None and self.options_json:
             requested_profile_id = self.options_json.get(
                 "profile_id"
             ) or self.options_json.get("profile")
             if requested_profile_id:
-                target_export_type = get_packet_profile(
+                target_export_type = cast(ExportType, get_packet_profile(
                     str(requested_profile_id)
-                ).export_type
+                ).export_type)
         if target_export_type is None:
             return self
 
@@ -1405,7 +1405,8 @@ class DriverInstructionStepResponse(BaseModel):
     body: LongText
 
 
-class DriverInstructionSetResponse(DriverInstructionSetRequest):
+class DriverInstructionSetResponse(BaseModel):
+    scope: InstructionScope
     instruction_set_id: uuid.UUID
     require_ack: Optional[bool] = None
     steps: list[DriverInstructionStep | DriverInstructionStepResponse] = Field(

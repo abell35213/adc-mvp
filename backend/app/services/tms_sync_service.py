@@ -22,7 +22,7 @@ import logging
 import uuid as _uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable, cast
 
 from sqlalchemy.orm import Session
 
@@ -128,11 +128,11 @@ def _entries_for_entity(
 ) -> list[FieldMapEntry]:
     return [
         FieldMapEntry(
-            source_table=fm.source_table,
-            source_column=fm.source_column,
-            target_field=fm.target_field,
-            transform=fm.transform,
-            is_key=fm.is_key,
+            source_table=cast(str, fm.source_table),
+            source_column=cast(str, fm.source_column),
+            target_field=cast(str, fm.target_field),
+            transform=cast(str, fm.transform),
+            is_key=cast(bool, fm.is_key),
         )
         for fm in field_maps
         if fm.entity == entity
@@ -297,6 +297,7 @@ def sync_connection(
     )
     if conn is None:
         raise LookupError(f"TmsConnection {tms_connection_id} not found")
+    conn_row = cast(Any, conn)
 
     result = ConnectionSyncResult(
         tms_connection_id=tms_connection_id, started_at_utc=started
@@ -311,38 +312,38 @@ def sync_connection(
     if factory is None:
         resolver = secret_resolver or _default_secret_resolver
         try:
-            connection_string = resolver(conn.odbc_secret_ref)
+            connection_string = resolver(cast(str, conn_row.odbc_secret_ref))
         except Exception as exc:  # noqa: BLE001
-            conn.status = "error"
-            conn.last_error = f"secret_resolution_failed: {exc}"
+            conn_row.status = "error"
+            conn_row.last_error = f"secret_resolution_failed: {exc}"
             result.finished_at_utc = datetime.now(timezone.utc)
-            result.error = conn.last_error
+            result.error = cast(str | None, conn_row.last_error)
             db.commit()
             return result
         if not connection_string:
-            conn.status = "error"
-            conn.last_error = "secret_resolution_returned_empty"
+            conn_row.status = "error"
+            conn_row.last_error = "secret_resolution_returned_empty"
             result.finished_at_utc = datetime.now(timezone.utc)
-            result.error = conn.last_error
+            result.error = cast(str | None, conn_row.last_error)
             db.commit()
             return result
         factory = make_pyodbc_factory(connection_string)
 
     trailer_res = _sync_trailers(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "trailer"),
     )
     maint_res = _sync_maintenance(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "maintenance_record"),
     )
     dispatch_res = _sync_simple_entity(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "dispatch_instruction"),
         entity_name="dispatch_instruction",
@@ -350,7 +351,7 @@ def sync_connection(
     )
     weigh_res = _sync_simple_entity(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "weigh_station_report"),
         entity_name="weigh_station_report",
@@ -358,7 +359,7 @@ def sync_connection(
     )
     dock_res = _sync_simple_entity(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "loading_dock_report"),
         entity_name="loading_dock_report",
@@ -366,7 +367,7 @@ def sync_connection(
     )
     duh_res = _sync_simple_entity(
         db,
-        org_id=conn.org_id,
+        org_id=cast(_uuid.UUID, conn_row.org_id),
         factory=factory,
         entries=_entries_for_entity(field_maps, "driver_unit_history"),
         entity_name="driver_unit_history",
@@ -386,13 +387,13 @@ def sync_connection(
 
     entity_errors = [r.error for r in result.entity_results if r.error]
     if entity_errors:
-        conn.status = "error"
-        conn.last_error = "; ".join(entity_errors)
-        result.error = conn.last_error
+        conn_row.status = "error"
+        conn_row.last_error = "; ".join(entity_errors)
+        result.error = cast(str | None, conn_row.last_error)
     else:
-        conn.status = "active"
-        conn.last_error = None
-    conn.last_synced_at_utc = finished
+        conn_row.status = "active"
+        conn_row.last_error = None
+    conn_row.last_synced_at_utc = finished
     db.commit()
 
     return result
@@ -410,5 +411,5 @@ def sync_org(
         .all()
     )
     return [
-        sync_connection(db, tms_connection_id=c.id) for c in connections
+        sync_connection(db, tms_connection_id=cast(_uuid.UUID, c.id)) for c in connections
     ]

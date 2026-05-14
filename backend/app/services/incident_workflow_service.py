@@ -7,6 +7,7 @@ import hmac
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, cast
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -133,13 +134,13 @@ def initiate_driver_incident(
             .all()
         )
         for prior in prior_events:
-            payload = prior.payload or {}
+            payload: dict[str, Any] = cast(dict[str, Any], prior.payload or {})
             if payload.get("idempotency_key_hash") == key_hash:
                 return IncidentInitiationResult(incident=incident, protocol_already_started=True)
 
     already_started = _protocol_event_exists(
         db,
-        incident_id=incident.incident_id,
+        incident_id=cast(uuid.UUID, incident.incident_id),
         driver_id=driver_id,
     )
     if already_started:
@@ -206,8 +207,9 @@ def transition_incident_to_accident_occurred(
     from app.domain.system_event_types import SystemEventType
 
     if incident.status != "accident_occurred":
-        prior_status = incident.status
-        incident.status = "accident_occurred"
+        incident_row = cast(Any, incident)
+        prior_status = cast(str, incident_row.status)
+        incident_row.status = "accident_occurred"
         db.commit()
         db.refresh(incident)
         db.add(
@@ -240,11 +242,11 @@ def transition_incident_to_accident_occurred(
             get_delivery_for_incident,
         )
 
-        if get_delivery_for_incident(db, incident_id=incident.incident_id) is None:
+        if get_delivery_for_incident(db, incident_id=cast(uuid.UUID, incident.incident_id)) is None:
             create_delivery(
                 db,
-                incident_id=incident.incident_id,
-                org_id=incident.org_id,
+                incident_id=cast(uuid.UUID, incident.incident_id),
+                org_id=cast(uuid.UUID, incident.org_id),
                 target_sla_seconds=_settings.CRASH_PACKET_SLA_SECONDS,
             )
     except Exception:  # noqa: BLE001 - never let pre-queue bookkeeping block the flip
@@ -299,14 +301,14 @@ def incident_status_summary(db: Session, *, incident_id: uuid.UUID) -> dict:
             event.event_type == SystemEventType.INCIDENT_PROTOCOL_INITIATED.value
             and protocol_started_at is None
         ):
-            protocol_started_at = event.occurred_at_utc
+            protocol_started_at = cast(datetime | None, event.occurred_at_utc)
         if (
             event.event_type == SystemEventType.EVIDENCE_CAPTURE_REQUESTED.value
             and evidence_requested_at is None
         ):
-            evidence_requested_at = event.occurred_at_utc
+            evidence_requested_at = cast(datetime | None, event.occurred_at_utc)
         if event.event_type in evidence_event_types and event.occurred_at_utc is not None:
-            last_evidence_update = event.occurred_at_utc
+            last_evidence_update = cast(datetime | None, event.occurred_at_utc)
 
     return {
         "events": events,

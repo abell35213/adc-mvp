@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -189,8 +189,8 @@ def query_export_turnaround_report(
         else:
             in_flight_exports += 1
 
-        start = _normalize_to_utc(export.requested_at_utc)
-        end = _normalize_to_utc(export.completed_at_utc)
+        start = _normalize_to_utc(cast(Any, export.requested_at_utc))
+        end = _normalize_to_utc(cast(Any, export.completed_at_utc))
         if start is None or end is None or end < start:
             continue
         hours = (end - start).total_seconds() / 3600.0
@@ -253,21 +253,21 @@ def query_evidence_completeness_report(
     exports_by_incident: dict[uuid.UUID, list[Export]] = {}
     artifact_status_counts = {"captured": 0, "pending": 0, "unavailable": 0}
     for artifact in artifacts:
-        artifacts_by_incident.setdefault(artifact.incident_id, []).append(artifact)
+        artifacts_by_incident.setdefault(cast(uuid.UUID, artifact.incident_id), []).append(artifact)
         if artifact.status in artifact_status_counts:
             artifact_status_counts[str(artifact.status)] += 1
     for event in events:
-        events_by_incident.setdefault(event.incident_id, []).append(event)
+        events_by_incident.setdefault(cast(uuid.UUID, event.incident_id), []).append(event)
     for export in exports:
-        exports_by_incident.setdefault(export.incident_id, []).append(export)
+        exports_by_incident.setdefault(cast(uuid.UUID, export.incident_id), []).append(export)
 
     completeness_total = 0
     readiness_breakdown = {"not_ready": 0, "conditionally_ready": 0, "ready": 0}
     for incident in incidents:
         completeness = calculate_completeness(
-            artifacts=artifacts_by_incident.get(incident.incident_id, []),
-            events=events_by_incident.get(incident.incident_id, []),
-            exports=exports_by_incident.get(incident.incident_id, []),
+            artifacts=artifacts_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
+            events=events_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
+            exports=exports_by_incident.get(cast(uuid.UUID, incident.incident_id), []),
         )
         completeness_total += completeness.percent
         if completeness.percent >= 90:
