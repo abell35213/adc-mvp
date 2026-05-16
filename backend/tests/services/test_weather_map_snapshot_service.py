@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import Artifact, Base, Event, Incident, Org
 from app.services.weather.map_snapshot_service import (
     WEATHER_MAP_ARTIFACT_TYPE,
+    _fetch_twc_overlay_png,
     _fetch_twc_latest_radar_metadata,
     capture_weather_map_snapshot_if_missing,
 )
@@ -165,3 +167,49 @@ def test_fetch_twc_latest_radar_metadata_uses_api_key_and_latest_first(monkeypat
     metadata = _fetch_twc_latest_radar_metadata(lat=1.0, lon=2.0)
     assert captured["params"]["apiKey"] == "twc-key"
     assert metadata["url"] == "new"
+
+
+def test_capture_weather_map_snapshot_upload_failure_emits_failed_and_no_artifact(db_session, incident, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.weather.map_snapshot_service.resolve_incident_location",
+        lambda *args, **kwargs: {"lat": 40.0, "lon": -74.0, "source": "test", "fallback_reason": None},
+    )
+
+    class Rendered:
+        image_bytes = b"jpeg-bytes"
+        content_type = "image/jpeg"
+        overlay_applied = True
+        overlay_reason = None
+        twc_timestamp_iso = "2026-05-16T10:00:00Z"
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.render_map_snapshot", lambda **kwargs: Rendered())
+    monkeypatch.setattr(
+        "app.services.weather.map_snapshot_service.VaultS3.put_bytes",
+        lambda self, key, data, metadata=None: (_ for _ in ()).throw(RuntimeError("upload-failed")),
+    )
+
+    capture_weather_map_snapshot_if_missing(
+        db_session,
+        incident=incident,
+        request_window_start=datetime(2026, 5, 16, 10, 0, tzinfo=timezone.utc),
+        request_window_end=datetime(2026, 5, 16, 11, 0, tzinfo=timezone.utc),
+    )
+
+    events = db_session.query(Event).filter(Event.incident_id == incident.incident_id).all()
+    assert [e.event_type for e in events] == ["weather_map_snapshot_requested", "weather_map_snapshot_failed"]
+    assert db_session.query(Artifact).filter(Artifact.incident_id == incident.incident_id).count() == 0
+
+
+def test_fetch_twc_overlay_png_http_error_maps_to_unavailable(monkeypatch):
+    class MockResponse:
+        status_code = 503
+
+        def raise_for_status(self):
+            request = httpx.Request("GET", "https://example.com")
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError("bad status", request=request, response=response)
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.httpx.get", lambda *args, **kwargs: MockResponse())
+    with pytest.raises(Exception) as exc:
+        _fetch_twc_overlay_png("https://example.com/overlay.png")
+    assert "twc_overlay_http_503" in str(exc.value)

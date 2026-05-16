@@ -74,7 +74,13 @@ def capture_weather_map_snapshot_if_missing(
         return
 
     base_payload = _base_payload(location=location, request_window_start=request_window_start, request_window_end=request_window_end)
-    _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED, payload=base_payload)
+    _emit_event(
+        db,
+        incident=incident,
+        event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED,
+        payload=base_payload,
+        commit=False,
+    )
 
     lat, lon = location.get("lat"), location.get("lon")
     if lat is None or lon is None:
@@ -186,7 +192,10 @@ def _fetch_twc_overlay_png(overlay_url: str) -> bytes:
     if not overlay_url:
         raise MapOverlayUnavailableError("twc_overlay_url_missing")
     response = httpx.get(overlay_url, timeout=20.0)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise MapOverlayUnavailableError(f"twc_overlay_http_{exc.response.status_code}") from exc
     return response.content
 
 
@@ -205,7 +214,14 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         content_type=rendered.content_type,
         captured_at_utc=datetime.now(timezone.utc),
     )
-    VaultS3(bucket=settings.S3_ARTIFACTS_BUCKET, region=settings.AWS_REGION).put_bytes(key, rendered.image_bytes, metadata=metadata)
+    try:
+        VaultS3(bucket=settings.S3_ARTIFACTS_BUCKET, region=settings.AWS_REGION).put_bytes(
+            key, rendered.image_bytes, metadata=metadata
+        )
+    except Exception:  # noqa: BLE001
+        db.delete(artifact)
+        db.flush()
+        raise
     artifact.status = "captured"
     artifact.s3_key = key
     artifact.sha256 = metadata.sha256
@@ -246,7 +262,9 @@ def _base_payload(*, location: dict[str, Any], request_window_start: datetime | 
     }
 
 
-def _emit_event(db: Session, *, incident: Incident, event_type: SystemEventType, payload: dict) -> None:
+def _emit_event(
+    db: Session, *, incident: Incident, event_type: SystemEventType, payload: dict, commit: bool = True
+) -> None:
     db.add(
         Event(
             org_id=incident.org_id,
@@ -257,4 +275,5 @@ def _emit_event(db: Session, *, incident: Incident, event_type: SystemEventType,
             payload=payload,
         )
     )
-    db.commit()
+    if commit:
+        db.commit()
