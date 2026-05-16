@@ -13,8 +13,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import Event, Incident
-from app.db.repo.artifacts import create_artifact
+from app.db.models import Artifact, Event, Incident
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_location_resolver import resolve_incident_location
 from app.services.vault_s3 import ArtifactObjectMetadata, VaultS3
@@ -45,15 +44,35 @@ def capture_weather_map_snapshot_if_missing(
     request_window_end: datetime | None,
     allow_base_only: bool = True,
 ) -> None:
-    if _snapshot_exists(db, incident_id=cast(uuid.UUID, incident.incident_id)):
+    incident_id = cast(uuid.UUID, incident.incident_id)
+    _acquire_incident_capture_lock(db, incident_id=incident_id)
+    if _snapshot_exists(db, incident_id=incident_id):
         return
 
-    location = resolve_incident_location(
-        db,
-        incident_id=cast(uuid.UUID, incident.incident_id),
-        window_start=request_window_start,
-        window_end=request_window_end,
-    )
+    try:
+        location = resolve_incident_location(
+            db,
+            incident_id=incident_id,
+            window_start=request_window_start,
+            window_end=request_window_end,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _emit_event(
+            db,
+            incident=incident,
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+            payload={
+                "location": {"lat": None, "lon": None, "source": None, "fallback_reason": "location_resolution_error"},
+                "request_window": {
+                    "start": request_window_start.isoformat() if request_window_start else None,
+                    "end": request_window_end.isoformat() if request_window_end else None,
+                },
+                "capture_status": "failed",
+                "reason": type(exc).__name__,
+            },
+        )
+        return
+
     base_payload = _base_payload(location=location, request_window_start=request_window_start, request_window_end=request_window_end)
     _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED, payload=base_payload)
 
@@ -78,7 +97,16 @@ def capture_weather_map_snapshot_if_missing(
         )
         return
 
-    artifact = _persist_snapshot_artifact(db, incident=incident, rendered=rendered)
+    try:
+        artifact = _persist_snapshot_artifact(db, incident=incident, rendered=rendered)
+    except Exception as exc:  # noqa: BLE001
+        _emit_event(
+            db,
+            incident=incident,
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__},
+        )
+        return
     _emit_event(
         db,
         incident=incident,
@@ -135,13 +163,23 @@ def _fetch_mapbox_base_image(*, lat: float, lon: float) -> bytes:
 
 
 def _fetch_twc_latest_radar_metadata(*, lat: float, lon: float) -> dict[str, Any]:
-    response = httpx.get(_TWC_TIMESLICE_URL, params={"product": "radar", "ts": "latest", "lat": lat, "lon": lon}, timeout=20.0)
-    response.raise_for_status()
+    api_key = settings.TWC_API_KEY
+    if not api_key:
+        raise MapOverlayUnavailableError("twc_api_key_missing")
+    response = httpx.get(
+        _TWC_TIMESLICE_URL,
+        params={"product": "radar", "ts": "latest", "lat": lat, "lon": lon, "apiKey": api_key},
+        timeout=20.0,
+    )
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise MapOverlayUnavailableError(f"twc_timeslice_http_{exc.response.status_code}") from exc
     payload = response.json()
     timeslices = cast(list[dict[str, Any]], payload.get("seriesInfo", {}).get("radar", {}).get("series") or [])
     if not timeslices:
         raise MapOverlayUnavailableError("twc_timeslice_empty")
-    return timeslices[-1]
+    return timeslices[0]
 
 
 def _fetch_twc_overlay_png(overlay_url: str) -> bytes:
@@ -153,13 +191,14 @@ def _fetch_twc_overlay_png(overlay_url: str) -> bytes:
 
 
 def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: RenderedMapSnapshot):
-    artifact = create_artifact(
-        db,
+    artifact = Artifact(
         incident_id=cast(uuid.UUID, incident.incident_id),
         artifact_type=WEATHER_MAP_ARTIFACT_TYPE,
-        status="captured",
+        status="pending",
         s3_bucket=settings.S3_ARTIFACTS_BUCKET,
     )
+    db.add(artifact)
+    db.flush()
     key = f"orgs/{incident.org_id}/incidents/{incident.incident_id}/artifacts/{artifact.artifact_id}.jpg"
     metadata = ArtifactObjectMetadata.from_blob(
         data=rendered.image_bytes,
@@ -167,6 +206,7 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         captured_at_utc=datetime.now(timezone.utc),
     )
     VaultS3(bucket=settings.S3_ARTIFACTS_BUCKET, region=settings.AWS_REGION).put_bytes(key, rendered.image_bytes, metadata=metadata)
+    artifact.status = "captured"
     artifact.s3_key = key
     artifact.sha256 = metadata.sha256
     artifact.byte_size = metadata.byte_size
@@ -185,6 +225,10 @@ def _snapshot_exists(db: Session, *, incident_id: uuid.UUID) -> bool:
         .first()
         is not None
     )
+
+
+def _acquire_incident_capture_lock(db: Session, *, incident_id: uuid.UUID) -> None:
+    db.query(Incident).filter(Incident.incident_id == incident_id).with_for_update().one()
 
 
 def _base_payload(*, location: dict[str, Any], request_window_start: datetime | None, request_window_end: datetime | None) -> dict[str, Any]:

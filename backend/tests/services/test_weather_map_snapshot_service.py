@@ -8,7 +8,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.models import Artifact, Base, Event, Incident, Org
-from app.services.weather.map_snapshot_service import WEATHER_MAP_ARTIFACT_TYPE, capture_weather_map_snapshot_if_missing
+from app.services.weather.map_snapshot_service import (
+    WEATHER_MAP_ARTIFACT_TYPE,
+    _fetch_twc_latest_radar_metadata,
+    capture_weather_map_snapshot_if_missing,
+)
 
 
 @pytest.fixture()
@@ -120,3 +124,44 @@ def test_capture_weather_map_snapshot_failure_links_reason(db_session, incident,
     )
     assert failed_event.payload["reason"] == "RuntimeError"
     assert db_session.query(Artifact).filter(Artifact.incident_id == incident.incident_id).count() == 0
+
+
+def test_capture_weather_map_snapshot_resolver_failure_emits_failed_event(db_session, incident, monkeypatch):
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.resolve_incident_location", lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("nope")))
+
+    capture_weather_map_snapshot_if_missing(
+        db_session,
+        incident=incident,
+        request_window_start=datetime(2026, 5, 16, 10, 0, tzinfo=timezone.utc),
+        request_window_end=datetime(2026, 5, 16, 11, 0, tzinfo=timezone.utc),
+    )
+
+    failed_event = (
+        db_session.query(Event)
+        .filter(Event.incident_id == incident.incident_id, Event.event_type == "weather_map_snapshot_failed")
+        .one()
+    )
+    assert failed_event.payload["reason"] == "ValueError"
+    assert db_session.query(Artifact).filter(Artifact.incident_id == incident.incident_id).count() == 0
+
+
+def test_fetch_twc_latest_radar_metadata_uses_api_key_and_latest_first(monkeypatch):
+    captured = {}
+
+    class MockResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"seriesInfo": {"radar": {"series": [{"url": "new"}, {"url": "old"}]}}}
+
+    def fake_get(url, params, timeout):
+        captured["params"] = params
+        return MockResponse()
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.settings.TWC_API_KEY", "twc-key")
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.httpx.get", fake_get)
+
+    metadata = _fetch_twc_latest_radar_metadata(lat=1.0, lon=2.0)
+    assert captured["params"]["apiKey"] == "twc-key"
+    assert metadata["url"] == "new"
