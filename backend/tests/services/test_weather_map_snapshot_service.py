@@ -213,3 +213,41 @@ def test_fetch_twc_overlay_png_http_error_maps_to_unavailable(monkeypatch):
     with pytest.raises(Exception) as exc:
         _fetch_twc_overlay_png("https://example.com/overlay.png")
     assert "twc_overlay_http_503" in str(exc.value)
+
+
+def test_fetch_twc_latest_radar_metadata_invalid_json_maps_to_unavailable(monkeypatch):
+    class MockResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            raise ValueError("bad json")
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.settings.TWC_API_KEY", "twc-key")
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.httpx.get", lambda *args, **kwargs: MockResponse())
+
+    with pytest.raises(Exception) as exc:
+        _fetch_twc_latest_radar_metadata(lat=1.0, lon=2.0)
+    assert "twc_timeslice_invalid_json" in str(exc.value)
+
+
+def test_fetch_twc_latest_radar_metadata_request_error_maps_to_unavailable(monkeypatch):
+    def boom(*args, **kwargs):
+        raise httpx.RequestError("network")
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.settings.TWC_API_KEY", "twc-key")
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.httpx.get", boom)
+
+    with pytest.raises(Exception) as exc:
+        _fetch_twc_latest_radar_metadata(lat=1.0, lon=2.0)
+    assert "twc_timeslice_transport_error" in str(exc.value)
+
+
+def test_fetch_twc_overlay_png_request_error_maps_to_unavailable(monkeypatch):
+    def boom(*args, **kwargs):
+        raise httpx.RequestError("network")
+
+    monkeypatch.setattr("app.services.weather.map_snapshot_service.httpx.get", boom)
+    with pytest.raises(Exception) as exc:
+        _fetch_twc_overlay_png("https://example.com/overlay.png")
+    assert "twc_overlay_transport_error" in str(exc.value)

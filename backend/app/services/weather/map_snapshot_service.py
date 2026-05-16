@@ -45,8 +45,28 @@ def capture_weather_map_snapshot_if_missing(
     allow_base_only: bool = True,
 ) -> None:
     incident_id = cast(uuid.UUID, incident.incident_id)
-    _acquire_incident_capture_lock(db, incident_id=incident_id)
+    try:
+        _acquire_incident_capture_lock(db, incident_id=incident_id)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        _emit_event(
+            db,
+            incident=incident,
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+            payload={
+                "location": {"lat": None, "lon": None, "source": None, "fallback_reason": "lock_acquire_error"},
+                "request_window": {
+                    "start": request_window_start.isoformat() if request_window_start else None,
+                    "end": request_window_end.isoformat() if request_window_end else None,
+                },
+                "capture_status": "failed",
+                "reason": type(exc).__name__,
+            },
+        )
+        return
+
     if _snapshot_exists(db, incident_id=incident_id):
+        db.rollback()
         return
 
     try:
@@ -57,6 +77,7 @@ def capture_weather_map_snapshot_if_missing(
             window_end=request_window_end,
         )
     except Exception as exc:  # noqa: BLE001
+        db.rollback()
         _emit_event(
             db,
             incident=incident,
@@ -135,7 +156,7 @@ def render_map_snapshot(*, lat: float, lon: float, allow_base_only: bool) -> Ren
 
     try:
         metadata = _fetch_twc_latest_radar_metadata(lat=lat, lon=lon)
-        overlay_bytes = _fetch_twc_overlay_png(metadata["url"])
+        overlay_bytes = _fetch_twc_overlay_png(cast(str, metadata.get("url")))
         overlay = Image.open(io.BytesIO(overlay_bytes)).convert("RGBA")
         composed = Image.alpha_composite(base_image, overlay)
         return _to_rendered_snapshot(composed, overlay_applied=True, overlay_reason=None, twc_timestamp_iso=metadata.get("validTimeUtc"))
@@ -172,16 +193,22 @@ def _fetch_twc_latest_radar_metadata(*, lat: float, lon: float) -> dict[str, Any
     api_key = settings.TWC_API_KEY
     if not api_key:
         raise MapOverlayUnavailableError("twc_api_key_missing")
-    response = httpx.get(
-        _TWC_TIMESLICE_URL,
-        params={"product": "radar", "ts": "latest", "lat": lat, "lon": lon, "apiKey": api_key},
-        timeout=20.0,
-    )
+    try:
+        response = httpx.get(
+            _TWC_TIMESLICE_URL,
+            params={"product": "radar", "ts": "latest", "lat": lat, "lon": lon, "apiKey": api_key},
+            timeout=20.0,
+        )
+    except httpx.RequestError as exc:
+        raise MapOverlayUnavailableError("twc_timeslice_transport_error") from exc
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise MapOverlayUnavailableError(f"twc_timeslice_http_{exc.response.status_code}") from exc
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise MapOverlayUnavailableError("twc_timeslice_invalid_json") from exc
     timeslices = cast(list[dict[str, Any]], payload.get("seriesInfo", {}).get("radar", {}).get("series") or [])
     if not timeslices:
         raise MapOverlayUnavailableError("twc_timeslice_empty")
@@ -191,7 +218,10 @@ def _fetch_twc_latest_radar_metadata(*, lat: float, lon: float) -> dict[str, Any
 def _fetch_twc_overlay_png(overlay_url: str) -> bytes:
     if not overlay_url:
         raise MapOverlayUnavailableError("twc_overlay_url_missing")
-    response = httpx.get(overlay_url, timeout=20.0)
+    try:
+        response = httpx.get(overlay_url, timeout=20.0)
+    except httpx.RequestError as exc:
+        raise MapOverlayUnavailableError("twc_overlay_transport_error") from exc
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -226,8 +256,7 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
     artifact.s3_key = key
     artifact.sha256 = metadata.sha256
     artifact.byte_size = metadata.byte_size
-    db.commit()
-    db.refresh(artifact)
+    db.flush()
     return artifact
 
 
