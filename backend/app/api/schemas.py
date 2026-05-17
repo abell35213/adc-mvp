@@ -392,6 +392,20 @@ class IncidentListItem(BaseModel):
     blocker_counts: dict[str, int] = Field(default_factory=dict)
 
 
+
+
+class WeatherSnapshotArtifactReference(BaseModel):
+    artifact_id: uuid.UUID
+    artifact_type: str
+    status: str
+
+
+class CurrentWeatherConditions(BaseModel):
+    capture_status: Optional[str] = None
+    normalized_weather: dict[str, Any] = Field(default_factory=dict)
+    raw_source_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class IncidentDetailResponse(BaseModel):
     incident_id: uuid.UUID
     status: IncidentStatus
@@ -413,6 +427,10 @@ class IncidentDetailResponse(BaseModel):
         default_factory=list
     )
     driver_violation_history_meta: dict[str, Any] = Field(default_factory=dict)
+    current_weather_conditions: Optional[CurrentWeatherConditions] = None
+    weather_snapshot_status: Optional[str] = None
+    weather_location_source: Optional[str] = None
+    weather_satellite_snapshot_artifact: Optional[WeatherSnapshotArtifactReference] = None
 
 
 class FmcsaInspectionSummary(BaseModel):
