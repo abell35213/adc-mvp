@@ -38,8 +38,8 @@ from app.db.repo.fmcsa_inspections import (
 from app.db.repo.incidents import create_incident, get_incident, list_incidents
 from app.db.repo.message_operations import get_messaging_reliability_summary
 from app.db.session import get_db
-from app.domain.system_event_types import SystemEventType
 from app.domain.packet_profiles import get_default_packet_profile
+from app.domain.system_event_types import SystemEventType
 from app.tasks.export_tasks import build_export
 from app.services.idempotency_service import (
     optional_idempotency_key,
@@ -88,6 +88,54 @@ def _is_privileged_status_target(to_status: str) -> bool:
 def _has_privileged_status_permission(role: str | None) -> bool:
     return role in {"org_admin", "system_admin"}
 
+
+
+
+def _resolve_weather_snapshot_state(*, events: list) -> tuple[dict | None, str | None, str | None]:
+    weather_events = [
+        ev
+        for ev in events
+        if ev.event_type
+        in {
+            SystemEventType.WEATHER_SNAPSHOT_CAPTURED.value,
+            SystemEventType.WEATHER_SNAPSHOT_FAILED.value,
+        }
+    ]
+    if not weather_events:
+        return None, None, None
+
+    latest_event = sorted(weather_events, key=lambda ev: ev.occurred_at_utc or datetime.min)[-1]
+    payload = latest_event.payload or {}
+    location_source = None
+    if isinstance(payload, dict):
+        location_source = (payload.get("location") or {}).get("source")
+
+    if latest_event.event_type == SystemEventType.WEATHER_SNAPSHOT_CAPTURED.value:
+        return {
+            "capture_status": payload.get("capture_status"),
+            "normalized_weather": payload.get("normalized_weather") or {},
+            "raw_source_metadata": payload.get("raw_source_metadata") or {},
+        }, payload.get("capture_status"), location_source
+
+    return None, payload.get("capture_status") or "failed", location_source
+
+
+def _resolve_weather_map_artifact(*, artifacts: list, events: list):
+    map_artifact = next((a for a in artifacts if a.artifact_type == "weather_map_snapshot"), None)
+    if map_artifact is None:
+        return None
+    terminal_types = {
+        SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED.value,
+        SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED.value,
+    }
+    has_weather_map_event = any(ev.event_type in terminal_types for ev in events)
+    if not has_weather_map_event:
+        return None
+    return {
+        "artifact_id": map_artifact.artifact_id,
+        "artifact_type": map_artifact.artifact_type,
+        "status": map_artifact.status,
+    }
 
 def _event_context_payload(
     *,
@@ -303,6 +351,8 @@ def get_incident_endpoint(
         for link, insp in violation_history_rows
     ]
     violation_history_meta = get_fmcsa_meta_for_incident(db, incident_id)
+    weather_conditions, weather_status, weather_location_source = _resolve_weather_snapshot_state(events=events)
+    weather_map_artifact = _resolve_weather_map_artifact(artifacts=artifacts, events=events)
 
     return IncidentDetailResponse(
         incident_id=incident.incident_id,
@@ -403,6 +453,10 @@ def get_incident_endpoint(
         ],
         driver_violation_history=violation_history,
         driver_violation_history_meta=violation_history_meta,
+        current_weather_conditions=weather_conditions,
+        weather_snapshot_status=weather_status,
+        weather_location_source=weather_location_source,
+        weather_satellite_snapshot_artifact=weather_map_artifact,
     )
 
 

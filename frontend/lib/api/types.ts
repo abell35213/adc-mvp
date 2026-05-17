@@ -242,12 +242,30 @@ export interface IncidentBlocker {
   severity: BlockerSeverity;
 }
 
+
+
+export interface CurrentWeatherConditions {
+  capture_status?: string | null;
+  normalized_weather?: JsonObject;
+  raw_source_metadata?: JsonObject;
+}
+
+export interface WeatherSnapshotArtifactReference {
+  artifact_id: string;
+  artifact_type: string;
+  status: string;
+}
+
 export interface IncidentDetail extends Incident {
   evidence_inventory: ArtifactSummary[];
   export_status: ExportSummary[];
   timeline: EventSummary[];
   completeness_missing_items?: string[];
   blockers?: IncidentBlocker[];
+  current_weather_conditions?: CurrentWeatherConditions | null;
+  weather_snapshot_status?: string | null;
+  weather_location_source?: string | null;
+  weather_satellite_snapshot_artifact?: WeatherSnapshotArtifactReference | null;
 }
 
 export type OnboardingStepStatus =

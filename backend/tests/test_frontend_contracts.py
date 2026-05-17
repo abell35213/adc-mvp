@@ -220,3 +220,29 @@ def test_export_response_contract_matches_frontend(
     assert payload["export_type"] == "court_defense"
     assert payload["status"] in {"requested", "queued", "processing", "ready", "failed", "expired"}
     assert isinstance(payload["created_at_utc"], str)
+
+
+@patch("app.api.routes_incidents.IncidentEvidenceOrchestrator.begin_capture")
+def test_incident_detail_weather_fields_are_backward_compatible(
+    mock_begin_capture,
+    client: TestClient,
+    auth_headers: dict[str, str],
+):
+    create_resp = client.post(
+        "/incidents/",
+        json={
+            "severity": "minor",
+            "adc_vehicle_id": "veh-abc",
+            "samsara_vehicle_id": "sm-def",
+            "adc_driver_id": "drv-ghi",
+        },
+        headers=auth_headers,
+    )
+    incident_id = create_resp.json()["incident_id"]
+    detail = client.get(f"/incidents/{incident_id}", headers=auth_headers).json()
+
+    assert "current_weather_conditions" in detail
+    assert detail["current_weather_conditions"] is None
+    assert detail["weather_snapshot_status"] is None
+    assert detail["weather_location_source"] is None
+    assert detail["weather_satellite_snapshot_artifact"] is None
