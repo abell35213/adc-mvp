@@ -471,6 +471,34 @@
           "title": "ArtifactSummary",
           "type": "object"
         },
+        "CurrentWeatherConditions": {
+          "properties": {
+            "capture_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Capture Status"
+            },
+            "normalized_weather": {
+              "additionalProperties": true,
+              "title": "Normalized Weather",
+              "type": "object"
+            },
+            "raw_source_metadata": {
+              "additionalProperties": true,
+              "title": "Raw Source Metadata",
+              "type": "object"
+            }
+          },
+          "title": "CurrentWeatherConditions",
+          "type": "object"
+        },
         "EventSummary": {
           "properties": {
             "actor_type": {
@@ -874,6 +902,30 @@
           ],
           "title": "FmcsaInspectionSummary",
           "type": "object"
+        },
+        "WeatherSnapshotArtifactReference": {
+          "properties": {
+            "artifact_id": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            },
+            "artifact_type": {
+              "title": "Artifact Type",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifact_id",
+            "artifact_type",
+            "status"
+          ],
+          "title": "WeatherSnapshotArtifactReference",
+          "type": "object"
         }
       },
       "properties": {
@@ -946,6 +998,17 @@
           ],
           "default": null,
           "title": "Created At Utc"
+        },
+        "current_weather_conditions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CurrentWeatherConditions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "driver_violation_history": {
           "items": {
@@ -1037,6 +1100,41 @@
           },
           "title": "Timeline",
           "type": "array"
+        },
+        "weather_location_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weather Location Source"
+        },
+        "weather_satellite_snapshot_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeatherSnapshotArtifactReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "weather_snapshot_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weather Snapshot Status"
         }
       },
       "required": [
