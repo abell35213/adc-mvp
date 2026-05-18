@@ -49,6 +49,25 @@ function formatTime(iso?: string | null): string {
   });
 }
 
+function formatWeatherValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toString() : "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return value.trim().length > 0 ? value : "—";
+  return String(value);
+}
+
+function toWeatherMetrics(weather: unknown): Array<{ key: string; value: string }> {
+  if (!weather || typeof weather !== "object" || Array.isArray(weather)) return [];
+
+  return Object.entries(weather)
+    .filter(([key]) => key.trim().length > 0)
+    .map(([key, value]) => ({
+      key: key.replaceAll("_", " "),
+      value: formatWeatherValue(value),
+    }));
+}
+
 const REFRESH_INTERVAL_MS = 4000;
 
 export default function IncidentDetailClient() {
@@ -139,6 +158,14 @@ export default function IncidentDetailClient() {
   const workspaceMissingItems = workspace?.missing_items ?? incident?.completeness_missing_items ?? [];
   const workspaceEvidence = workspace?.evidence_summary;
   const workspaceActivity = workspace?.activity ?? [];
+  const weatherConditions = incident?.current_weather_conditions;
+  const weatherMetrics = toWeatherMetrics(weatherConditions?.normalized_weather);
+  const weatherSource = weatherConditions?.raw_source_metadata?.source;
+  const weatherCapturedAt = weatherConditions?.raw_source_metadata?.captured_at_utc;
+  const weatherLocationSource = incident?.weather_location_source;
+  const isLocationUnavailable = weatherLocationSource === "unavailable";
+  const isUsingLastKnownLocation = weatherLocationSource === "last_known";
+  const isWeatherUnavailable = weatherConditions?.capture_status === "unavailable" || weatherMetrics.length === 0;
 
   const nextAction = workspaceMissingItems.length > 0
     ? `Collect ${workspaceMissingItems[0]} to unblock readiness.`
@@ -281,6 +308,29 @@ export default function IncidentDetailClient() {
               <CaseTasksPanel tasks={tasks} onAddTask={onAddTask} onCompleteTask={onCompleteTask} />
               <CaseNotesPanel notes={notes} onAddNote={onAddNote} />
             </div>
+
+            <section className="rounded-lg border bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-600">Weather snapshot</h2>
+              <div className="space-y-3 text-sm">
+                {isUsingLastKnownLocation ? <p className="text-amber-700">Using last known location</p> : null}
+                {isLocationUnavailable ? <p className="text-amber-700">Location unavailable</p> : null}
+                {isWeatherUnavailable ? <p className="text-gray-500">Weather data unavailable</p> : null}
+
+                {weatherMetrics.length > 0 ? (
+                  <dl className="grid gap-2 sm:grid-cols-2">
+                    {weatherMetrics.map((metric) => (
+                      <div key={metric.key} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
+                        <dt className="text-xs uppercase tracking-wide text-gray-500">{metric.key}</dt>
+                        <dd className="text-sm font-medium text-gray-900">{metric.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+
+                <p className="text-xs text-gray-500">Source: {formatWeatherValue(weatherSource)}</p>
+                <p className="text-xs text-gray-500">Captured: {formatTime(typeof weatherCapturedAt === "string" ? weatherCapturedAt : null)}</p>
+              </div>
+            </section>
 
             <div className="rounded-lg border bg-white p-6 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-600">Evidence inventory</h2>
