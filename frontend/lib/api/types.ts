@@ -248,6 +248,7 @@ export interface CurrentWeatherConditions {
   capture_status?: string | null;
   normalized_weather?: JsonObject;
   raw_source_metadata?: JsonObject;
+  location?: JsonObject;
 }
 
 export interface WeatherSnapshotArtifactReference {

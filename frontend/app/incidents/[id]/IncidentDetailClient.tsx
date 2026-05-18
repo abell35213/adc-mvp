@@ -54,6 +54,11 @@ function formatWeatherValue(value: unknown): string {
   if (typeof value === "number") return Number.isFinite(value) ? value.toString() : "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value.trim().length > 0 ? value : "—";
+  if (Array.isArray(value)) {
+    const rendered = value.map((item) => formatWeatherValue(item)).filter((item) => item !== "—");
+    return rendered.length > 0 ? rendered.join(", ") : "—";
+  }
+  if (typeof value === "object") return "—";
   return String(value);
 }
 
@@ -160,11 +165,15 @@ export default function IncidentDetailClient() {
   const workspaceActivity = workspace?.activity ?? [];
   const weatherConditions = incident?.current_weather_conditions;
   const weatherMetrics = toWeatherMetrics(weatherConditions?.normalized_weather);
-  const weatherSource = weatherConditions?.raw_source_metadata?.source;
-  const weatherCapturedAt = weatherConditions?.raw_source_metadata?.captured_at_utc;
+  const weatherSource = weatherConditions?.location?.source;
+  const weatherCapturedAt = incident?.timeline
+    ?.filter((event) => event.event_type === "weather_snapshot_captured")
+    .map((event) => event.occurred_at_utc)
+    .reverse()
+    .find((occurredAt): occurredAt is string => typeof occurredAt === "string" && occurredAt.length > 0) ?? null;
   const weatherLocationSource = incident?.weather_location_source;
   const isLocationUnavailable = weatherLocationSource === "unavailable";
-  const isUsingLastKnownLocation = weatherLocationSource === "last_known";
+  const isUsingLastKnownLocation = weatherLocationSource === "eld_last_known";
   const isWeatherUnavailable = weatherConditions?.capture_status === "unavailable" || weatherMetrics.length === 0;
 
   const nextAction = workspaceMissingItems.length > 0
