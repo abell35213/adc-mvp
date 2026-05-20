@@ -102,6 +102,7 @@ def test_capture_weather_map_snapshot_overlay_unavailable_degraded(db_session, i
         .one()
     )
     assert captured_event.payload["capture_status"] == "degraded"
+    assert captured_event.payload["degraded"] is True
     assert captured_event.payload["overlay_unavailable_reason"] == "twc_timeslice_empty"
 
 
@@ -125,6 +126,7 @@ def test_capture_weather_map_snapshot_failure_links_reason(db_session, incident,
         .one()
     )
     assert failed_event.payload["reason"] == "RuntimeError"
+    assert failed_event.payload["degraded"] is False
     assert db_session.query(Artifact).filter(Artifact.incident_id == incident.incident_id).count() == 0
 
 

@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import datetime
 from typing import cast
 
 from sqlalchemy.orm import Session
 
+from app.core.metrics import MetricNames, increment, timed
 from app.db.models import Event, Incident
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_location_resolver import resolve_incident_location
 from app.services.weather.nws_client import build_time_series_url, fetch_nws_time_series_xml
 from app.services.weather.nws_parser import parse_nws_time_series_xml
+
+logger = logging.getLogger(__name__)
+_PROVIDER = "nws"
 
 
 def capture_weather_snapshot_if_missing(
@@ -29,6 +35,10 @@ def capture_weather_snapshot_if_missing(
     if _snapshot_exists(db, incident_id=cast(uuid.UUID, incident.incident_id)):
         return
 
+    started = time.perf_counter()
+    status = "failed"
+    requested_payload: dict = {}
+    increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS)
     try:
         location = resolve_incident_location(
             db,
@@ -36,10 +46,6 @@ def capture_weather_snapshot_if_missing(
             window_start=request_window_start,
             window_end=request_window_end,
         )
-        window = {
-            "start": request_window_start.isoformat() if request_window_start else None,
-            "end": request_window_end.isoformat() if request_window_end else None,
-        }
         requested_payload = {
             "location": {
                 "lat": location.get("lat"),
@@ -47,7 +53,10 @@ def capture_weather_snapshot_if_missing(
                 "source": location.get("source"),
                 "fallback_reason": location.get("fallback_reason"),
             },
-            "request_window": window,
+            "request_window": {
+                "start": request_window_start.isoformat() if request_window_start else None,
+                "end": request_window_end.isoformat() if request_window_end else None,
+            },
         }
         _emit_event(db, incident=incident, event_type=SystemEventType.WEATHER_SNAPSHOT_REQUESTED, payload=requested_payload)
 
@@ -57,21 +66,27 @@ def capture_weather_snapshot_if_missing(
                 db,
                 incident=incident,
                 event_type=SystemEventType.WEATHER_SNAPSHOT_FAILED,
-                payload={**requested_payload, "capture_status": "failed", "reason": "insufficient_request_context"},
+                payload={**requested_payload, "capture_status": "failed", "reason": "insufficient_request_context", "degraded": False},
             )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
             return
-        raw_payload = fetch_nws_time_series_xml(lat=float(lat), lon=float(lon), begin=request_window_start, end=request_window_end)
+
+        with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
+            raw_payload = fetch_nws_time_series_xml(lat=float(lat), lon=float(lon), begin=request_window_start, end=request_window_end)
         normalized = parse_nws_time_series_xml(raw_payload)
+        is_degraded = bool(normalized.get("is_partial"))
+        status = "degraded" if is_degraded else "ok"
         _emit_event(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_SNAPSHOT_CAPTURED,
             payload={
                 **requested_payload,
-                "capture_status": "degraded" if normalized.get("is_partial") else "ok",
+                "capture_status": status,
+                "degraded": is_degraded,
                 "normalized_weather": normalized,
                 "raw_source_metadata": {
-                    "provider": "nws",
+                    "provider": _PROVIDER,
                     "request_url": build_time_series_url(
                         lat=float(lat),
                         lon=float(lon),
@@ -82,12 +97,24 @@ def capture_weather_snapshot_if_missing(
                 },
             },
         )
+        increment(MetricNames.INTEGRATION_PROVIDER_SUCCESS)
     except Exception as exc:  # noqa: BLE001 - caller initiation flow must never fail from weather capture
+        increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
         _emit_event(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_SNAPSHOT_FAILED,
-            payload={**requested_payload, "capture_status": "failed", "reason": type(exc).__name__},
+            payload={**requested_payload, "capture_status": "failed", "reason": type(exc).__name__, "degraded": False},
+        )
+    finally:
+        logger.info(
+            "weather_snapshot_capture",
+            extra={
+                "incident_id": str(incident.incident_id),
+                "provider": _PROVIDER,
+                "status": status,
+                "latency": int((time.perf_counter() - started) * 1000),
+            },
         )
 
 

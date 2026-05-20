@@ -398,6 +398,8 @@ class WeatherSnapshotArtifactReference(BaseModel):
     artifact_id: uuid.UUID
     artifact_type: str
     status: str
+    capture_status: Optional[str] = None
+    degraded: Optional[bool] = None
 
 
 class CurrentWeatherConditions(BaseModel):

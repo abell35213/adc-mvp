@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,11 +15,13 @@ from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.metrics import MetricNames, increment, timed
 from app.db.models import Artifact, Event, Incident
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_location_resolver import resolve_incident_location
 from app.services.vault_s3 import ArtifactObjectMetadata, VaultS3
 
+logger = logging.getLogger(__name__)
 WEATHER_MAP_ARTIFACT_TYPE = "weather_map_snapshot"
 MAP_DIMENSIONS = "1280x720@2x"
 _TWC_TIMESLICE_URL = "https://api.weather.com/v3/TileServer/tile"
@@ -45,6 +49,9 @@ def capture_weather_map_snapshot_if_missing(
     allow_base_only: bool = True,
 ) -> None:
     incident_id = cast(uuid.UUID, incident.incident_id)
+    started = time.perf_counter()
+    status = "failed"
+    increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS)
     try:
         _acquire_incident_capture_lock(db, incident_id=incident_id)
     except Exception as exc:  # noqa: BLE001
@@ -109,18 +116,19 @@ def capture_weather_map_snapshot_if_missing(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": "location_unavailable"},
+            payload={**base_payload, "capture_status": "failed", "reason": "location_unavailable", "degraded": False},
         )
         return
 
     try:
-        rendered = render_map_snapshot(lat=float(lat), lon=float(lon), allow_base_only=allow_base_only)
+        with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
+            rendered = render_map_snapshot(lat=float(lat), lon=float(lon), allow_base_only=allow_base_only)
     except Exception as exc:  # noqa: BLE001
         _emit_event(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__},
+            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__, "degraded": False},
         )
         return
 
@@ -131,7 +139,7 @@ def capture_weather_map_snapshot_if_missing(
             db,
             incident=incident,
             event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__},
+            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__, "degraded": False},
         )
         return
     _emit_event(
@@ -141,6 +149,7 @@ def capture_weather_map_snapshot_if_missing(
         payload={
             **base_payload,
             "capture_status": "ok" if rendered.overlay_applied else "degraded",
+            "degraded": not rendered.overlay_applied,
             "overlay_applied": rendered.overlay_applied,
             "overlay_unavailable_reason": rendered.overlay_reason,
             "twc_radar_timestamp": rendered.twc_timestamp_iso,
@@ -148,6 +157,9 @@ def capture_weather_map_snapshot_if_missing(
             "artifact_type": WEATHER_MAP_ARTIFACT_TYPE,
         },
     )
+    status = "ok" if rendered.overlay_applied else "degraded"
+    increment(MetricNames.INTEGRATION_PROVIDER_SUCCESS)
+    logger.info("weather_map_snapshot_capture", extra={"incident_id": str(incident.incident_id), "provider": "mapbox+twc", "status": status, "latency": int((time.perf_counter()-started)*1000)})
 
 
 def render_map_snapshot(*, lat: float, lon: float, allow_base_only: bool) -> RenderedMapSnapshot:
@@ -252,10 +264,10 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         db.delete(artifact)
         db.flush()
         raise
-    artifact.status = "captured"
-    artifact.s3_key = key
-    artifact.sha256 = metadata.sha256
-    artifact.byte_size = metadata.byte_size
+    setattr(artifact, "status", "captured")
+    setattr(artifact, "s3_key", key)
+    setattr(artifact, "sha256", metadata.sha256)
+    setattr(artifact, "byte_size", metadata.byte_size)
     db.flush()
     return artifact
 

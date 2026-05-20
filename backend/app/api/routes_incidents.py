@@ -128,13 +128,17 @@ def _resolve_weather_map_artifact(*, artifacts: list, events: list):
         SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED.value,
         SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED.value,
     }
-    has_weather_map_event = any(ev.event_type in terminal_types for ev in events)
-    if not has_weather_map_event:
+    terminal_events = [ev for ev in events if ev.event_type in terminal_types]
+    if not terminal_events:
         return None
+    latest_event = sorted(terminal_events, key=lambda ev: ev.occurred_at_utc or datetime.min)[-1]
+    payload = latest_event.payload or {}
     return {
         "artifact_id": map_artifact.artifact_id,
         "artifact_type": map_artifact.artifact_type,
         "status": map_artifact.status,
+        "capture_status": payload.get("capture_status"),
+        "degraded": payload.get("degraded"),
     }
 
 def _event_context_payload(

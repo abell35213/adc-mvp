@@ -914,6 +914,30 @@
               "title": "Artifact Type",
               "type": "string"
             },
+            "capture_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Capture Status"
+            },
+            "degraded": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Degraded"
+            },
             "status": {
               "title": "Status",
               "type": "string"
