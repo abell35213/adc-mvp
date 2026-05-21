@@ -1,0 +1,6 @@
+<dwml>
+  <data>
+    <parameters>
+      <temp><value>72</value></temp>
+      <qpf><value>0.1</value></qpf>
+    <!-- malformed: missing closing tags on purpose -->

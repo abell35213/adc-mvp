@@ -22,15 +22,26 @@ def test_build_time_series_query_includes_required_params() -> None:
 
     params = build_time_series_query(lat=40.0, lon=-70.0, begin=begin, end=end)
 
+    assert params["lat"] == "40.000000"
+    assert params["lon"] == "-70.000000"
     assert params["product"] == "time-series"
     assert params["Unit"] == "e"
     for key in ("temp", "qpf", "snow", "wspd", "wdir", "wgust", "wwa", "iceaccum", "snowlvl", "vis"):
         assert params[key] == key
 
 
+def test_build_time_series_query_accepts_equal_window() -> None:
+    begin = datetime(2026, 1, 2, 13, 0, tzinfo=timezone.utc)
+    end = begin
+
+    params = build_time_series_query(lat=1.0, lon=1.0, begin=begin, end=end)
+
+    assert params["begin"] == params["end"]
+
+
 def test_build_time_series_query_invalid_window_guard() -> None:
     begin = datetime(2026, 1, 2, 13, 0, tzinfo=timezone.utc)
     end = datetime(2026, 1, 2, 11, 0, tzinfo=timezone.utc)
 
-    with pytest.raises(InvalidWeatherWindowError):
+    with pytest.raises(InvalidWeatherWindowError, match="greater than or equal"):
         build_time_series_query(lat=1.0, lon=1.0, begin=begin, end=end)

@@ -1,0 +1,16 @@
+<dwml>
+  <data>
+    <parameters>
+      <temp><value>72</value><value>73</value></temp>
+      <qpf><value>0.1</value></qpf>
+      <snow><value>0.0</value></snow>
+      <wspd><value>14</value></wspd>
+      <wdir><value>180</value></wdir>
+      <wgust><value>24</value></wgust>
+      <wwa><value>NONE</value></wwa>
+      <iceaccum><value>0.0</value></iceaccum>
+      <snowlvl><value>0</value></snowlvl>
+      <vis><value>10</value></vis>
+    </parameters>
+  </data>
+</dwml>
