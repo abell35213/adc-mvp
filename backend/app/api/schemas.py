@@ -1323,7 +1323,7 @@ class DriverOtpVerifyRequest(BaseModel):
 
 class DriverOtpVerifyResponse(BaseModel):
     access_token: Annotated[str, StringConstraints(min_length=16)]
-    refresh_token: Annotated[str, StringConstraints(min_length=16)]
+    refresh_token: Annotated[str, StringConstraints(min_length=16)] | None = None
     token_type: Literal["bearer"] = "bearer"
 
 
