@@ -1,5 +1,6 @@
 """Tests for auth endpoints and helpers."""
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -84,9 +85,28 @@ class TestJWT:
     def test_invalid_token_returns_none(self):
         assert decode_access_token("not.a.token") is None
 
+    def test_token_signed_with_wrong_secret_returns_none(self):
+        token = jwt.encode(
+            {"sub": "user-123"},
+            "not-the-configured-secret",
+            algorithm=settings.JWT_ALGORITHM,
+        )
+
+        assert decode_access_token(token) is None
+
+    def test_token_with_unexpected_algorithm_returns_none(self):
+        token = jwt.encode(
+            {"sub": "user-123"},
+            settings.JWT_SECRET_KEY,
+            algorithm="HS384",
+        )
+
+        assert decode_access_token(token) is None
+
     def test_token_contains_exp(self):
         token = create_access_token({"sub": "u1"})
         payload = decode_access_token(token)
+        assert payload is not None
         assert "exp" in payload
         assert "iat" in payload
 
