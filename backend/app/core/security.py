@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from jwt import InvalidTokenError
+from jwt.exceptions import InvalidTokenError
 
 from app.core.config import settings
 
