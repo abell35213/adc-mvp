@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,11 +15,14 @@ from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.metrics import MetricNames, increment, timed
 from app.db.models import Artifact, Event, Incident
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_location_resolver import resolve_incident_location
 from app.services.vault_s3 import ArtifactObjectMetadata, VaultS3
 
+logger = logging.getLogger(__name__)
+_PROVIDER = "mapbox+twc"
 WEATHER_MAP_ARTIFACT_TYPE = "weather_map_snapshot"
 MAP_DIMENSIONS = "1280x720@2x"
 _TWC_TIMESLICE_URL = "https://api.weather.com/v3/TileServer/tile"
@@ -45,109 +50,124 @@ def capture_weather_map_snapshot_if_missing(
     allow_base_only: bool = True,
 ) -> None:
     incident_id = cast(uuid.UUID, incident.incident_id)
+    started = time.perf_counter()
+    status = "failed"
+    increment(MetricNames.INTEGRATION_PROVIDER_REQUESTS)
     try:
-        _acquire_incident_capture_lock(db, incident_id=incident_id)
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
+        try:
+            _acquire_incident_capture_lock(db, incident_id=incident_id)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload=_failed_payload(
+                    request_window_start=request_window_start,
+                    request_window_end=request_window_end,
+                    reason=type(exc).__name__,
+                    fallback_reason="lock_acquire_error",
+                ),
+            )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+            return
+
+        if _snapshot_exists(db, incident_id=incident_id):
+            db.rollback()
+            status = "skipped"
+            return
+
+        try:
+            location = resolve_incident_location(
+                db,
+                incident_id=incident_id,
+                window_start=request_window_start,
+                window_end=request_window_end,
+            )
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload=_failed_payload(
+                    request_window_start=request_window_start,
+                    request_window_end=request_window_end,
+                    reason=type(exc).__name__,
+                    fallback_reason="location_resolution_error",
+                ),
+            )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+            return
+
+        base_payload = _base_payload(
+            location=location,
+            request_window_start=request_window_start,
+            request_window_end=request_window_end,
+        )
         _emit_event(
             db,
             incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED,
+            payload=base_payload,
+            commit=False,
+        )
+
+        lat, lon = location.get("lat"), location.get("lon")
+        if lat is None or lon is None:
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload={**base_payload, "capture_status": "failed", "reason": "location_unavailable", "degraded": False},
+            )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+            return
+
+        try:
+            with timed(MetricNames.INTEGRATION_PROVIDER_LATENCY):
+                rendered = render_map_snapshot(lat=float(lat), lon=float(lon), allow_base_only=allow_base_only)
+        except Exception as exc:  # noqa: BLE001
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__, "degraded": False},
+            )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+            return
+
+        try:
+            artifact = _persist_snapshot_artifact(db, incident=incident, rendered=rendered)
+        except Exception as exc:  # noqa: BLE001
+            _emit_event(
+                db,
+                incident=incident,
+                event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
+                payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__, "degraded": False},
+            )
+            increment(MetricNames.INTEGRATION_PROVIDER_FAILURE)
+            return
+
+        _emit_event(
+            db,
+            incident=incident,
+            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED,
             payload={
-                "location": {"lat": None, "lon": None, "source": None, "fallback_reason": "lock_acquire_error"},
-                "request_window": {
-                    "start": request_window_start.isoformat() if request_window_start else None,
-                    "end": request_window_end.isoformat() if request_window_end else None,
-                },
-                "capture_status": "failed",
-                "reason": type(exc).__name__,
+                **base_payload,
+                "capture_status": "ok" if rendered.overlay_applied else "degraded",
+                "degraded": not rendered.overlay_applied,
+                "overlay_applied": rendered.overlay_applied,
+                "overlay_unavailable_reason": rendered.overlay_reason,
+                "twc_radar_timestamp": rendered.twc_timestamp_iso,
+                "artifact_id": str(artifact.artifact_id),
+                "artifact_type": WEATHER_MAP_ARTIFACT_TYPE,
             },
         )
-        return
-
-    if _snapshot_exists(db, incident_id=incident_id):
-        db.rollback()
-        return
-
-    try:
-        location = resolve_incident_location(
-            db,
-            incident_id=incident_id,
-            window_start=request_window_start,
-            window_end=request_window_end,
-        )
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={
-                "location": {"lat": None, "lon": None, "source": None, "fallback_reason": "location_resolution_error"},
-                "request_window": {
-                    "start": request_window_start.isoformat() if request_window_start else None,
-                    "end": request_window_end.isoformat() if request_window_end else None,
-                },
-                "capture_status": "failed",
-                "reason": type(exc).__name__,
-            },
-        )
-        return
-
-    base_payload = _base_payload(location=location, request_window_start=request_window_start, request_window_end=request_window_end)
-    _emit_event(
-        db,
-        incident=incident,
-        event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_REQUESTED,
-        payload=base_payload,
-        commit=False,
-    )
-
-    lat, lon = location.get("lat"), location.get("lon")
-    if lat is None or lon is None:
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": "location_unavailable"},
-        )
-        return
-
-    try:
-        rendered = render_map_snapshot(lat=float(lat), lon=float(lon), allow_base_only=allow_base_only)
-    except Exception as exc:  # noqa: BLE001
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__},
-        )
-        return
-
-    try:
-        artifact = _persist_snapshot_artifact(db, incident=incident, rendered=rendered)
-    except Exception as exc:  # noqa: BLE001
-        _emit_event(
-            db,
-            incident=incident,
-            event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_FAILED,
-            payload={**base_payload, "capture_status": "failed", "reason": type(exc).__name__},
-        )
-        return
-    _emit_event(
-        db,
-        incident=incident,
-        event_type=SystemEventType.WEATHER_MAP_SNAPSHOT_CAPTURED,
-        payload={
-            **base_payload,
-            "capture_status": "ok" if rendered.overlay_applied else "degraded",
-            "overlay_applied": rendered.overlay_applied,
-            "overlay_unavailable_reason": rendered.overlay_reason,
-            "twc_radar_timestamp": rendered.twc_timestamp_iso,
-            "artifact_id": str(artifact.artifact_id),
-            "artifact_type": WEATHER_MAP_ARTIFACT_TYPE,
-        },
-    )
+        status = "ok" if rendered.overlay_applied else "degraded"
+        increment(MetricNames.INTEGRATION_PROVIDER_SUCCESS)
+    finally:
+        _log_capture_result(incident=incident, status=status, started=started)
 
 
 def render_map_snapshot(*, lat: float, lon: float, allow_base_only: bool) -> RenderedMapSnapshot:
@@ -252,10 +272,10 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         db.delete(artifact)
         db.flush()
         raise
-    artifact.status = "captured"
-    artifact.s3_key = key
-    artifact.sha256 = metadata.sha256
-    artifact.byte_size = metadata.byte_size
+    setattr(artifact, "status", "captured")
+    setattr(artifact, "s3_key", key)
+    setattr(artifact, "sha256", metadata.sha256)
+    setattr(artifact, "byte_size", metadata.byte_size)
     db.flush()
     return artifact
 
@@ -289,6 +309,37 @@ def _base_payload(*, location: dict[str, Any], request_window_start: datetime | 
             "end": request_window_end.isoformat() if request_window_end else None,
         },
     }
+
+
+def _failed_payload(
+    *,
+    request_window_start: datetime | None,
+    request_window_end: datetime | None,
+    reason: str,
+    fallback_reason: str,
+) -> dict[str, Any]:
+    return {
+        "location": {"lat": None, "lon": None, "source": None, "fallback_reason": fallback_reason},
+        "request_window": {
+            "start": request_window_start.isoformat() if request_window_start else None,
+            "end": request_window_end.isoformat() if request_window_end else None,
+        },
+        "capture_status": "failed",
+        "reason": reason,
+        "degraded": False,
+    }
+
+
+def _log_capture_result(*, incident: Incident, status: str, started: float) -> None:
+    logger.info(
+        "weather_map_snapshot_capture",
+        extra={
+            "incident_id": str(incident.incident_id),
+            "provider": _PROVIDER,
+            "status": status,
+            "latency": int((time.perf_counter() - started) * 1000),
+        },
+    )
 
 
 def _emit_event(

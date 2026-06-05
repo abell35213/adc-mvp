@@ -453,6 +453,41 @@ class TestDriverInitiate:
         mock_tele.delay.assert_called_once_with(str(incident.incident_id), None, None)
         mock_notify_manager.delay.assert_called_once_with(str(incident.incident_id))
 
+
+    @patch("app.api.routes_driver.notify_safety_manager")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
+    @patch("app.api.routes_driver.capture_weather_snapshot")
+    def test_driver_initiate_weather_enqueue_failures_do_not_block_success(
+        self,
+        mock_weather,
+        mock_weather_map,
+        mock_dash,
+        mock_tele,
+        mock_notify_manager,
+        client,
+        driver_headers,
+        test_assignment,
+    ):
+        mock_weather.delay = MagicMock(side_effect=RuntimeError("weather down"))
+        mock_weather_map.delay = MagicMock(side_effect=RuntimeError("map down"))
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
+
+        resp = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers=driver_headers,
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["capture_started"] is True
+        mock_dash.delay.assert_called_once()
+        mock_tele.delay.assert_called_once()
+        mock_notify_manager.delay.assert_called_once()
+
     @patch("app.api.routes_driver.notify_safety_manager")
     @patch("app.api.routes_driver.capture_telematics_bundle")
     @patch("app.api.routes_driver.capture_dashcam")
