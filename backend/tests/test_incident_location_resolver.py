@@ -20,6 +20,20 @@ class _Provider:
         return self._state_rows
 
 
+class _RecordingProvider:
+    def __init__(self, gps_rows, state_rows):
+        self._gps_rows = gps_rows
+        self._state_rows = state_rows
+        self.calls = []
+
+    def fetch_gps_window(self, start=None, end=None):
+        self.calls.append(("gps", start, end))
+        return self._gps_rows
+
+    def fetch_vehicle_state(self, start=None, end=None):
+        self.calls.append(("state", start, end))
+        return self._state_rows
+
 
 def _db_session():
     engine = create_engine("sqlite:///:memory:")
@@ -56,7 +70,9 @@ def test_prefers_device_location(monkeypatch):
     monkeypatch.setattr(
         resolver,
         "get_telematics_provider",
-        lambda: _Provider(gps_rows=[{"vehicleId": "veh-1", "lat": 1, "lon": 2}], state_rows=[]),
+        lambda: _Provider(
+            gps_rows=[{"vehicleId": "veh-1", "lat": 1, "lon": 2}], state_rows=[]
+        ),
     )
 
     result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
@@ -74,7 +90,10 @@ def test_falls_back_to_eld_current(monkeypatch):
     monkeypatch.setattr(
         resolver,
         "get_telematics_provider",
-        lambda: _Provider(gps_rows=[{"vehicleId": "veh-1", "latitude": 33.1, "longitude": -97.2}], state_rows=[]),
+        lambda: _Provider(
+            gps_rows=[{"vehicleId": "veh-1", "latitude": 33.1, "longitude": -97.2}],
+            state_rows=[],
+        ),
     )
 
     result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
@@ -90,7 +109,9 @@ def test_falls_back_to_last_known(monkeypatch):
     monkeypatch.setattr(
         resolver,
         "get_telematics_provider",
-        lambda: _Provider(gps_rows=[], state_rows=[{"vehicleId": "veh-1", "lat": 44.0, "lon": -88.0}]),
+        lambda: _Provider(
+            gps_rows=[], state_rows=[{"vehicleId": "veh-1", "lat": 44.0, "lon": -88.0}]
+        ),
     )
 
     result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
@@ -102,7 +123,11 @@ def test_falls_back_to_last_known(monkeypatch):
 def test_returns_unavailable_sentinel(monkeypatch):
     db = _db_session()
     incident = _incident(db)
-    monkeypatch.setattr(resolver, "get_telematics_provider", lambda: _Provider(gps_rows=[], state_rows=[]))
+    monkeypatch.setattr(
+        resolver,
+        "get_telematics_provider",
+        lambda: _Provider(gps_rows=[], state_rows=[]),
+    )
 
     result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
     assert result == {
@@ -119,7 +144,10 @@ def test_does_not_match_telematics_rows_without_incident_vehicle_ids(monkeypatch
     monkeypatch.setattr(
         resolver,
         "get_telematics_provider",
-        lambda: _Provider(gps_rows=[{"vehicleId": "veh-999", "lat": 40.0, "lon": -74.0}], state_rows=[]),
+        lambda: _Provider(
+            gps_rows=[{"vehicleId": "veh-999", "lat": 40.0, "lon": -74.0}],
+            state_rows=[],
+        ),
     )
 
     result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
@@ -129,3 +157,39 @@ def test_does_not_match_telematics_rows_without_incident_vehicle_ids(monkeypatch
         "source": "unavailable",
         "fallback_reason": "no_location_available",
     }
+
+
+def test_telematics_fallback_order_uses_current_before_last_known(monkeypatch):
+    db = _db_session()
+    incident = _incident(db)
+    provider = _RecordingProvider(
+        gps_rows=[{"vehicleId": "veh-999", "lat": 1, "lon": 2}],
+        state_rows=[{"vehicleId": "veh-1", "lat": 44.0, "lon": -88.0}],
+    )
+    monkeypatch.setattr(resolver, "get_telematics_provider", lambda: provider)
+
+    result = resolver.resolve_incident_location(db, incident_id=incident.incident_id)
+
+    assert result == {
+        "lat": 44.0,
+        "lon": -88.0,
+        "source": "eld_last_known",
+        "fallback_reason": None,
+    }
+    assert [call[0] for call in provider.calls] == ["gps", "state"]
+
+
+def test_incident_not_found_returns_unavailable_without_provider_call(monkeypatch):
+    db = _db_session()
+    provider = _RecordingProvider(gps_rows=[], state_rows=[])
+    monkeypatch.setattr(resolver, "get_telematics_provider", lambda: provider)
+
+    result = resolver.resolve_incident_location(db, incident_id=uuid.uuid4())
+
+    assert result == {
+        "lat": None,
+        "lon": None,
+        "source": "unavailable",
+        "fallback_reason": "incident_not_found",
+    }
+    assert provider.calls == []

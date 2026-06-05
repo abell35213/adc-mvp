@@ -2,7 +2,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.services.weather.nws_client import InvalidWeatherWindowError, build_time_series_query
+from app.services.weather.nws_client import (
+    InvalidWeatherWindowError,
+    WEATHER_ELEMENTS,
+    build_time_series_query,
+)
 
 
 def test_build_time_series_query_option_b_window() -> None:
@@ -14,6 +18,7 @@ def test_build_time_series_query_option_b_window() -> None:
 
     assert params["begin"] == begin.isoformat()
     assert params["end"] == end.isoformat()
+    assert end - begin == timedelta(hours=2)
 
 
 def test_build_time_series_query_includes_required_params() -> None:
@@ -26,7 +31,17 @@ def test_build_time_series_query_includes_required_params() -> None:
     assert params["lon"] == "-70.000000"
     assert params["product"] == "time-series"
     assert params["Unit"] == "e"
-    for key in ("temp", "qpf", "snow", "wspd", "wdir", "wgust", "wwa", "iceaccum", "snowlvl", "vis"):
+    weather_keys = tuple(WEATHER_ELEMENTS.split("&"))
+    assert set(params) == {
+        "lat",
+        "lon",
+        "product",
+        "begin",
+        "end",
+        "Unit",
+        *weather_keys,
+    }
+    for key in weather_keys:
         assert params[key] == key
 
 

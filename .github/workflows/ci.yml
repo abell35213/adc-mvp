@@ -45,7 +45,7 @@ jobs:
         run: mypy --ignore-missing-imports app/core/config.py app/services/schema_validate.py
 
       - name: Targeted weather/initiation regression tests
-        run: pytest tests/services/test_nws_client.py tests/services/test_nws_parser.py tests/test_incident_location_resolver.py tests/test_driver_admin_endpoints.py -v
+        run: pytest tests/services/test_nws_client.py tests/services/test_nws_parser.py tests/services/test_weather_snapshot_service.py tests/test_incident_location_resolver.py tests/test_incident_workflow_service.py tests/test_api_endpoints.py::TestDriverIncidentInitiationDuplicateBehavior tests/test_driver_admin_endpoints.py -v
 
       - name: Tests (pytest)
         run: pytest tests/ -v
