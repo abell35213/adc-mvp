@@ -47,14 +47,13 @@ def _window() -> tuple[datetime, datetime]:
     )
 
 
-def _event_payloads(db_session, incident: Incident) -> list[dict]:
+def _event_payloads_by_type(db_session, incident: Incident) -> dict[str, dict]:
     events = (
         db_session.query(Event)
         .filter(Event.incident_id == incident.incident_id)
-        .order_by(Event.created_at_utc)
         .all()
     )
-    return [event.payload for event in events]
+    return {event.event_type: event.payload for event in events}
 
 
 def test_capture_weather_snapshot_persists_location_source_and_degraded_partial_payload(
@@ -87,14 +86,14 @@ def test_capture_weather_snapshot_persists_location_source_and_degraded_partial_
         request_window_end=end,
     )
 
-    payloads = _event_payloads(db_session, incident)
-    assert payloads[0]["location"] == {
+    payloads_by_type = _event_payloads_by_type(db_session, incident)
+    assert payloads_by_type["weather_snapshot_requested"]["location"] == {
         "lat": 40.0,
         "lon": -74.0,
         "source": "eld_last_known",
         "fallback_reason": None,
     }
-    captured = payloads[1]
+    captured = payloads_by_type["weather_snapshot_captured"]
     assert captured["capture_status"] == "degraded"
     assert captured["degraded"] is True
     assert captured["normalized_weather"]["weather"]["temp"] == {
