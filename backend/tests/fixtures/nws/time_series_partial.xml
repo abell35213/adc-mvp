@@ -1,0 +1,9 @@
+<dwml>
+  <data>
+    <parameters>
+      <temp><value>72</value></temp>
+      <qpf><value>0.1</value></qpf>
+      <wspd><value>14</value></wspd>
+    </parameters>
+  </data>
+</dwml>

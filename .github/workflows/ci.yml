@@ -44,6 +44,9 @@ jobs:
       - name: Type check (mypy critical modules)
         run: mypy --ignore-missing-imports app/core/config.py app/services/schema_validate.py
 
+      - name: Targeted weather/initiation regression tests
+        run: pytest tests/services/test_nws_client.py tests/services/test_nws_parser.py tests/test_incident_location_resolver.py tests/test_driver_admin_endpoints.py -v
+
       - name: Tests (pytest)
         run: pytest tests/ -v
 

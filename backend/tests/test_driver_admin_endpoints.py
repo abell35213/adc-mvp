@@ -537,6 +537,13 @@ class TestDriverInitiate:
         assert len(initiated_events) == 1
         assert initiated_events[0].payload["idempotency_key"] == "idem-001"
 
+        lockdown_events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "evidence_lockdown_started")
+            .all()
+        )
+        assert len(lockdown_events) == 1
+
         mock_dash.delay.assert_called_once()
         mock_tele.delay.assert_called_once()
         mock_notify_manager.delay.assert_called_once()
