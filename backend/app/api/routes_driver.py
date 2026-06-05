@@ -282,7 +282,9 @@ def verify_driver_otp(body: DriverOtpVerifyRequest, db: Session = Depends(get_db
             detail="Driver not found",
         )
 
-    token = create_access_token({"sub": str(driver.driver_id), "role": "driver"})
+    token = create_access_token(
+        {"sub": str(driver.driver_id), "role": "driver", "scope": "driver"}
+    )
     return DriverOtpVerifyResponse(access_token=token)
 
 

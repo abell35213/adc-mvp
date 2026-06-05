@@ -1,5 +1,6 @@
 """Tests for driver auth OTP endpoints."""
 from datetime import datetime, timedelta, timezone
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +9,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api import routes_driver_auth
+from app.api import routes_driver, routes_driver_auth
+from app.core.security import decode_access_token
 from app.db.models import Base, Driver, MessageOperation, Org, OtpChallenge
 from app.db.session import get_db
 from app.main import app
@@ -64,7 +66,7 @@ def driver(db_session):
 
 @pytest.fixture(autouse=True)
 def reset_rate_limits():
-    routes_driver_auth._redis_client = FakeRedisRateLimiter()
+    routes_driver_auth._redis_client = cast(Any, FakeRedisRateLimiter())
     routes_driver_auth._rate_limit_script_sha = None
     yield
     routes_driver_auth._redis_client = None
@@ -128,6 +130,38 @@ def test_driver_otp_flow(client, db_session, driver):
         )
         assert me_resp.status_code == 200
         assert me_resp.json()["phone_e164"] == driver.phone_e164
+
+
+def test_legacy_driver_otp_token_accesses_driver_route(client, db_session, driver):
+    otp_code = "123456"
+    challenge = OtpChallenge(
+        phone_e164=driver.phone_e164,
+        otp_code_hash=routes_driver._hash_otp_code(otp_code),
+        status="pending",
+        expires_at_utc=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    db_session.add(challenge)
+    db_session.commit()
+
+    verify_resp = client.post(
+        "/driver/legacy/auth/verify-otp",
+        json={"phone_e164": driver.phone_e164, "otp_code": otp_code},
+    )
+
+    assert verify_resp.status_code == 200
+    token = verify_resp.json()["access_token"]
+    payload = decode_access_token(token)
+    assert payload is not None
+    assert payload["sub"] == str(driver.driver_id)
+    assert payload["role"] == "driver"
+    assert payload["scope"] == "driver"
+
+    me_resp = client.get(
+        "/driver/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_resp.status_code == 200
+    assert me_resp.json()["driver_id"] == str(driver.driver_id)
 
 
 def test_driver_otp_rejects_invalid_code(client, driver):
