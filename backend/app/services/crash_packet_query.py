@@ -95,24 +95,16 @@ class CrashPacketRow:
         return MAINTENANCE_LOOKBACK_DAYS
 
 
-def _resolve_current_weather_conditions(events: list[Event]) -> dict[str, Any] | None:
-    weather_events = [
-        event
-        for event in events
-        if event.event_type
-        in {
-            SystemEventType.WEATHER_SNAPSHOT_CAPTURED.value,
-            SystemEventType.WEATHER_SNAPSHOT_FAILED.value,
-        }
-    ]
-    if not weather_events:
+def _resolve_current_weather_conditions(
+    latest_weather_event: Event | None,
+) -> dict[str, Any] | None:
+    if latest_weather_event is None:
         return None
 
-    latest_event = sorted(
-        weather_events, key=lambda event: event.occurred_at_utc or datetime.min
-    )[-1]
     payload: dict[str, Any] = (
-        latest_event.payload if isinstance(latest_event.payload, dict) else {}
+        latest_weather_event.payload
+        if isinstance(latest_weather_event.payload, dict)
+        else {}
     )
 
     return {
@@ -121,11 +113,12 @@ def _resolve_current_weather_conditions(events: list[Event]) -> dict[str, Any] |
         "raw_source_metadata": payload.get("raw_source_metadata") or {},
         "location": payload.get("location") or {},
         "captured_at_utc": (
-            latest_event.occurred_at_utc.isoformat()
-            if latest_event.occurred_at_utc
+            latest_weather_event.occurred_at_utc.isoformat()
+            if latest_weather_event.occurred_at_utc
             else None
         ),
     }
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -518,10 +511,28 @@ def fetch_crash_packet_row(
         for a in dashcam_artifacts
     ]
 
-    # Related events for sanity checks in the report header and weather context.
-    incident_events = db.query(Event).filter(Event.incident_id == incident_id).all()
-    event_count = len(incident_events)
-    current_weather_conditions = _resolve_current_weather_conditions(incident_events)
+    # Related events for sanity checks in the report header. Keep this as a
+    # database count so crash packets do not materialize long event timelines.
+    event_count = db.query(Event).filter(Event.incident_id == incident_id).count()
+
+    # Weather context only needs the latest terminal weather snapshot event.
+    latest_weather_event = (
+        db.query(Event)
+        .filter(
+            Event.incident_id == incident_id,
+            Event.event_type.in_(
+                (
+                    SystemEventType.WEATHER_SNAPSHOT_CAPTURED.value,
+                    SystemEventType.WEATHER_SNAPSHOT_FAILED.value,
+                )
+            ),
+        )
+        .order_by(Event.occurred_at_utc.desc())
+        .first()
+    )
+    current_weather_conditions = _resolve_current_weather_conditions(
+        latest_weather_event
+    )
 
     # ── Phase 3: dispatch / weigh / loading dock evidence ──
     #

@@ -210,6 +210,59 @@ class TestCrashPacketQuery:
         with pytest.raises(LookupError):
             fetch_crash_packet_row(db_session, incident_id=uuid.uuid4())
 
+    def test_weather_context_uses_latest_weather_event_without_affecting_count(
+        self, db_session, seeded
+    ):
+        incident = seeded["incident"]
+        old_failed_at = datetime(2026, 5, 1, 11, 0, tzinfo=timezone.utc)
+        latest_captured_at = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+        db_session.add_all(
+            [
+                Event(
+                    incident_id=incident.incident_id,
+                    event_type="weather_snapshot_failed",
+                    actor_type="system",
+                    actor_id="weather",
+                    occurred_at_utc=old_failed_at,
+                    payload={"capture_status": "unavailable"},
+                ),
+                Event(
+                    incident_id=incident.incident_id,
+                    event_type="incident_note_added",
+                    actor_type="operator",
+                    actor_id="ops",
+                    occurred_at_utc=latest_captured_at + timedelta(minutes=5),
+                    payload={"note": "newer non-weather event"},
+                ),
+                Event(
+                    incident_id=incident.incident_id,
+                    event_type="weather_snapshot_captured",
+                    actor_type="system",
+                    actor_id="weather",
+                    occurred_at_utc=latest_captured_at,
+                    payload={
+                        "capture_status": "captured",
+                        "normalized_weather": {"temperature_f": 72},
+                        "raw_source_metadata": {"provider": "open-meteo"},
+                        "location": {"source": "incident_address"},
+                    },
+                ),
+            ]
+        )
+        db_session.commit()
+
+        row = fetch_crash_packet_row(db_session, incident_id=incident.incident_id)
+
+        assert row.related_event_count == 4
+        assert row.current_weather_conditions_json is not None
+        assert row.current_weather_conditions_json["capture_status"] == "captured"
+        assert row.current_weather_conditions_json["normalized_weather"] == {
+            "temperature_f": 72
+        }
+        assert row.current_weather_conditions_json["captured_at_utc"].startswith(
+            "2026-05-01T12:00:00"
+        )
+
 
 class TestPhase3DispatchWeighDock:
     """Phase 3: dispatch / weigh / loading dock evidence on the crash brief."""
