@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pytest
+from xml.etree.ElementTree import ParseError
 
-from app.services.weather.nws_parser import parse_nws_time_series_xml
+from app.services.weather.nws_parser import FIELDS, parse_nws_time_series_xml
 
 _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "nws"
 
@@ -16,21 +17,31 @@ def test_parse_nws_time_series_xml_full_fields() -> None:
 
     assert parsed["is_partial"] is False
     assert parsed["missing_fields"] == []
-    assert parsed["weather"]["temp"]["values"] == ["72", "73"]
-    assert parsed["weather"]["vis"]["present"] is True
+    assert set(parsed["weather"].keys()) == set(FIELDS)
+    assert all(field["present"] is True for field in parsed["weather"].values())
+    assert parsed["weather"]["temp"] == {"values": ["72", "73"], "present": True}
+    assert parsed["weather"]["vis"] == {"values": ["10"], "present": True}
 
 
 def test_parse_nws_time_series_xml_partial_fields() -> None:
     parsed = parse_nws_time_series_xml(_read_fixture("time_series_partial.xml"))
 
-    assert parsed["weather"]["temp"]["present"] is True
-    assert parsed["weather"]["temp"]["values"] == ["72"]
-    assert parsed["weather"]["qpf"]["present"] is True
-    assert parsed["weather"]["snow"]["present"] is False
-    assert "snow" in parsed["missing_fields"]
+    assert set(parsed["weather"].keys()) == set(FIELDS)
+    assert parsed["weather"]["temp"] == {"values": ["72"], "present": True}
+    assert parsed["weather"]["qpf"] == {"values": ["0.1"], "present": True}
+    assert parsed["weather"]["snow"] == {"values": [], "present": False}
+    assert parsed["missing_fields"] == [
+        "snow",
+        "wdir",
+        "wgust",
+        "wwa",
+        "iceaccum",
+        "snowlvl",
+        "vis",
+    ]
     assert parsed["is_partial"] is True
 
 
 def test_parse_nws_time_series_xml_malformed_payload_raises_parse_error() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(ParseError):
         parse_nws_time_series_xml(_read_fixture("time_series_malformed.xml"))

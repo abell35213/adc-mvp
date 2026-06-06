@@ -477,7 +477,10 @@ class TestIntegrationDiagnosticsRoutes:
             row.event_type
             for row in db_session.query(AuditEvent).filter(
                 AuditEvent.event_type.in_(
-                    ["onboarding_test_run_created", "onboarding_test_run_step_completed"]
+                    [
+                        "onboarding_test_run_created",
+                        "onboarding_test_run_step_completed",
+                    ]
                 )
             )
         }
@@ -531,7 +534,9 @@ class TestIntegrationDiagnosticsRoutes:
         success = client.post("/org/onboarding/export-check", headers=auth_headers)
         assert success.status_code == 200
         step = next(
-            item for item in success.json()["steps"] if item["key"] == "export_validation"
+            item
+            for item in success.json()["steps"]
+            if item["key"] == "export_validation"
         )
         assert step["status"] == "completed"
         latest = success.json()["latest_export_validation"]
@@ -644,7 +649,9 @@ class TestIntegrationDiagnosticsRoutes:
         refreshed = client.get("/org/onboarding/status", headers=auth_headers)
         assert refreshed.status_code == 200
         driver_protocol_step = next(
-            item for item in refreshed.json()["steps"] if item["key"] == "driver_protocol"
+            item
+            for item in refreshed.json()["steps"]
+            if item["key"] == "driver_protocol"
         )
         assert driver_protocol_step["status"] == "completed"
 
@@ -1407,6 +1414,85 @@ class TestPatchIncidentOwner:
         assert response.json()["detail"] == "Owner user not found"
 
 
+class TestDriverIncidentInitiationDuplicateBehavior:
+    @patch("app.api.routes_driver.notify_safety_manager")
+    @patch("app.api.routes_driver.capture_telematics_bundle")
+    @patch("app.api.routes_driver.capture_dashcam")
+    @patch("app.api.routes_driver.capture_weather_map_snapshot")
+    @patch("app.api.routes_driver.capture_weather_snapshot")
+    def test_duplicate_driver_initiation_dispatches_core_capture_once(
+        self,
+        mock_weather,
+        mock_weather_map,
+        mock_dash,
+        mock_tele,
+        mock_notify_manager,
+        client,
+        db_session,
+        test_org,
+    ):
+        driver = Driver(
+            org_id=test_org.id,
+            phone_e164="+15555550100",
+            display_name="Endpoint Driver",
+        )
+        db_session.add(driver)
+        db_session.commit()
+        db_session.refresh(driver)
+        db_session.add(
+            DriverVehicleAssignment(
+                org_id=test_org.id,
+                driver_id=driver.driver_id,
+                adc_vehicle_id="veh-endpoint-1",
+                source="manual",
+            )
+        )
+        db_session.commit()
+
+        driver_headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': str(driver.driver_id), 'scope': 'driver'})}",
+            "Idempotency-Key": "endpoint-duplicate-key",
+        }
+        mock_weather.delay = MagicMock()
+        mock_weather_map.delay = MagicMock()
+        mock_dash.delay = MagicMock()
+        mock_tele.delay = MagicMock()
+        mock_notify_manager.delay = MagicMock()
+
+        first = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers=driver_headers,
+        )
+        second = client.post(
+            "/driver/incidents/initiate",
+            json={"vehicle_strategy": "last_assigned"},
+            headers=driver_headers,
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["incident_id"] == second.json()["incident_id"]
+        assert first.json()["capture_started"] is True
+        assert second.json()["capture_started"] is False
+        mock_dash.delay.assert_called_once()
+        mock_tele.delay.assert_called_once()
+        mock_notify_manager.delay.assert_called_once()
+
+        initiated_events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "incident_protocol_initiated")
+            .all()
+        )
+        lockdown_events = (
+            db_session.query(Event)
+            .filter(Event.event_type == "evidence_lockdown_started")
+            .all()
+        )
+        assert len(initiated_events) == 1
+        assert len(lockdown_events) == 1
+
+
 # ── GET /incidents (list) ───────────────────────────────────────────
 
 
@@ -1453,7 +1539,9 @@ class TestListIncidents:
     def test_list_incidents_excludes_test_incidents_by_default(
         self, client, db_session, test_org, auth_headers
     ):
-        operational = Incident(org_id=test_org.id, status="open", is_test_incident=False)
+        operational = Incident(
+            org_id=test_org.id, status="open", is_test_incident=False
+        )
         test_run = Incident(org_id=test_org.id, status="open", is_test_incident=True)
         db_session.add_all([operational, test_run])
         db_session.commit()
