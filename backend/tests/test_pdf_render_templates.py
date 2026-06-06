@@ -15,6 +15,7 @@ import pytest
 
 from app.services.pdf_render import (
     TEMPLATE_REGISTRY,
+    TEMPLATES_DIR,
     render_html,
     render_pdf,
 )
@@ -81,6 +82,58 @@ def test_render_html_autoescapes_user_supplied_strings() -> None:
     # Autoescape must convert the raw script tag into safe entities.
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_crash_brief_template_scopes_weather_section_before_eld_snapshot() -> None:
+    html = render_html(
+        "crash_brief",
+        {
+            "subject": "Crash brief",
+            "incident": {
+                "incident_id": "inc-1",
+                "status": "accident_occurred",
+                "severity": "serious",
+                "created_at_utc": "2026-01-02T03:04:05+00:00",
+            },
+            "driver": None,
+            "driver_history": [],
+            "vehicle": None,
+            "trailer": None,
+            "maintenance": [],
+            "maintenance_window_days": 365,
+            "current_weather_conditions": {
+                "capture_status": "degraded",
+                "normalized_weather": {"visibility_miles": 2},
+                "raw_source_metadata": {"provider": "nws"},
+                "location": {"source": "eld_last_known"},
+                "captured_at_utc": "2026-01-02T03:05:00+00:00",
+            },
+            "eld_logs": [],
+            "samsara_clip_links": [],
+            "related_event_count": 0,
+            "dispatch_instructions": [],
+            "weigh_station_reports": [],
+            "loading_dock_reports": [],
+            "driver_violation_history": [],
+            "driver_violation_history_meta": {},
+        },
+    )
+
+    weather_index = html.index("Weather Snapshot")
+    eld_snapshot_index = html.index("ELD Logs")
+    assert weather_index < eld_snapshot_index
+    assert "Using last known location" in html
+    assert "visibility miles" in html
+    assert "nws" in html
+
+
+def test_weather_section_is_scoped_to_crash_brief_template() -> None:
+    for template_name, template_file in TEMPLATE_REGISTRY.items():
+        template_text = (TEMPLATES_DIR / template_file).read_text()
+        if template_name == "crash_brief":
+            assert "Weather Snapshot" in template_text
+        else:
+            assert "Weather Snapshot" not in template_text
 
 
 def test_render_html_telematics_report_handles_empty_records() -> None:

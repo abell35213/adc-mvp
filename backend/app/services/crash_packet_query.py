@@ -34,6 +34,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domain.system_event_types import SystemEventType
 from app.db.models import (
     Artifact,
     DispatchInstruction,
@@ -87,11 +88,44 @@ class CrashPacketRow:
     # FMCSA driver violation history (last 360d, only included_in_brief rows).
     driver_violation_history_json: list[dict[str, Any]] = field(default_factory=list)
     driver_violation_history_meta_json: dict[str, Any] = field(default_factory=dict)
+    current_weather_conditions_json: dict[str, Any] | None = None
 
     @property
     def maintenance_window_days(self) -> int:
         return MAINTENANCE_LOOKBACK_DAYS
 
+
+def _resolve_current_weather_conditions(events: list[Event]) -> dict[str, Any] | None:
+    weather_events = [
+        event
+        for event in events
+        if event.event_type
+        in {
+            SystemEventType.WEATHER_SNAPSHOT_CAPTURED.value,
+            SystemEventType.WEATHER_SNAPSHOT_FAILED.value,
+        }
+    ]
+    if not weather_events:
+        return None
+
+    latest_event = sorted(
+        weather_events, key=lambda event: event.occurred_at_utc or datetime.min
+    )[-1]
+    payload: dict[str, Any] = (
+        latest_event.payload if isinstance(latest_event.payload, dict) else {}
+    )
+
+    return {
+        "capture_status": payload.get("capture_status") or "failed",
+        "normalized_weather": payload.get("normalized_weather") or {},
+        "raw_source_metadata": payload.get("raw_source_metadata") or {},
+        "location": payload.get("location") or {},
+        "captured_at_utc": (
+            latest_event.occurred_at_utc.isoformat()
+            if latest_event.occurred_at_utc
+            else None
+        ),
+    }
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -484,10 +518,10 @@ def fetch_crash_packet_row(
         for a in dashcam_artifacts
     ]
 
-    # Related event count for sanity checks in the report header.
-    event_count = (
-        db.query(Event).filter(Event.incident_id == incident_id).count()
-    )
+    # Related events for sanity checks in the report header and weather context.
+    incident_events = db.query(Event).filter(Event.incident_id == incident_id).all()
+    event_count = len(incident_events)
+    current_weather_conditions = _resolve_current_weather_conditions(incident_events)
 
     # ── Phase 3: dispatch / weigh / loading dock evidence ──
     #
@@ -674,4 +708,5 @@ def fetch_crash_packet_row(
         loading_dock_reports_json=loading_dock_reports,
         driver_violation_history_json=driver_violation_history,
         driver_violation_history_meta_json=driver_violation_history_meta,
+        current_weather_conditions_json=current_weather_conditions,
     )

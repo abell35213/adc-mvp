@@ -485,6 +485,11 @@
               "default": null,
               "title": "Capture Status"
             },
+            "location": {
+              "additionalProperties": true,
+              "title": "Location",
+              "type": "object"
+            },
             "normalized_weather": {
               "additionalProperties": true,
               "title": "Normalized Weather",

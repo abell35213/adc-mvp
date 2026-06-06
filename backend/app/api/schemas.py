@@ -406,6 +406,7 @@ class CurrentWeatherConditions(BaseModel):
     capture_status: Optional[str] = None
     normalized_weather: dict[str, Any] = Field(default_factory=dict)
     raw_source_metadata: dict[str, Any] = Field(default_factory=dict)
+    location: dict[str, Any] = Field(default_factory=dict)
 
 
 class IncidentDetailResponse(BaseModel):
