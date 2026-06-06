@@ -18,17 +18,17 @@ This runbook covers the incident weather integration used when the driver incide
 | Item | Requirement |
 | --- | --- |
 | Purpose | Fetch NWS time-series XML for the incident location and request window, then normalize it into weather context persisted on weather lifecycle events. |
-| Endpoint | Default request builder targets `https://forecast.weather.gov/MapClick.php` for the `time-series` product. `NWS_BASE_URL` is still validated as a configured weather.gov-style base URL for environment readiness. |
+| Endpoint | The NWS client currently calls the hard-coded `https://forecast.weather.gov/MapClick.php` endpoint for the `time-series` product. `NWS_BASE_URL` is validated by configuration checks but is not used as the request target. |
 | Credentials | None. NWS requests do not require an API token. |
-| Network allow-list | Allow outbound HTTPS to `forecast.weather.gov` and configured `NWS_BASE_URL` hosts. |
-| Retry/timeout knobs | `NWS_REQUEST_TIMEOUT_SECONDS`, `NWS_REQUEST_MAX_RETRIES`, `WEATHER_RETRY_BASE_BACKOFF_SECONDS`, `WEATHER_RETRY_BACKOFF_MULTIPLIER`, `WEATHER_RETRY_MAX_BACKOFF_SECONDS`. |
+| Network allow-list | Allow outbound HTTPS to `forecast.weather.gov`. Configuring or allow-listing only `NWS_BASE_URL` is not sufficient unless the client is changed to use that value. |
+| Retry/timeout knobs | `NWS_REQUEST_TIMEOUT_SECONDS` and `NWS_REQUEST_MAX_RETRIES` control the current NWS request loop. The loop retries immediately; weather retry backoff settings are validated but are not currently read by the NWS client. |
 | Expected artifact/event | `weather_snapshot_requested`, then either `weather_snapshot_captured` or `weather_snapshot_failed`. |
 
 Setup steps:
 
-1. Confirm outbound HTTPS from backend workers to NWS hosts.
-2. Keep `NWS_BASE_URL=https://api.weather.gov` unless a test/staging proxy is intentionally configured.
-3. Set timeout/retry values to match the current incident-initiation SLA. Avoid long timeouts because weather capture must not block the driver protocol.
+1. Confirm outbound HTTPS from backend workers to `forecast.weather.gov`.
+2. Keep `NWS_BASE_URL=https://api.weather.gov` for readiness/config validation; do not rely on it as an NWS proxy switch. If staging/prod must route NWS through a proxy, update the NWS client first and cover that behavior with tests.
+3. Set `NWS_REQUEST_TIMEOUT_SECONDS` and `NWS_REQUEST_MAX_RETRIES` to match the current incident-initiation SLA. Avoid long timeouts because weather capture must not block the driver protocol.
 4. Run the targeted NWS parser/client tests before promotion.
 
 ### Mapbox static basemap provider
@@ -56,14 +56,14 @@ Setup steps:
 | Endpoint | `https://api.weather.com/v3/TileServer/tile` with `product=radar`, `ts=latest`, incident `lat`/`lon`, and `apiKey`. The returned metadata points to the overlay image URL. |
 | Credentials | `TWC_API_KEY` is required for radar overlays. |
 | Network allow-list | Allow outbound HTTPS to `api.weather.com` and the overlay image host returned by TWC metadata. |
-| Degraded behavior | If `allow_base_only=true`, TWC overlay failures produce a base-map-only weather map snapshot with `capture_status=degraded`. |
+| Degraded behavior | TWC overlay failures currently produce a base-map-only weather map snapshot with `capture_status=degraded` because the incident workflow calls the capture service with base-only fallback enabled. There is no environment variable that disables this fallback. |
 
 Setup steps:
 
 1. Provision a TWC API key with radar tile/timeslice access.
 2. Store it as `TWC_API_KEY` in the active secret backend.
 3. Test both metadata and overlay URL access from the backend worker network.
-4. Decide whether the environment should allow base-map-only capture (`allow_base_only=true`) or fail hard when overlays are unavailable.
+4. Plan operational expectations around the current base-map-only fallback: overlays can be unavailable while the artifact is still captured as degraded. If an environment must fail hard when overlays are unavailable, add a real runtime/configuration path before documenting that policy.
 
 ## Config and secret requirements
 
@@ -71,16 +71,16 @@ Setup steps:
 
 | Variable | Secret? | Required for | Notes |
 | --- | --- | --- | --- |
-| `NWS_BASE_URL` | No | NWS readiness/config validation | Must be an `http(s)` URL. Default is `https://api.weather.gov`. |
+| `NWS_BASE_URL` | No | NWS readiness/config validation only | Must be an `http(s)` URL. Default is `https://api.weather.gov`; the current NWS client does not use this value for requests. |
 | `NWS_REQUEST_TIMEOUT_SECONDS` | No | NWS capture | Must be greater than `0`. |
 | `NWS_REQUEST_MAX_RETRIES` | No | NWS capture | Must be `>= 0`. |
 | `MAPBOX_TOKEN` | Yes | Weather map basemap capture | Missing token fails map rendering with `Mapbox configuration missing`. |
-| `TWC_API_KEY` | Yes | Radar overlay capture | Missing key degrades to base-map-only when base-only fallback is allowed. |
-| `WEATHER_DEFAULT_UNITS` | No | NWS query defaults | Allowed values: `e`, `m`, `h`. |
+| `TWC_API_KEY` | Yes | Radar overlay capture | Missing key degrades to base-map-only under the current incident workflow because base-only fallback is enabled. |
+| `WEATHER_DEFAULT_UNITS` | No | Config validation only | Allowed values: `e`, `m`, `h`; the current NWS query builder still uses its hard-coded default unit (`e`) unless code passes a different unit. |
 | `WEATHER_DEFAULT_MAP_DIMENSIONS` | No | Map rendering validation | Must remain `1280x720@2x` for the supported PDF/layout baseline. |
-| `WEATHER_RETRY_BASE_BACKOFF_SECONDS` | No | Retry tuning | Must be greater than `0`. |
-| `WEATHER_RETRY_BACKOFF_MULTIPLIER` | No | Retry tuning | Must be `>= 1`. |
-| `WEATHER_RETRY_MAX_BACKOFF_SECONDS` | No | Retry tuning | Must be greater than or equal to the base backoff. |
+| `WEATHER_RETRY_BASE_BACKOFF_SECONDS` | No | Config validation only | Must be greater than `0`; not currently read by the NWS retry loop. |
+| `WEATHER_RETRY_BACKOFF_MULTIPLIER` | No | Config validation only | Must be `>= 1`; not currently read by the NWS retry loop. |
+| `WEATHER_RETRY_MAX_BACKOFF_SECONDS` | No | Config validation only | Must be greater than or equal to the base backoff; not currently read by the NWS retry loop. |
 | `S3_ARTIFACTS_BUCKET` | Yes/controlled config | Weather map artifact persistence | Required for persisted map snapshots. |
 | `AWS_REGION` | No | Artifact persistence | Used by S3-backed artifact storage. |
 | `SECRET_PROVIDER` | No | Secret loading | `env` or `aws_secrets_manager`. |
@@ -122,7 +122,7 @@ Resolution results are copied into event payloads as:
 | NWS normalized response is partial | `weather_snapshot_captured` with `capture_status=degraded`, `degraded=true` | Show weather summary with a warning such as: “Weather data is partial; verify critical values before relying on this packet.” |
 | Missing location/request window for NWS | `weather_snapshot_failed`, `reason=insufficient_request_context` | Show “Weather unavailable because incident time/location was incomplete.” Do not block incident initiation. |
 | Mapbox token missing or Mapbox fetch fails | `weather_map_snapshot_failed`, `reason=RuntimeError` or HTTP/client error class | Show “Weather map unavailable.” Keep crash workflow usable and expose retry/admin escalation. |
-| TWC key missing | Base map captured with `capture_status=degraded`, `overlay_applied=false`, `overlay_unavailable_reason=twc_api_key_missing` when base-only fallback is enabled | Show “Radar overlay unavailable; map shown without radar.” |
+| TWC key missing | Base map captured with `capture_status=degraded`, `overlay_applied=false`, `overlay_unavailable_reason=twc_api_key_missing` under the current base-only fallback | Show “Radar overlay unavailable; map shown without radar.” |
 | TWC metadata empty/invalid or overlay fetch fails | Base map captured with `capture_status=degraded`, `overlay_applied=false`, reason such as `twc_timeslice_empty`, `twc_timeslice_invalid_json`, `twc_overlay_http_403` | Show “Radar overlay unavailable; base map captured.” Include provider reason in admin-only diagnostics, not driver-facing copy. |
 | Artifact storage write fails | `weather_map_snapshot_failed`, reason from storage exception | Show “Weather map could not be saved.” On-call should inspect S3/object storage health. |
 
@@ -166,7 +166,7 @@ Recommended log search fields to add to dashboards: `incident_id`, `org_id` when
 
 ### Metrics
 
-The weather providers currently use the shared integration metric names below. Dashboards should filter or group by provider when metric tags/labels are available.
+The weather providers currently use the shared integration metric names below without provider labels. Treat these counters as aggregate integration signals that may include non-weather providers such as Twilio, FMCSA, and Samsara. Use structured logs and weather lifecycle events, not provider-labelled metric selectors, when a dashboard or alert must isolate NWS/Mapbox/TWC behavior.
 
 | Metric name | Use |
 | --- | --- |
@@ -176,14 +176,14 @@ The weather providers currently use the shared integration metric names below. D
 | `integration.provider.timeout` | Provider timeout counter when emitted by shared integration instrumentation. |
 | `integration.provider.rate_limit` | Provider rate-limit counter when emitted by shared integration instrumentation. |
 | `integration.provider.auth_failure` | Provider auth/credential failure counter when emitted by shared integration instrumentation. |
-| `integration.provider.latency` | Timed provider request/capture latency. |
+| `integration.provider.latency.duration_ms` | Timed provider request/capture latency emitted by the `timed()` helper. The base metric name is passed in code, but the recorded timing series appends `.duration_ms`. |
 
 ### Alerting hints
 
 Start with conservative alerts and tune after baseline traffic is available:
 
-- **Weather hard-failure rate:** page during business-critical windows if `integration.provider.failure{provider in [nws,mapbox+twc]}` exceeds 5% of weather requests for 15 minutes or any single enterprise tenant has repeated accident packets without weather evidence.
-- **Mapbox auth/config regression:** page if `weather_map_snapshot_failed` spikes with `reason=RuntimeError` or Mapbox HTTP 401/403 after deploy/secret rotation.
+- **Weather hard-failure rate:** page during business-critical windows when weather lifecycle events or structured logs show failed NWS/map snapshot captures above the release threshold for 15 minutes, or when any single enterprise tenant has repeated accident packets without weather evidence. Do not rely on `provider` labels on `integration.provider.failure`; current shared metrics are unlabelled aggregate counters.
+- **Mapbox auth/config regression:** page if `weather_map_snapshot_failed` spikes with `reason=RuntimeError` (missing token/config) or `reason=HTTPStatusError` after deploy/secret rotation. The failed event payload does not currently retain Mapbox HTTP status codes, so separate 401/403-specific alerting requires additional instrumentation or vendor/request logs.
 - **TWC overlay degradation:** warn (ticket, not page) if `overlay_applied=false` exceeds 25% for 30 minutes while Mapbox capture remains successful; page only if customer commitments require radar overlays.
 - **Stale radar:** warn if `twc_radar_timestamp` is older than the incident/request window by the Product-approved threshold, or if timestamps stop advancing globally.
 - **Location fallback exhaustion:** page if `location.source=unavailable` rises above 10% for accident initiations, because downstream evidence capture quality is at risk.
@@ -196,10 +196,10 @@ Start with conservative alerts and tune after baseline traffic is available:
 | **WX-AC-1 NWS capture is non-blocking and normalized.** | Initiate an incident with valid location/time and verify `weather_snapshot_requested` then `weather_snapshot_captured`; repeat with partial NWS XML fixture and verify degraded normalization. | `backend/tests/services/test_nws_client.py`, `backend/tests/services/test_nws_parser.py`, `backend/tests/services/test_weather_snapshot_service.py` | Event payload screenshot/log extract with `capture_status`, normalized weather fields, and request window. |
 | **WX-AC-2 Location fallback order is deterministic.** | Seed incidents with device location, current ELD GPS, last-known ELD state, and no location; verify source order and unavailable reasons. | `backend/tests/test_incident_location_resolver.py` | Table of incident IDs mapped to `location.source` and `fallback_reason`. |
 | **WX-AC-3 Weather map captures Mapbox base image and TWC overlay when both providers are healthy.** | Run capture with valid `MAPBOX_TOKEN` and `TWC_API_KEY`; verify `weather_map_snapshot_captured`, `overlay_applied=true`, `twc_radar_timestamp`, and persisted artifact. | `backend/tests/services/test_weather_map_snapshot_service.py` | Artifact preview, event payload, S3/object metadata, and provider timestamps. |
-| **WX-AC-4 TWC overlay failure degrades without blocking the incident workflow.** | Remove/deny TWC key or simulate TWC metadata/overlay error with base-only fallback enabled; verify base map artifact is captured with `capture_status=degraded`. | `backend/tests/services/test_weather_map_snapshot_service.py` | Event payload with `overlay_applied=false` and `overlay_unavailable_reason`; screenshot/preview of base map only. |
+| **WX-AC-4 TWC overlay failure degrades without blocking the incident workflow.** | Remove/deny TWC key or simulate TWC metadata/overlay error in the current incident workflow; verify base map artifact is captured with `capture_status=degraded`. | `backend/tests/services/test_weather_map_snapshot_service.py` | Event payload with `overlay_applied=false` and `overlay_unavailable_reason`; screenshot/preview of base map only. |
 | **WX-AC-5 Missing location or provider/storage hard failure produces actionable diagnostics.** | Simulate no location, Mapbox config failure, and artifact storage failure; verify failed events include reason/fallback fields and user workflow remains usable. | `backend/tests/services/test_weather_snapshot_service.py`, `backend/tests/services/test_weather_map_snapshot_service.py`, `backend/tests/test_incident_workflow_service.py` | Failed event payloads and UX copy showing non-blocking degraded messaging. |
 | **WX-AC-6 Accident PDF scope is limited to `crash_brief`.** | Generate/update accident PDF evidence and verify weather changes appear only in `crash_brief`; confirm no unrelated PDF templates changed. | `backend/tests/test_crash_packet_builder.py`, `backend/tests/test_pdf_render_templates.py`, `backend/tests/test_export_pdf_service.py` as applicable to the implementation PR | Rendered `crash_brief` PDF and diff/review note confirming other PDFs are unchanged unless separately approved. |
-| **WX-AC-7 On-call can diagnose without code spelunking.** | Trigger ok/degraded/failed weather captures in staging and confirm logs, metrics, dashboards, and alert runbooks expose provider, reason, latency, incident ID, artifact ID, and fallback source. | CI lint/type/tests plus dashboard/runbook review | Dashboard screenshot, sample log query, alert rule link, and this runbook link in the release ticket. |
+| **WX-AC-7 On-call can diagnose without code spelunking.** | Trigger ok/degraded/failed weather captures in staging and confirm structured logs/events, aggregate metrics, dashboards, and alert runbooks expose provider, reason, latency, incident ID, artifact ID, and fallback source where each signal actually records those fields. | CI lint/type/tests plus dashboard/runbook review | Dashboard screenshot, sample log query, alert rule link, and this runbook link in the release ticket. |
 
 ## Promotion checklist
 
