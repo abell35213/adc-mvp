@@ -115,6 +115,7 @@ def _resolve_weather_snapshot_state(*, events: list) -> tuple[dict | None, str |
             "capture_status": payload.get("capture_status"),
             "normalized_weather": payload.get("normalized_weather") or {},
             "raw_source_metadata": payload.get("raw_source_metadata") or {},
+            "location": payload.get("location") or {},
         }, payload.get("capture_status"), location_source
 
     return None, payload.get("capture_status") or "failed", location_source

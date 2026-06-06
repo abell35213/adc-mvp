@@ -42,6 +42,7 @@ def _row_to_template_context(row: CrashPacketRow, *, subject: str) -> dict[str, 
         "loading_dock_reports": row.loading_dock_reports_json,
         "driver_violation_history": row.driver_violation_history_json,
         "driver_violation_history_meta": row.driver_violation_history_meta_json,
+        "current_weather_conditions": row.current_weather_conditions_json,
     }
 
 
@@ -95,6 +96,7 @@ def build_crash_packet(row: CrashPacketRow) -> CrashPacket:
                 "driver_violation_history_meta": (
                     row.driver_violation_history_meta_json
                 ),
+                "current_weather_conditions": row.current_weather_conditions_json,
             },
             sort_keys=True,
             default=str,

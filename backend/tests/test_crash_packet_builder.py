@@ -106,6 +106,17 @@ def _example_row() -> CrashPacketRow:
                 "external_id": "ws-ext-1",
             }
         ],
+        current_weather_conditions_json={
+            "capture_status": "ok",
+            "normalized_weather": {
+                "temperature_f": 42,
+                "wind_speed_mph": 18,
+                "conditions": "Rain",
+            },
+            "raw_source_metadata": {"provider": "nws"},
+            "location": {"source": "driver_gps", "lat": 41.8, "lon": -87.6},
+            "captured_at_utc": "2026-05-01T01:01:00+00:00",
+        },
         loading_dock_reports_json=[
             {
                 "loading_dock_report_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -168,6 +179,34 @@ class TestCrashPacketBuilder:
         assert "eld_log_report" in html
         # Samsara deep link
         assert "https://cloud.samsara.com/o/fleet/vehicles/sams-9001/dashcam" in html
+
+    def test_html_body_contains_weather_section_before_eld_snapshot(self):
+        packet = build_crash_packet(_example_row())
+        html = packet.html_body
+
+        weather_index = html.index("Weather Snapshot")
+        eld_snapshot_index = html.index("ELD Logs")
+        assert weather_index < eld_snapshot_index
+        assert "temperature f" in html
+        assert "wind speed mph" in html
+        assert "Rain" in html
+        assert "driver_gps" in html
+        assert "nws" in html
+
+    def test_html_body_renders_location_unavailable_for_unresolved_weather_location(self):
+        row = _example_row()
+        row.current_weather_conditions_json = {
+            "capture_status": "failed",
+            "normalized_weather": {},
+            "raw_source_metadata": {},
+            "location": {"source": "unavailable"},
+            "captured_at_utc": "2026-05-01T01:01:00+00:00",
+        }
+
+        packet = build_crash_packet(row)
+
+        assert "Location unavailable" in packet.html_body
+        assert "Weather data unavailable" in packet.html_body
 
     def test_pdf_bytes_returned(self):
         packet = build_crash_packet(_example_row())

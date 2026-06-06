@@ -181,6 +181,33 @@
   <p><em>No maintenance records ingested yet (TMS sync pending).</em></p>
 {% endif %}
 
+<h2>Weather Snapshot</h2>
+{% if current_weather_conditions %}
+  <table>
+    <tr><th>Status</th><td>{{ current_weather_conditions.capture_status or "unknown" }}</td></tr>
+    <tr><th>Location Source</th><td>{{ current_weather_conditions.location.source or "Location unavailable" }}</td></tr>
+    <tr><th>Captured (UTC)</th><td>{{ current_weather_conditions.captured_at_utc or "—" }}</td></tr>
+    <tr><th>Provider</th><td>{{ current_weather_conditions.raw_source_metadata.provider or "—" }}</td></tr>
+  </table>
+  {% if current_weather_conditions.location.source == "unavailable" %}
+    <p><strong>Location unavailable</strong></p>
+  {% elif current_weather_conditions.location.source == "eld_last_known" %}
+    <p><strong>Using last known location.</strong></p>
+  {% endif %}
+
+  {% if current_weather_conditions.normalized_weather %}
+    <table>
+      {% for key, value in current_weather_conditions.normalized_weather.items() %}
+        <tr><th>{{ key|replace("_", " ") }}</th><td>{{ value if value is not none else "—" }}</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p><em>Weather data unavailable.</em></p>
+  {% endif %}
+{% else %}
+  <p><em>Weather data unavailable.</em></p>
+{% endif %}
+
 <h2>ELD Logs (last 8 captured artifacts)</h2>
 {% if eld_logs %}
   <ul>
