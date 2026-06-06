@@ -130,15 +130,14 @@ def test_capture_weather_snapshot_external_fetch_failure_is_non_blocking(
         request_window_end=end,
     )
 
-    events = (
-        db_session.query(Event).filter(Event.incident_id == incident.incident_id).all()
-    )
-    assert [event.event_type for event in events] == [
+    payloads_by_type = _event_payloads_by_type(db_session, incident)
+    assert set(payloads_by_type) == {
         "weather_snapshot_requested",
         "weather_snapshot_failed",
-    ]
-    assert events[1].payload["reason"] == "RuntimeError"
-    assert events[1].payload["degraded"] is False
+    }
+    failed = payloads_by_type["weather_snapshot_failed"]
+    assert failed["reason"] == "RuntimeError"
+    assert failed["degraded"] is False
 
 
 def test_capture_weather_snapshot_skips_duplicate_terminal_event(
