@@ -1,11 +1,47 @@
-"""Shared test fixtures and SQLite compatibility shims."""
+"""Shared test fixtures, safe test defaults, and SQLite compatibility shims."""
+
+from __future__ import annotations
 
 import hashlib
-from types import SimpleNamespace
+import os
+import signal
+from types import FrameType, SimpleNamespace
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB, UUID as PG_UUID
 from sqlalchemy.ext.compiler import compiles
+
+_TEST_TIMEOUT_SECONDS = int(os.getenv("ADC_PYTEST_TIMEOUT_SECONDS", "60"))
+
+_TEST_ENV_DEFAULTS = {
+    "APP_ENV": "test",
+}
+
+
+for _key, _value in _TEST_ENV_DEFAULTS.items():
+    os.environ.setdefault(_key, _value)
+
+
+def _handle_test_timeout(signum: int, frame: FrameType | None) -> None:
+    raise TimeoutError(f"pytest test exceeded {_TEST_TIMEOUT_SECONDS} seconds")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
+    """Bound each test item so one hang cannot stall the full backend suite."""
+
+    if _TEST_TIMEOUT_SECONDS <= 0 or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _handle_test_timeout)
+    signal.alarm(_TEST_TIMEOUT_SECONDS)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 # Register SQLite type compilers so that Postgres-specific column types

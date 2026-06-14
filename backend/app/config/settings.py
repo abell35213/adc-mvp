@@ -209,6 +209,10 @@ class AppSettings(BaseSettings):
     def is_local(self) -> bool:
         return self.APP_ENV == "local"
 
+    @property
+    def is_test(self) -> bool:
+        return self.APP_ENV == "test"
+
     def _prod_validation_errors(self) -> list[str]:
         errors: list[str] = []
         if not self.is_prod:
@@ -313,6 +317,18 @@ class LocalSettings(AppSettings):
 class TestSettings(AppSettings):
     ENV_NAME: ClassVar[str] = "test"
     APP_ENV: str = "test"
+    DATABASE_URL: str = "sqlite+pysqlite:///:memory:"
+    REDIS_URL: str = "redis://test-redis.invalid:6379/0"
+    SAMSARA_API_KEY: str = "test-samsara-key"
+    TWILIO_ACCOUNT_SID: str = "ACtest"
+    TWILIO_AUTH_TOKEN: str = "test-token"
+    TWILIO_VERIFY_SERVICE_SID: str = "VAtest"
+    JWT_SECRET_KEY: str = "test-jwt-secret-for-local-ci-only-32-bytes"
+    OTP_HASH_PEPPER: str = "test-otp-pepper-for-local-ci-only-32-bytes"
+    STORAGE_BACKEND: str = "filesystem"
+    VAULT_ROOT: str = "/tmp/adc-test-vault"
+    FMCSA_INSPECTIONS_ENABLED: bool = False
+    FMCSA_INSPECTIONS_REPOLL_ENABLED: bool = False
 
 
 class StagingSettings(AppSettings):
