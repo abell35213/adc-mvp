@@ -10,7 +10,9 @@
     "test": "jest",
     "test:unit": "jest --selectProjects unit",
     "test:rntl": "jest --selectProjects rntl",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:serial": "jest --runInBand",
+    "test:open-handles": "jest --runInBand --detectOpenHandles"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
