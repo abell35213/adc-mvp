@@ -1,4 +1,27 @@
-.PHONY: dev test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix verify-demo
+.PHONY: dev local-up local-down local-logs local-ps local-rebuild test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix verify-demo
+
+
+LOCAL_COMPOSE = docker compose -f infra/docker-compose.local.yml
+
+## Start the local-only Docker stack (Postgres, Redis, API, worker, frontend).
+local-up:
+	$(LOCAL_COMPOSE) up -d --build
+
+## Stop the local-only Docker stack without deleting local volumes.
+local-down:
+	$(LOCAL_COMPOSE) down
+
+## Tail logs from the local-only Docker stack.
+local-logs:
+	$(LOCAL_COMPOSE) logs -f
+
+## Show local-only Docker stack service status.
+local-ps:
+	$(LOCAL_COMPOSE) ps
+
+## Rebuild and restart the local-only Docker stack.
+local-rebuild:
+	$(LOCAL_COMPOSE) up -d --build --force-recreate
 
 ## Start all services (infra + backend + worker + frontend) from repo root
 ## Uses docker compose (plugin-style command)
@@ -38,5 +61,5 @@ check-hardening-matrix:
 ## every Phase 1+2+3 record the guided tour calls out is present and
 ## well-formed. Offline — no Postgres / Celery / SES / S3 needed.
 verify-demo:
-cd backend && pip install -q -r requirements.txt
-python scripts/verify_demo.py
+	cd backend && pip install -q -r requirements.txt
+	python scripts/verify_demo.py
