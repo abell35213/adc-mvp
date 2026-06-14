@@ -16,9 +16,13 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import sys
 import traceback
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 # Make ``app`` importable when running from the repo root.
@@ -27,6 +31,103 @@ sys.path.insert(0, str(_BACKEND_DIR))
 
 
 SCENARIO_KEY = "crash_with_full_packet"
+DEFAULT_DEMO_EMAIL = "demo-admin@adc.local"
+DEFAULT_DEMO_PASSWORD = "DemoAdmin!2345"
+DEFAULT_DEMO_ORG = "ADC Demo Org"
+
+
+def _check_api_login(api_base_url: str, email: str, password: str) -> bool:
+    """Return True when the running API accepts the seeded demo login."""
+    url = api_base_url.rstrip("/") + "/auth/login"
+    payload = json.dumps({"email": email, "password": password}).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return response.status == 200 and bool(data.get("access_token"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return False
+
+
+def run_local_db() -> int:
+    """Verify demo data in the configured local Postgres database."""
+    email = os.environ.get("DEMO_ADMIN_EMAIL", DEFAULT_DEMO_EMAIL)
+    password = os.environ.get("DEMO_ADMIN_PASSWORD", DEFAULT_DEMO_PASSWORD)
+    org_name = os.environ.get("DEMO_ORG", DEFAULT_DEMO_ORG)
+    api_base_url = os.environ.get("DEMO_API_BASE_URL", "http://localhost:8000")
+
+    print("Verifying local demo database and API login")
+    print(f"  org={org_name}")
+    print(f"  admin={email}")
+    print(f"  api={api_base_url}")
+
+    from app.core.security import verify_password
+    from app.db.models import Incident, Org, User, UserOrg
+    from app.db.session import SessionLocal
+    from app.security.permissions import Role
+
+    errors: list[str] = []
+    db = SessionLocal()
+    try:
+        org = db.query(Org).filter(Org.name == org_name).one_or_none()
+        _check("demo organization exists", org is not None, errors=errors)
+
+        user = db.query(User).filter(User.email == email).one_or_none()
+        _check("demo admin user exists", user is not None, errors=errors)
+        if user is not None:
+            _check("demo admin is active", bool(user.is_active), errors=errors)
+            _check(
+                "demo admin role is org_admin",
+                user.role == Role.ORG_ADMIN.value,
+                errors=errors,
+            )
+            _check(
+                "demo admin password matches documented credential",
+                verify_password(password, user.password_hash),
+                errors=errors,
+            )
+
+        membership_exists = False
+        incident_count = 0
+        if org is not None and user is not None:
+            membership_exists = (
+                db.query(UserOrg)
+                .filter(UserOrg.org_id == org.id, UserOrg.user_id == user.id)
+                .first()
+                is not None
+            )
+            incident_count = (
+                db.query(Incident).filter(Incident.org_id == org.id).count()
+            )
+        _check(
+            "demo admin belongs to demo organization", membership_exists, errors=errors
+        )
+        _check("at least one demo incident exists", incident_count >= 1, errors=errors)
+        _check(
+            "demo API login returns an access token",
+            _check_api_login(api_base_url, email, password),
+            errors=errors,
+        )
+
+        if errors:
+            print(
+                f"\nlocal verify-demo FAILED with {len(errors)} check(s) failing.",
+                file=sys.stderr,
+            )
+            return 1
+
+        print("\nlocal verify-demo OK — seeded demo tenant is usable.")
+        return 0
+    except Exception:
+        traceback.print_exc()
+        return 1
+    finally:
+        db.close()
 
 
 def _build_session():
@@ -188,9 +289,7 @@ def run() -> int:
         trailers = db.query(Trailer).filter(Trailer.org_id == org.id).all()
         _check("exactly one Trailer seeded", len(trailers) == 1, errors=errors)
         maint = (
-            db.query(MaintenanceRecord)
-            .filter(MaintenanceRecord.org_id == org.id)
-            .all()
+            db.query(MaintenanceRecord).filter(MaintenanceRecord.org_id == org.id).all()
         )
         _check(
             "three MaintenanceRecord rows seeded (mixed tractor + trailer)",
@@ -199,9 +298,7 @@ def run() -> int:
         )
         drivers = (
             db.query(Driver)
-            .filter(
-                Driver.org_id == org.id, Driver.display_name == "Pat Demo-Driver"
-            )
+            .filter(Driver.org_id == org.id, Driver.display_name == "Pat Demo-Driver")
             .all()
         )
         _check(
@@ -260,7 +357,9 @@ def run() -> int:
             # The fill must have used the canonical row, not the placeholder
             # ``incident.adc_driver_id`` text id. The DriverName field is
             # required + ``upper`` transform.
-            by_name = {f["name"]: f for f in (filling.payload_json or {}).get("fields", [])}
+            by_name = {
+                f["name"]: f for f in (filling.payload_json or {}).get("fields", [])
+            }
             _check(
                 "fill resolved DriverName from canonical row (Driver join + upper)",
                 by_name.get("DriverName", {}).get("value") == "PAT DEMO-DRIVER",
@@ -288,5 +387,18 @@ def run() -> int:
         db.close()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--local-db",
+        action="store_true",
+        help="verify seeded demo data in DATABASE_URL and API login",
+    )
+    args = parser.parse_args()
+    if args.local_db:
+        return run_local_db()
+    return run()
+
+
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(main())

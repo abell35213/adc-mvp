@@ -61,6 +61,7 @@ services:
       S3_ARTIFACTS_BUCKET: adc-local-artifacts
       S3_EXPORTS_BUCKET: adc-local-exports
     volumes:
+      - ../scripts:/scripts:ro
       - local_vaultdata:/var/adc/vault
     depends_on:
       db:

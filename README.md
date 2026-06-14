@@ -161,21 +161,60 @@ visitor appends `?demo=1` to the URL.
 
 Use the local-only compose stack for development and pilot demo prep. It starts PostgreSQL, Redis, the FastAPI API, a Celery worker, and the Next.js frontend without AWS credentials, AWS Secrets Manager, staging secrets, Twilio, Samsara, FMCSA, or other live provider credentials.
 
+Fresh local demo bootstrap:
+
 ```bash
 cp .env.example .env
-make local-up
-make local-ps
-curl http://localhost:8000/health
-curl http://localhost:3000
-make local-down
+make local-bootstrap
 ```
 
-Local ports:
+`make local-bootstrap` builds and starts the local containers, waits for Postgres and the API, runs Alembic migrations inside the backend container against the local Compose database, seeds the deterministic demo tenant, and verifies the seeded demo plus API login.
 
-- Frontend: `http://localhost:3000`
-- API: `http://localhost:8000`
-- PostgreSQL: `127.0.0.1:5432`
-- Redis: `127.0.0.1:6379`
+After bootstrap:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:3000
+make local-verify-demo
+```
+
+Local URLs and ports:
+
+| Service | URL / port | Notes |
+| --- | --- | --- |
+| Frontend | `http://localhost:3000` | Next.js web app. |
+| Backend API | `http://localhost:8000` | FastAPI; readiness is `http://localhost:8000/health`. |
+| PostgreSQL | `127.0.0.1:5432` | Local-only Compose database. |
+| Redis | `127.0.0.1:6379` | Local-only Compose broker/cache. |
+
+Demo credentials:
+
+| Field | Value |
+| --- | --- |
+| Demo login email | `demo-admin@adc.local` |
+| Demo login password | `DemoAdmin!2345` |
+| Demo organization | `ADC Demo Org` |
+
+Local demo commands:
+
+```bash
+make local-up           # Start local containers without deleting data
+make local-migrate      # Run Alembic migrations against local Postgres
+make local-seed         # Idempotently seed/reset the demo tenant and scenario
+make local-verify-demo  # Print pass/fail checks for local demo data and login
+make local-down         # Stop containers, keep local volumes
+make local-reset        # LOCAL ONLY: stop containers and delete local volumes
+```
+
+`make local-reset` uses `infra/docker-compose.local.yml` and `docker compose down --volumes --remove-orphans`; it deletes only this local Compose stack's Postgres and vault volumes. It is intentionally separate from staging/production commands.
+
+Common troubleshooting:
+
+- Port `3000` already in use: stop the other frontend/dev server, then rerun `make local-bootstrap` or `make local-up`.
+- Port `8000` already in use: stop the other API process/container and rerun `make local-wait-api`; inspect logs with `make local-logs`.
+- Port `5432` already in use: stop your host Postgres or change the local Compose port mapping before bootstrapping. The backend container still uses the Compose service hostname `db`.
+- Port `6379` already in use: stop your host Redis or change the local Compose port mapping. The backend container still uses the Compose service hostname `redis`.
+- API readiness does not pass: run `make local-logs`, then rerun `make local-migrate` and `make local-verify-demo` after the containers are healthy.
 
 The local compose file is `infra/docker-compose.local.yml`. Its backend services run with `APP_ENV=local`, `SECRET_PROVIDER=env`, local Postgres/Redis container URLs, filesystem storage, insecure local-only JWT/OTP secrets, `COOKIE_SECURE=false`, and `FRONTEND_ORIGIN=http://localhost:3000`. Inside compose, the frontend calls the API at `http://api:8000`; from the browser it uses `http://localhost:8000`.
 
