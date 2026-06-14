@@ -25,12 +25,29 @@ The RNTL project also re-applies `react-native/jest/setup.js` and
 cd driver-app
 npm install            # first time
 npm test               # both projects
+npm run test:serial    # both projects serially (pilot/CI hang triage)
+npm run test:open-handles # serial run with Jest open-handle diagnostics
 npm run test:unit      # ts-jest only
 npm run test:rntl      # rntl only
 npm run test:coverage  # both projects + coverage report (enforces thresholds)
 ```
 
 Coverage HTML lands in `driver-app/coverage/lcov-report/index.html`.
+
+For pilot-readiness verification, run the serial suite and open-handle
+check exactly as follows:
+
+```bash
+cd driver-app
+npm test -- --runInBand
+npm test -- --runInBand --detectOpenHandles
+```
+
+The `test:serial` and `test:open-handles` scripts are aliases for these
+commands. The open-handle run is intentionally slower because Jest tracks
+async resources; it should still finish with a normal pass/fail result and
+without serious open-handle reports. Unit and screen tests must mock API
+calls and native storage rather than depending on a live backend.
 
 ## Coverage thresholds
 
