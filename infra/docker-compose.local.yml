@@ -1,0 +1,126 @@
+# Local-only Docker Compose stack for development and pilot demo prep.
+# This file intentionally avoids AWS Secrets Manager, staging secrets, and live provider credentials.
+services:
+  db:
+    image: postgres:15.7-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-adc_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adc_local_password}
+      POSTGRES_DB: ${POSTGRES_DB:-adc_mvp}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ../backend
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      SECRET_PROVIDER: env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-adc_local}:${POSTGRES_PASSWORD:-adc_local_password}@db:5432/${POSTGRES_DB:-adc_mvp}
+      REDIS_URL: redis://redis:6379/0
+      COOKIE_SECURE: "false"
+      FRONTEND_ORIGIN: http://localhost:3000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-jwt-secret-not-for-staging-or-prod}
+      OTP_HASH_PEPPER: ${OTP_HASH_PEPPER:-local-dev-otp-pepper-not-for-staging-or-prod}
+      STORAGE_BACKEND: fs
+      VAULT_ROOT: /var/adc/vault
+      PUBLIC_APP_BASE_URL: http://localhost:3000
+      EMAIL_PROVIDER: noop
+      SAMSARA_API_KEY: ""
+      SAMSARA_API_TOKEN: ""
+      TWILIO_ACCOUNT_SID: ""
+      TWILIO_AUTH_TOKEN: ""
+      TWILIO_VERIFY_SERVICE_SID: ""
+      TWILIO_SMS_FROM: ""
+      TWILIO_VOICE_FROM: ""
+      SOCRATA_APP_TOKEN: ""
+      FMCSA_INSPECTIONS_ENABLED: "false"
+      FMCSA_INSPECTIONS_REPOLL_ENABLED: "false"
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: adc-local-artifacts
+      S3_ARTIFACTS_BUCKET: adc-local-artifacts
+      S3_EXPORTS_BUCKET: adc-local-exports
+    volumes:
+      - local_vaultdata:/var/adc/vault
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ../backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      APP_ENV: local
+      SECRET_PROVIDER: env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-adc_local}:${POSTGRES_PASSWORD:-adc_local_password}@db:5432/${POSTGRES_DB:-adc_mvp}
+      REDIS_URL: redis://redis:6379/0
+      COOKIE_SECURE: "false"
+      FRONTEND_ORIGIN: http://localhost:3000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-jwt-secret-not-for-staging-or-prod}
+      OTP_HASH_PEPPER: ${OTP_HASH_PEPPER:-local-dev-otp-pepper-not-for-staging-or-prod}
+      STORAGE_BACKEND: fs
+      VAULT_ROOT: /var/adc/vault
+      PUBLIC_APP_BASE_URL: http://localhost:3000
+      EMAIL_PROVIDER: noop
+      SAMSARA_API_KEY: ""
+      SAMSARA_API_TOKEN: ""
+      TWILIO_ACCOUNT_SID: ""
+      TWILIO_AUTH_TOKEN: ""
+      TWILIO_VERIFY_SERVICE_SID: ""
+      TWILIO_SMS_FROM: ""
+      TWILIO_VOICE_FROM: ""
+      SOCRATA_APP_TOKEN: ""
+      FMCSA_INSPECTIONS_ENABLED: "false"
+      FMCSA_INSPECTIONS_REPOLL_ENABLED: "false"
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: adc-local-artifacts
+      S3_ARTIFACTS_BUCKET: adc-local-artifacts
+      S3_EXPORTS_BUCKET: adc-local-exports
+    volumes:
+      - local_vaultdata:/var/adc/vault
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      API_INTERNAL_BASE_URL: http://api:8000
+    depends_on:
+      - api
+
+volumes:
+  local_pgdata:
+  local_vaultdata:

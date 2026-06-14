@@ -157,13 +157,35 @@ and **only activates** when both env vars are set at frontend build time
 Production builds never embed or autofill these credentials, even if a
 visitor appends `?demo=1` to the URL.
 
-### Manual Development (from repo root)
+### Local Docker Development (from repo root)
 
-Open four terminals and run each command:
+Use the local-only compose stack for development and pilot demo prep. It starts PostgreSQL, Redis, the FastAPI API, a Celery worker, and the Next.js frontend without AWS credentials, AWS Secrets Manager, staging secrets, Twilio, Samsara, FMCSA, or other live provider credentials.
 
 ```bash
-# 1. Start infrastructure (PostgreSQL, Redis, etc.)
-docker compose -f infra/docker-compose.yml up -d
+cp .env.example .env
+make local-up
+make local-ps
+curl http://localhost:8000/health
+curl http://localhost:3000
+make local-down
+```
+
+Local ports:
+
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:8000`
+- PostgreSQL: `127.0.0.1:5432`
+- Redis: `127.0.0.1:6379`
+
+The local compose file is `infra/docker-compose.local.yml`. Its backend services run with `APP_ENV=local`, `SECRET_PROVIDER=env`, local Postgres/Redis container URLs, filesystem storage, insecure local-only JWT/OTP secrets, `COOKIE_SECURE=false`, and `FRONTEND_ORIGIN=http://localhost:3000`. Inside compose, the frontend calls the API at `http://api:8000`; from the browser it uses `http://localhost:8000`.
+
+### Manual Development (from repo root)
+
+If you prefer running application processes directly on the host, start local infrastructure first and then run each app process in separate terminals:
+
+```bash
+# 1. Start local infrastructure (PostgreSQL, Redis, etc.)
+docker compose -f infra/docker-compose.local.yml up -d db redis
 
 # 2. Start the FastAPI backend
 cd backend && uvicorn app.main:app --reload
@@ -218,7 +240,9 @@ See [`driver-app/TESTING.md`](driver-app/TESTING.md) for the test
 architecture (unit + RNTL Jest projects), running tests, mocking
 conventions, and coverage thresholds.
 
-### Docker (from repo root)
+### Staging-Oriented Docker Compose (from repo root)
+
+The original compose file remains staging-oriented and still expects externally supplied secrets such as AWS Secrets Manager configuration. For normal local development, use `make local-up` instead.
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build
