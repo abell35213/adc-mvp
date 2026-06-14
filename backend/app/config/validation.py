@@ -19,7 +19,7 @@ def validate_startup_config(settings: AppSettings) -> None:
 
     errors: list[str] = []
 
-    if not settings.is_local:
+    if not settings.is_local and not settings.is_test:
         critical_required = {
             "DATABASE_URL": settings.DATABASE_URL,
             "REDIS_URL": settings.REDIS_URL,

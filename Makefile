@@ -84,7 +84,7 @@ dev:
 ## Run backend tests and contract validation from repo root
 test:
 	python scripts/check_no_duplicate_modules.py
-	cd backend && pip install -q -r requirements.txt && pytest tests/ -v
+	cd backend && pip install -q -r requirements.txt && APP_ENV=test pytest tests/ -q --durations=20
 	python scripts/validate_schemas.py
 
 ## Format & lint backend code (from repo root)

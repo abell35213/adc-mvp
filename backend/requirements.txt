@@ -16,3 +16,4 @@ weasyprint>=68.0
 Jinja2>=3.1.6
 qrcode[pil]>=8.0
 Pillow>=12.2.0
+pytest-timeout>=2.3.1
