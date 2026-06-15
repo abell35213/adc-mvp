@@ -1,4 +1,4 @@
-.PHONY: dev local-up local-down local-logs local-ps local-rebuild local-wait-db local-wait-api local-migrate local-seed local-verify-demo local-reset local-bootstrap test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix verify-demo
+.PHONY: dev local-up local-down local-logs local-ps local-rebuild local-wait-db local-wait-api local-migrate local-seed local-verify-demo local-smoke local-reset local-bootstrap test fmt lint guard-duplicates check-prod-hardening-gates check-hardening-matrix verify-demo
 
 
 LOCAL_COMPOSE = docker compose -f infra/docker-compose.local.yml
@@ -58,9 +58,13 @@ local-migrate: local-wait-db
 local-seed: local-wait-db
 	$(LOCAL_COMPOSE) run --rm api python /scripts/seed_demo_data.py
 
-## Verify seeded local demo data and login usability against the local-only stack.
+## Verify seeded local demo data and the live incident-to-export workflow.
+## Requires the local worker included in `make local-up` for async export readiness.
 local-verify-demo: local-wait-api
 	$(LOCAL_COMPOSE) run --rm -e DEMO_API_BASE_URL=http://api:8000 api python /scripts/verify_demo.py --local-db
+
+## Smoke-test the seeded demo workflow against the running local-only stack.
+local-smoke: local-verify-demo
 
 ## Delete local-only containers and volumes. This removes local Postgres/vault data only.
 local-reset:

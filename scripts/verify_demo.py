@@ -20,10 +20,13 @@ import argparse
 import json
 import os
 import sys
+import time
 import traceback
 import urllib.error
 import urllib.request
+from http.cookiejar import CookieJar
 from pathlib import Path
+from typing import Any
 
 # Make ``app`` importable when running from the repo root.
 _BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
@@ -36,22 +39,216 @@ DEFAULT_DEMO_PASSWORD = "DemoAdmin!2345"
 DEFAULT_DEMO_ORG = "ADC Demo Org"
 
 
+class ApiClient:
+    """Small stdlib HTTP client that preserves auth cookies between calls."""
+
+    def __init__(self, base_url: str, *, timeout: int = 10) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(CookieJar())
+        )
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> tuple[int, Any]:
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        request = urllib.request.Request(
+            self.base_url + path,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method=method,
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout) as response:
+                body = response.read().decode("utf-8")
+                parsed = json.loads(body) if body else None
+                if response.status not in expected:
+                    raise RuntimeError(
+                        f"{method} {path} returned {response.status}: {parsed}"
+                    )
+                return response.status, parsed
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8")
+            detail = json.loads(body) if body else body
+            if exc.code in expected:
+                return exc.code, detail
+            raise RuntimeError(
+                f"{method} {path} returned {exc.code}: {detail}"
+            ) from exc
+
+
 def _check_api_login(api_base_url: str, email: str, password: str) -> bool:
     """Return True when the running API accepts the seeded demo login."""
-    url = api_base_url.rstrip("/") + "/auth/login"
-    payload = json.dumps({"email": email, "password": password}).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            return response.status == 200 and bool(data.get("access_token"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        client = ApiClient(api_base_url)
+        _status, data = client.request(
+            "POST", "/auth/login", payload={"email": email, "password": password}
+        )
+        if isinstance(data, dict) and data.get("access_token"):
+            return True
+        _status, me = client.request("GET", "/auth/me")
+        return isinstance(me, dict) and me.get("email") == email
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError):
         return False
+
+
+def _first_incident_id(rows: Any) -> str | None:
+    if not isinstance(rows, list) or not rows:
+        return None
+    first = rows[0]
+    if not isinstance(first, dict):
+        return None
+    incident_id = first.get("incident_id")
+    return str(incident_id) if incident_id else None
+
+
+def _poll_export_status(
+    client: ApiClient, export_id: str, *, timeout_seconds: int
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last_status: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        _status, payload = client.request("GET", f"/exports/{export_id}/status")
+        if not isinstance(payload, dict):
+            raise RuntimeError("export status response is not an object")
+        last_status = payload
+        if payload.get("status") in {"ready", "failed"}:
+            return payload
+        time.sleep(2)
+    return last_status
+
+
+def run_live_api() -> int:
+    """Verify the seeded demo workflow against a running local API stack."""
+    email = os.environ.get("DEMO_ADMIN_EMAIL", DEFAULT_DEMO_EMAIL)
+    password = os.environ.get("DEMO_ADMIN_PASSWORD", DEFAULT_DEMO_PASSWORD)
+    api_base_url = os.environ.get("DEMO_API_BASE_URL", "http://localhost:8000")
+    export_timeout = int(os.environ.get("DEMO_EXPORT_TIMEOUT_SECONDS", "60"))
+
+    print("Verifying live seeded demo workflow")
+    print(f"  admin={email}")
+    print(f"  api={api_base_url}")
+    print("  note=export readiness requires the local worker from `make local-up`")
+
+    errors: list[str] = []
+    client = ApiClient(api_base_url)
+    try:
+        _status, health = client.request("GET", "/health")
+        _check(
+            "backend health endpoint responds", isinstance(health, dict), errors=errors
+        )
+
+        _status, login_payload = client.request(
+            "POST", "/auth/login", payload={"email": email, "password": password}
+        )
+        login_ok = isinstance(login_payload, dict) and (
+            bool(login_payload.get("access_token")) or bool(login_payload.get("user"))
+        )
+        _check("demo admin can authenticate", login_ok, errors=errors)
+
+        _status, me = client.request("GET", "/auth/me")
+        org_ids = me.get("org_ids") if isinstance(me, dict) else []
+        _check(
+            "demo org/tenant is visible to authenticated admin",
+            bool(org_ids),
+            errors=errors,
+        )
+        _check(
+            "frontend auth contract exposes user_id/email/role/org_ids",
+            isinstance(me, dict)
+            and {"user_id", "email", "role", "org_ids"}.issubset(me),
+            errors=errors,
+        )
+
+        _status, incidents = client.request("GET", "/incidents/")
+        incident_id = _first_incident_id(incidents)
+        _check(
+            "at least one seeded incident exists",
+            incident_id is not None,
+            errors=errors,
+        )
+        if incident_id is None:
+            raise RuntimeError("no incident available for live smoke workflow")
+
+        _status, detail = client.request("GET", f"/incidents/{incident_id}")
+        _check(
+            "incident detail can be fetched", isinstance(detail, dict), errors=errors
+        )
+        evidence = (
+            detail.get("evidence_inventory") if isinstance(detail, dict) else None
+        )
+        _check(
+            "evidence/artifacts for the incident can be listed",
+            isinstance(evidence, list) and len(evidence) > 0,
+            errors=errors,
+        )
+        _check(
+            "frontend incident detail contract exposes evidence_inventory/export_status/timeline",
+            isinstance(detail, dict)
+            and {"evidence_inventory", "export_status", "timeline"}.issubset(detail),
+            errors=errors,
+        )
+
+        _status, export_payload = client.request(
+            "POST", f"/incidents/{incident_id}/exports", expected=(201,)
+        )
+        export_id = (
+            export_payload.get("export_id")
+            if isinstance(export_payload, dict)
+            else None
+        )
+        _check(
+            "export generation endpoint can be called", bool(export_id), errors=errors
+        )
+        if not export_id:
+            raise RuntimeError("export endpoint did not return export_id")
+
+        export_status = _poll_export_status(
+            client, str(export_id), timeout_seconds=export_timeout
+        )
+        _check(
+            "export status can be checked",
+            bool(export_status.get("status")),
+            errors=errors,
+        )
+        _check(
+            "export reached ready status",
+            export_status.get("status") == "ready",
+            errors=errors,
+        )
+
+        if export_status.get("status") == "ready":
+            _status, contents = client.request("GET", f"/exports/{export_id}/contents")
+            _check(
+                "ready export exposes a contents manifest",
+                isinstance(contents, dict)
+                and isinstance(contents.get("file_manifest"), list),
+                errors=errors,
+            )
+            _status, download = client.request("GET", f"/exports/{export_id}/download")
+            _check(
+                "ready export has a downloadable URL",
+                isinstance(download, dict) and bool(download.get("url")),
+                errors=errors,
+            )
+
+        if errors:
+            print(
+                f"\nlive smoke FAILED with {len(errors)} check(s) failing.",
+                file=sys.stderr,
+            )
+            return 1
+        print("\nlive smoke OK — seeded incident-to-export workflow validated.")
+        return 0
+    except Exception:
+        traceback.print_exc()
+        return 1
 
 
 def run_local_db() -> int:
@@ -394,9 +591,19 @@ def main() -> int:
         action="store_true",
         help="verify seeded demo data in DATABASE_URL and API login",
     )
+    parser.add_argument(
+        "--live-api",
+        action="store_true",
+        help="run the live local API smoke test against DEMO_API_BASE_URL",
+    )
     args = parser.parse_args()
+    if args.live_api:
+        return run_live_api()
     if args.local_db:
-        return run_local_db()
+        db_code = run_local_db()
+        if db_code != 0:
+            return db_code
+        return run_live_api()
     return run()
 
 
