@@ -242,3 +242,24 @@ def test_notes_and_tasks_do_not_cross_orgs(client, db_session):
     assert patch_task_response.status_code == 404
     db_session.refresh(task_b)
     assert task_b.title == "foreign"
+
+
+def test_legacy_null_org_task_can_be_mutated_through_incident_org(client, db_session):
+    org_a, user_a = _create_org_user(db_session, org_name="Legacy Org", email="legacy-task@ex.com")
+    incident_a = Incident(status="open", org_id=org_a.id)
+    db_session.add(incident_a)
+    db_session.commit()
+    task = CaseTask(org_id=None, incident_id=incident_a.incident_id, title="legacy")
+    db_session.add(task)
+    db_session.commit()
+
+    response = client.patch(
+        f"/tasks/{task.task_id}",
+        json={"title": "updated legacy"},
+        headers=_user_headers(user_a.id, user_a.role),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "updated legacy"
+    db_session.refresh(task)
+    assert task.title == "updated legacy"
