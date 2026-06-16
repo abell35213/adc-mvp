@@ -28,6 +28,7 @@ from app.db.session import get_db
 from app.db.repo.exports import (
     create_export,
     get_export,
+    get_export_for_org_ids,
     get_exports_by_incident,
     list_exports_for_org_ids,
     update_export,
@@ -354,7 +355,9 @@ def _resolve_authorized_export(
     org_ids: list[uuid.UUID],
     context: UserAuthContext | None = None,
 ):
-    export = get_export(db, export_id)
+    export = get_export_for_org_ids(db, export_id, org_ids)
+    if export is None:
+        export = get_export(db, export_id)
     if not export:
         raise_api_error(
             status_code=404,
