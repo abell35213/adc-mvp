@@ -56,6 +56,29 @@ def get_export(db: Session, export_id: _uuid.UUID) -> Optional[Export]:
     return _get_export_query(db, export_id).first()
 
 
+def get_export_for_org_ids(
+    db: Session,
+    export_id: _uuid.UUID,
+    org_ids: list[_uuid.UUID],
+) -> Optional[Export]:
+    """Retrieve a single export only when it belongs to one of the orgs."""
+    if not org_ids:
+        return None
+
+    return (
+        db.query(Export)
+        .outerjoin(Incident, Incident.incident_id == Export.incident_id)
+        .filter(
+            Export.export_id == export_id,
+            or_(
+                Export.org_id.in_(org_ids),
+                and_(Export.org_id.is_(None), Incident.org_id.in_(org_ids)),
+            ),
+        )
+        .first()
+    )
+
+
 def create_export(
     db: Session,
     incident_id: _uuid.UUID,

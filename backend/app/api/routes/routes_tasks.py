@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -320,16 +321,27 @@ def _require_incident_access(
 
 
 def _require_task_write_access(*, db: Session, current_user: User, task_id: uuid.UUID) -> tuple[CaseTask, Incident]:
-    task = db.query(CaseTask).filter(CaseTask.task_id == task_id).first()
+    context = build_user_auth_context(db, current_user)
+    org_ids = list(context.org_ids)
+    task = (
+        db.query(CaseTask)
+        .join(Incident, Incident.incident_id == CaseTask.incident_id)
+        .filter(
+            CaseTask.task_id == task_id,
+            or_(
+                CaseTask.org_id.in_(org_ids),
+                and_(CaseTask.org_id.is_(None), Incident.org_id.in_(org_ids)),
+            ),
+        )
+        .first()
+    )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    incident, _ = _require_incident_access(
-        db=db,
-        current_user=current_user,
-        incident_id=task.incident_id,
-        write_access=True,
-    )
+    incident = get_incident(db, incident_id=task.incident_id, org_ids=list(context.org_ids))
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    require_policy(can_modify_incident(context, incident))
     return task, incident
 
 

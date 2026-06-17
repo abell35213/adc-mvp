@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import create_access_token, hash_password
-from app.db.models import AuditEvent, Base, Driver, Export, Incident, Org, User, UserOrg
+from app.db.models import AuditEvent, Base, CaseNote, CaseTask, Driver, Export, Incident, Org, User, UserOrg
 from app.db.session import get_db
 from app.main import app
 
@@ -49,6 +49,16 @@ def _user_headers(user_id: uuid.UUID, role: str) -> dict[str, str]:
 def _driver_headers(driver_id: uuid.UUID) -> dict[str, str]:
     token = create_access_token({"sub": str(driver_id), "scope": "driver"})
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_org_user(db_session, *, org_name: str, email: str, role: str = "safety_manager"):
+    org = Org(name=org_name)
+    user = User(email=email, password_hash=hash_password("x"), role=role)
+    db_session.add_all([org, user])
+    db_session.commit()
+    db_session.add(UserOrg(user_id=user.id, org_id=org.id))
+    db_session.commit()
+    return org, user
 
 
 def test_incident_create_requires_org_membership(client, db_session):
@@ -162,3 +172,94 @@ def test_phase6_import_write_denied_for_read_only(client, db_session):
 
     assert denied.status_code == 403
     assert allowed_readiness.status_code == 200
+
+
+def test_incident_and_export_lists_are_org_scoped(client, db_session):
+    org_a, user_a = _create_org_user(db_session, org_name="Org A", email="org-a@ex.com")
+    org_b = Org(name="Org B")
+    db_session.add(org_b)
+    db_session.commit()
+    incident_a = Incident(status="open", org_id=org_a.id, adc_vehicle_id="a-vehicle")
+    incident_b = Incident(status="open", org_id=org_b.id, adc_vehicle_id="b-vehicle")
+    db_session.add_all([incident_a, incident_b])
+    db_session.commit()
+    export_a = Export(incident_id=incident_a.incident_id, org_id=org_a.id, status="ready")
+    export_b = Export(incident_id=incident_b.incident_id, org_id=org_b.id, status="ready")
+    db_session.add_all([export_a, export_b])
+    db_session.commit()
+
+    incident_response = client.get("/incidents/", headers=_user_headers(user_a.id, user_a.role))
+    export_response = client.get("/exports/", headers=_user_headers(user_a.id, user_a.role))
+
+    assert incident_response.status_code == 200
+    assert [item["incident_id"] for item in incident_response.json()] == [str(incident_a.incident_id)]
+    assert export_response.status_code == 200
+    assert [item["export_id"] for item in export_response.json()] == [str(export_a.export_id)]
+
+
+def test_export_status_and_contents_do_not_cross_orgs(client, db_session):
+    org_a, user_a = _create_org_user(db_session, org_name="Org A", email="status-a@ex.com")
+    org_b = Org(name="Org B")
+    db_session.add(org_b)
+    db_session.commit()
+    incident_b = Incident(status="open", org_id=org_b.id)
+    db_session.add(incident_b)
+    db_session.commit()
+    export_b = Export(incident_id=incident_b.incident_id, org_id=org_b.id, status="ready")
+    db_session.add(export_b)
+    db_session.commit()
+
+    headers = _user_headers(user_a.id, user_a.role)
+    assert client.get(f"/exports/{export_b.export_id}", headers=headers).status_code == 403
+    assert client.get(f"/exports/{export_b.export_id}/status", headers=headers).status_code == 403
+    assert client.get(f"/exports/{export_b.export_id}/contents", headers=headers).status_code == 403
+
+
+def test_notes_and_tasks_do_not_cross_orgs(client, db_session):
+    org_a, user_a = _create_org_user(db_session, org_name="Org A", email="case-a@ex.com")
+    org_b = Org(name="Org B")
+    db_session.add(org_b)
+    db_session.commit()
+    incident_b = Incident(status="open", org_id=org_b.id)
+    db_session.add(incident_b)
+    db_session.commit()
+    note_b = CaseNote(org_id=org_b.id, incident_id=incident_b.incident_id, body="foreign")
+    task_b = CaseTask(org_id=org_b.id, incident_id=incident_b.incident_id, title="foreign")
+    db_session.add_all([note_b, task_b])
+    db_session.commit()
+
+    headers = _user_headers(user_a.id, user_a.role)
+    notes_response = client.get(f"/incidents/{incident_b.incident_id}/notes", headers=headers)
+    tasks_response = client.get(f"/incidents/{incident_b.incident_id}/tasks", headers=headers)
+    patch_task_response = client.patch(
+        f"/tasks/{task_b.task_id}",
+        json={"title": "should not update"},
+        headers=headers,
+    )
+
+    assert notes_response.status_code == 404
+    assert tasks_response.status_code == 404
+    assert patch_task_response.status_code == 404
+    db_session.refresh(task_b)
+    assert task_b.title == "foreign"
+
+
+def test_legacy_null_org_task_can_be_mutated_through_incident_org(client, db_session):
+    org_a, user_a = _create_org_user(db_session, org_name="Legacy Org", email="legacy-task@ex.com")
+    incident_a = Incident(status="open", org_id=org_a.id)
+    db_session.add(incident_a)
+    db_session.commit()
+    task = CaseTask(org_id=None, incident_id=incident_a.incident_id, title="legacy")
+    db_session.add(task)
+    db_session.commit()
+
+    response = client.patch(
+        f"/tasks/{task.task_id}",
+        json={"title": "updated legacy"},
+        headers=_user_headers(user_a.id, user_a.role),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "updated legacy"
+    db_session.refresh(task)
+    assert task.title == "updated legacy"
