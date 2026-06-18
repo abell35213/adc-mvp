@@ -11,6 +11,10 @@ test('Next.js production config uses dynamic app mode and preserves image compat
   assert.match(nextConfigSource, /images:\s*{[\s\S]*unoptimized:\s*true[\s\S]*}/);
 });
 
+test('Next.js production config limits build worker parallelism for constrained CI', () => {
+  assert.match(nextConfigSource, /experimental:\s*{[\s\S]*cpus:\s*1[\s\S]*}/);
+});
+
 test('incident detail page does not rely on placeholder static params', () => {
   assert.doesNotMatch(incidentDetailPageSource, /generateStaticParams/);
   assert.doesNotMatch(incidentDetailPageSource, /placeholder/);
