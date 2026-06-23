@@ -54,8 +54,20 @@ def check_storage(deep: bool = False) -> CheckResult:
     if not deep:
         return CheckResult(ok=True, detail="skipped")
 
-    backend = settings.STORAGE_BACKEND.strip().lower()
-    if backend == "filesystem":
+    from app.services.storage import (
+        FILESYSTEM_BACKEND,
+        S3_BACKEND,
+        normalize_storage_backend,
+    )
+
+    try:
+        backend = normalize_storage_backend(settings.STORAGE_BACKEND)
+    except ValueError:
+        return CheckResult(
+            ok=False,
+            detail=f"unsupported storage backend: {settings.STORAGE_BACKEND}",
+        )
+    if backend == FILESYSTEM_BACKEND:
         root = Path(settings.VAULT_ROOT)
         try:
             root.mkdir(parents=True, exist_ok=True)
@@ -66,7 +78,7 @@ def check_storage(deep: bool = False) -> CheckResult:
         except OSError as exc:
             return CheckResult(ok=False, detail=f"{type(exc).__name__}: {exc}")
 
-    if backend == "s3":
+    if backend == S3_BACKEND:
         if not settings.S3_ARTIFACTS_BUCKET.strip() or not settings.S3_EXPORTS_BUCKET.strip():
             return CheckResult(ok=False, detail="missing required S3 bucket configuration")
         return CheckResult(ok=True, detail="s3 buckets configured")

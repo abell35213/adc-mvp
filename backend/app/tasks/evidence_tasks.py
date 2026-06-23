@@ -250,7 +250,7 @@ def capture_dashcam(
     from app.services.dashcam_reason_codes import map_dashcam_missing_reason_code
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
-    from app.services.vault_s3 import VaultS3
+    from app.services.storage import get_vault
 
     inc_uuid = _uuid.UUID(incident_id)
     workflow_key = _idempotency_key(
@@ -300,7 +300,7 @@ def capture_dashcam(
         )
 
         samsara = SamsaraClient()
-        s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
+        s3 = get_vault(settings)
         operation = None
         if operation_id:
             operation = (
@@ -630,7 +630,7 @@ def capture_telematics_bundle(
     )
     from app.services import s3_key_builder
     from app.services.samsara_client import SamsaraClient
-    from app.services.vault_s3 import VaultS3
+    from app.services.storage import get_vault
     from app.services.schema_validate import validate_payload
     from app.services.pdf_render import render_pdf
     from app.services.telematics_pdf_context import build_telematics_pdf_context
@@ -686,7 +686,7 @@ def capture_telematics_bundle(
         )
 
         samsara = SamsaraClient()
-        s3 = VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION)
+        s3 = get_vault(settings)
         operation = None
         if operation_id:
             operation = (

@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.error_responses import raise_api_error
@@ -49,6 +49,7 @@ from app.services.vault_s3 import (
     S3PresignGenerationError,
     generate_presigned_download_url,
 )
+from app.services.storage import get_vault, is_filesystem_backend
 
 logger = logging.getLogger(__name__)
 
@@ -622,6 +623,52 @@ def get_export_contents_endpoint(
     )
 
 
+def _record_export_download(
+    db: Session,
+    *,
+    export,
+    export_org_id,
+    actor_user_id: str,
+    downloaded_at: datetime,
+    delivery: str,
+    expires_in_seconds: int | None = None,
+) -> None:
+    """Emit the download timeline event and audit record for an export download."""
+    payload = {
+        "export_id": str(export.export_id),
+        "incident_id": str(export.incident_id),
+        "export_type": export.export_type,
+        "status": "ready",
+        "delivery": delivery,
+        "downloaded_at_utc": downloaded_at.isoformat(),
+        "actor": {"type": "user", "id": actor_user_id},
+    }
+    metadata: dict = {"delivery": delivery}
+    if expires_in_seconds is not None:
+        payload["download_url_expires_in_seconds"] = expires_in_seconds
+        metadata["download_url_expires_in_seconds"] = expires_in_seconds
+    create_event(
+        db,
+        incident_id=export.incident_id,
+        event_type=SystemEventType.EXPORT_DOWNLOADED,
+        actor_type="user",
+        actor_id=actor_user_id,
+        payload=payload,
+    )
+    emit_audit_event(
+        db,
+        org_id=export_org_id,
+        actor_type="user",
+        actor_id=actor_user_id,
+        action="export.download",
+        event_type="export_downloaded",
+        outcome="success",
+        incident_id=export.incident_id,
+        export_id=export.export_id,
+        metadata=metadata,
+    )
+
+
 @router.get("/{export_id}/download", response_model=DownloadExportResponse)
 def download_export_endpoint(
     export_id: uuid.UUID,
@@ -686,6 +733,43 @@ def download_export_endpoint(
             retry_hint="Generate a new export package and retry download.",
         )
 
+    if is_filesystem_backend(settings):
+        package_key = export.s3_key
+        if not package_key:
+            increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+            raise_api_error(
+                status_code=409,
+                message="Export is still processing.",
+                code="EXPORT_DELAYED",
+                retry_hint="Try downloading again in 30-60 seconds.",
+            )
+        try:
+            package_bytes = get_vault(settings).get_bytes(package_key)
+        except (OSError, ValueError):
+            increment(MetricNames.EXPORT_DOWNLOAD_FAILURES)
+            logger.exception("Failed to read export package from filesystem vault")
+            raise_api_error(
+                status_code=502,
+                message="Unable to prepare export download right now.",
+                code="THIRD_PARTY_DEGRADED",
+                retry_hint="Please retry in a few minutes.",
+            )
+        _record_export_download(
+            db,
+            export=export,
+            export_org_id=export_org_id,
+            actor_user_id=str(current_user.id),
+            downloaded_at=now,
+            delivery="stream",
+        )
+        return Response(
+            content=package_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.export_id}.zip"',
+            },
+        )
+
     bucket = export.s3_bucket or settings.S3_BUCKET
     key = export.s3_key or f"exports/{export.export_id}.zip"
     expires_in_seconds = settings.EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS
@@ -723,33 +807,14 @@ def download_export_endpoint(
             retry_hint="Please retry in a few minutes.",
         )
 
-    create_event(
+    _record_export_download(
         db,
-        incident_id=export.incident_id,
-        event_type=SystemEventType.EXPORT_DOWNLOADED,
-        actor_type="user",
-        actor_id=str(current_user.id),
-        payload={
-            "export_id": str(export.export_id),
-            "incident_id": str(export.incident_id),
-            "export_type": export.export_type,
-            "status": "ready",
-            "download_url_expires_in_seconds": expires_in_seconds,
-            "downloaded_at_utc": now.isoformat(),
-            "actor": {"type": "user", "id": str(current_user.id)},
-        },
-    )
-    emit_audit_event(
-        db,
-        org_id=export_org_id,
-        actor_type="user",
-        actor_id=str(current_user.id),
-        action="export.download",
-        event_type="export_downloaded",
-        outcome="success",
-        incident_id=export.incident_id,
-        export_id=export.export_id,
-        metadata={"download_url_expires_in_seconds": expires_in_seconds},
+        export=export,
+        export_org_id=export_org_id,
+        actor_user_id=str(current_user.id),
+        downloaded_at=now,
+        delivery="presigned_url",
+        expires_in_seconds=expires_in_seconds,
     )
 
     return DownloadExportResponse(

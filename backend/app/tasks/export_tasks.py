@@ -434,7 +434,7 @@ def build_export(
     from app.domain.system_event_types import SystemEventType
     from app.services import s3_key_builder
     from app.services.export_builder import build_export_package
-    from app.services.vault_s3 import VaultS3
+    from app.services.storage import get_vault
 
     inc_uuid = _uuid.UUID(incident_id)
     exp_uuid = _uuid.UUID(export_id)
@@ -508,7 +508,7 @@ def build_export(
             settings=settings,
             system_event_type=SystemEventType,
             s3_key_builder=s3_key_builder,
-            s3=VaultS3(bucket=settings.S3_BUCKET, region=settings.AWS_REGION),
+            s3=get_vault(settings),
             export_row=export_row,
             incident_row=incident_row,
             warnings=[],
