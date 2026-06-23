@@ -55,7 +55,7 @@ def test_capture_weather_map_snapshot_success(db_session, incident, monkeypatch)
         twc_timestamp_iso = "2026-05-16T10:00:00Z"
 
     monkeypatch.setattr("app.services.weather.map_snapshot_service.render_map_snapshot", lambda **kwargs: Rendered())
-    monkeypatch.setattr("app.services.weather.map_snapshot_service.VaultS3.put_bytes", lambda self, key, data, metadata=None: f"s3://{self.bucket}/{key}")
+    monkeypatch.setattr("app.services.vault_s3.VaultS3.put_bytes", lambda self, key, data, metadata=None: f"s3://{self.bucket}/{key}")
 
     capture_weather_map_snapshot_if_missing(
         db_session,
@@ -87,7 +87,7 @@ def test_capture_weather_map_snapshot_overlay_unavailable_degraded(db_session, i
         twc_timestamp_iso = None
 
     monkeypatch.setattr("app.services.weather.map_snapshot_service.render_map_snapshot", lambda **kwargs: Rendered())
-    monkeypatch.setattr("app.services.weather.map_snapshot_service.VaultS3.put_bytes", lambda self, key, data, metadata=None: f"s3://{self.bucket}/{key}")
+    monkeypatch.setattr("app.services.vault_s3.VaultS3.put_bytes", lambda self, key, data, metadata=None: f"s3://{self.bucket}/{key}")
 
     capture_weather_map_snapshot_if_missing(
         db_session,
@@ -186,7 +186,7 @@ def test_capture_weather_map_snapshot_upload_failure_emits_failed_and_no_artifac
 
     monkeypatch.setattr("app.services.weather.map_snapshot_service.render_map_snapshot", lambda **kwargs: Rendered())
     monkeypatch.setattr(
-        "app.services.weather.map_snapshot_service.VaultS3.put_bytes",
+        "app.services.vault_s3.VaultS3.put_bytes",
         lambda self, key, data, metadata=None: (_ for _ in ()).throw(RuntimeError("upload-failed")),
     )
 

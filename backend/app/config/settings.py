@@ -312,6 +312,8 @@ class LocalSettings(AppSettings):
     ENV_NAME: ClassVar[str] = "local"
     APP_ENV: str = "local"
     DEBUG: bool = True
+    # Controlled pilot persists artifacts/exports on the local filesystem vault.
+    STORAGE_BACKEND: str = "filesystem"
 
 
 class TestSettings(AppSettings):
@@ -325,7 +327,7 @@ class TestSettings(AppSettings):
     TWILIO_VERIFY_SERVICE_SID: str = "VAtest"
     JWT_SECRET_KEY: str = "test-jwt-secret-for-local-ci-only-32-bytes"
     OTP_HASH_PEPPER: str = "test-otp-pepper-for-local-ci-only-32-bytes"
-    STORAGE_BACKEND: str = "filesystem"
+    STORAGE_BACKEND: str = "s3"
     VAULT_ROOT: str = "/tmp/adc-test-vault"
     FMCSA_INSPECTIONS_ENABLED: bool = False
     FMCSA_INSPECTIONS_REPOLL_ENABLED: bool = False

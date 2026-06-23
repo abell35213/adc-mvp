@@ -9,9 +9,12 @@ import pytest
 
 from app.services.vault_s3 import (
     ArtifactObjectMetadata,
+    S3DownloadError,
     S3ObjectKeyValidationError,
     S3PresignConfigurationError,
     S3PresignGenerationError,
+    S3UploadError,
+    VaultS3,
     generate_presigned_download_url,
 )
 
@@ -117,3 +120,195 @@ def test_artifact_metadata_rejects_timestamp_inversion():
 
     with pytest.raises(ValueError, match="before capture"):
         metadata.validate()
+
+
+# ── put_bytes / get_bytes S3 round-trip ─────────────────────────────
+
+_ROUND_TRIP_KEY = "orgs/org-1/incidents/inc-1/artifacts/art-1.zip"
+
+
+class _FakeBody:
+    """Minimal stand-in for the botocore StreamingBody returned by get_object."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self.closed = False
+
+    def read(self) -> bytes:
+        return self._data
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeStorageClient:
+    """Records put_object calls and serves get_object from an in-memory store."""
+
+    def __init__(self, store=None, put_error=None, get_error=None):
+        self.store = store if store is not None else {}
+        self.put_calls = []
+        self._put_error = put_error
+        self._get_error = get_error
+        self.last_body = None
+
+    def put_object(self, **kwargs):  # noqa: D401 - boto3 signature mirror
+        if self._put_error is not None:
+            raise self._put_error
+        self.put_calls.append(kwargs)
+        self.store[kwargs["Key"]] = kwargs["Body"]
+        return {}
+
+    def get_object(self, Bucket, Key):  # noqa: N803 - boto3 signature mirror
+        if self._get_error is not None:
+            raise self._get_error
+        self.last_body = _FakeBody(self.store[Key])
+        return {"Body": self.last_body}
+
+
+def _install_boto3(monkeypatch, client):
+    """Patch sys.modules so VaultS3's lazy boto3/botocore imports hit fakes."""
+    fake_boto3 = SimpleNamespace(client=lambda *_args, **_kwargs: client)
+    fake_botocore_exceptions = SimpleNamespace(
+        BotoCoreError=_FakeBotoCoreError,
+        ClientError=_FakeClientError,
+    )
+    monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_botocore_exceptions)
+
+
+class _FakeBotoCoreError(Exception):
+    pass
+
+
+class _FakeClientError(Exception):
+    pass
+
+
+def test_put_bytes_uploads_with_metadata_and_returns_path(monkeypatch):
+    client = _FakeStorageClient()
+    _install_boto3(monkeypatch, client)
+
+    data = b"court-package-bytes"
+    metadata = ArtifactObjectMetadata.from_blob(
+        data=data,
+        content_type="application/zip",
+        captured_at_utc=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    path = VaultS3(bucket="bucket", region="us-east-1").put_bytes(
+        _ROUND_TRIP_KEY, data, metadata=metadata
+    )
+
+    assert path == f"s3://bucket/{_ROUND_TRIP_KEY}"
+    assert len(client.put_calls) == 1
+    call = client.put_calls[0]
+    assert call["Bucket"] == "bucket"
+    assert call["Key"] == _ROUND_TRIP_KEY
+    assert call["Body"] == data
+    assert call["ContentType"] == "application/zip"
+    assert call["Metadata"]["adc-sha256"] == hashlib.sha256(data).hexdigest()
+    assert call["Metadata"]["adc-byte-size"] == str(len(data))
+
+
+def test_put_bytes_without_metadata_omits_metadata_headers(monkeypatch):
+    client = _FakeStorageClient()
+    _install_boto3(monkeypatch, client)
+
+    VaultS3(bucket="bucket").put_bytes(_ROUND_TRIP_KEY, b"raw-bytes")
+
+    call = client.put_calls[0]
+    assert "Metadata" not in call
+    assert "ContentType" not in call
+
+
+def test_put_bytes_rejects_invalid_key(monkeypatch):
+    client = _FakeStorageClient()
+    _install_boto3(monkeypatch, client)
+
+    with pytest.raises(S3ObjectKeyValidationError):
+        VaultS3(bucket="bucket").put_bytes("not/a/valid/key", b"data")
+
+    assert client.put_calls == []
+
+
+def test_put_bytes_rejects_metadata_payload_mismatch(monkeypatch):
+    client = _FakeStorageClient()
+    _install_boto3(monkeypatch, client)
+
+    metadata = ArtifactObjectMetadata.from_blob(
+        data=b"original",
+        content_type="application/zip",
+        captured_at_utc=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(ValueError):
+        VaultS3(bucket="bucket").put_bytes(_ROUND_TRIP_KEY, b"tampered", metadata=metadata)
+
+    assert client.put_calls == []
+
+
+def test_put_bytes_maps_client_error_to_upload_error(monkeypatch):
+    client = _FakeStorageClient(put_error=_FakeClientError("denied"))
+    _install_boto3(monkeypatch, client)
+
+    with pytest.raises(S3UploadError, match="Failed to upload object to s3://bucket/"):
+        VaultS3(bucket="bucket").put_bytes(_ROUND_TRIP_KEY, b"data")
+
+
+def test_get_bytes_reads_streaming_body_and_closes_it(monkeypatch):
+    client = _FakeStorageClient(store={_ROUND_TRIP_KEY: b"stored-bytes"})
+    _install_boto3(monkeypatch, client)
+
+    result = VaultS3(bucket="bucket").get_bytes(_ROUND_TRIP_KEY)
+
+    assert result == b"stored-bytes"
+    assert client.last_body.closed is True
+
+
+def test_put_then_get_round_trip(monkeypatch):
+    client = _FakeStorageClient()
+    _install_boto3(monkeypatch, client)
+
+    vault = VaultS3(bucket="bucket")
+    payload = b"round-trip-payload"
+    vault.put_bytes(_ROUND_TRIP_KEY, payload)
+
+    assert vault.get_bytes(_ROUND_TRIP_KEY) == payload
+
+
+def test_get_bytes_maps_client_error_to_download_error(monkeypatch):
+    client = _FakeStorageClient(get_error=_FakeClientError("missing"))
+    _install_boto3(monkeypatch, client)
+
+    with pytest.raises(S3DownloadError, match="Failed to download object from s3://bucket/"):
+        VaultS3(bucket="bucket").get_bytes(_ROUND_TRIP_KEY)
+
+
+def test_put_bytes_missing_boto3_raises_upload_error(monkeypatch):
+    monkeypatch.delitem(sys.modules, "boto3", raising=False)
+    original_import = __import__
+
+    def _raising_import(name, *args, **kwargs):
+        if name == "boto3":
+            raise ImportError("No module named boto3")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", _raising_import)
+
+    with pytest.raises(S3UploadError):
+        VaultS3(bucket="bucket").put_bytes(_ROUND_TRIP_KEY, b"data")
+
+
+def test_get_bytes_missing_boto3_raises_download_error(monkeypatch):
+    monkeypatch.delitem(sys.modules, "boto3", raising=False)
+    original_import = __import__
+
+    def _raising_import(name, *args, **kwargs):
+        if name == "boto3":
+            raise ImportError("No module named boto3")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", _raising_import)
+
+    with pytest.raises(S3DownloadError):
+        VaultS3(bucket="bucket").get_bytes(_ROUND_TRIP_KEY)
