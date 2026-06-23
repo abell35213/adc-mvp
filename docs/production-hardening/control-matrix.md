@@ -17,7 +17,7 @@
 
 ## CI requirement for hardening-related pull requests
 
-Last update: Phase 1A bug-fix sweep — replaced FastAPI `on_event` startup with `lifespan` context, replaced Pydantic v1 `class Config:` with `SettingsConfigDict`, renamed deprecated `HTTP_422_UNPROCESSABLE_ENTITY` → `HTTP_422_UNPROCESSABLE_CONTENT` across driver-auth/admin/artifact/driver-report routes, eliminated `datetime.utcnow()` from regression test fixtures, removed unused `ApiErrorPayload` from frontend API helper, bumped `next` to `16.2.4` (closes high-severity advisory), pinned `react-native-paper`'s icon provider to `@expo/vector-icons/MaterialCommunityIcons` with a jsdom-safe test stub, ran `npm audit fix` for driver-app transitive advisories (now 0 high/critical), and recorded accepted residuals in `release-gate-evidence.md` §4.
+Last update: Phase 3 deploy + Priority-2 hardening close-out — replaced the placeholder `scripts/deploy_hooks.sh` stub with a CI-safe, config-driven Kubernetes implementation (per-stage `kubectl set image` / `rollout status` / `rollout undo` and bounded health probes that no-op with exit 0 unless `DEPLOY_ENABLED=1` and `kubectl` is present), refreshed `docs/deployment-rollback-runbook.md` to describe the real hook behavior, authored `docs/production-hardening/priority-2-gate-evidence.md` as the single auditable roll-up for Priority-2 gates (sections 10–21) including the SSO-deferred / TMS-mapping-complete / Samsara-clip-complete scope dispositions, and flipped all twelve Priority-2 entries in `docs/production-hardening/checklist.yaml` to `complete` with their `evidence_link` repointed at the new roll-up doc.
 
 Any pull request that touches hardening-related code **must** update `docs/production-hardening/control-matrix.md` in the same change.
 
