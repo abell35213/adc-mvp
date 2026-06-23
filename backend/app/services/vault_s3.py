@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import logging
 import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,14 @@ class S3PresignGenerationError(RuntimeError):
 
 class S3ObjectKeyValidationError(ValueError):
     """Raised when an S3 object key does not follow private key conventions."""
+
+
+class S3UploadError(RuntimeError):
+    """Raised when uploading an object to S3 fails."""
+
+
+class S3DownloadError(RuntimeError):
+    """Raised when downloading an object from S3 fails."""
 
 
 @dataclass(frozen=True)
@@ -109,16 +118,49 @@ class VaultS3:
         if metadata is not None:
             metadata.validate_against_data(data)
         path = f"s3://{self.bucket}/{key}"
-        logger.info("Uploading to %s", path)
-        # Placeholder: integrate boto3
+
+        params: dict[str, Any] = {"Bucket": self.bucket, "Key": key, "Body": data}
+        if metadata is not None:
+            params["Metadata"] = metadata.to_s3_metadata()
+            params["ContentType"] = metadata.content_type
+
+        try:
+            client = _build_s3_client(self.region)
+            client.put_object(**params)
+        except ImportError as exc:
+            logger.exception("boto3 is required to upload artifacts to S3")
+            raise S3UploadError(f"Failed to upload object to {path}") from exc
+        except _boto_client_errors() as exc:
+            logger.exception("Failed to upload object to %s", path)
+            raise S3UploadError(f"Failed to upload object to {path}") from exc
+
+        logger.info("Uploaded to %s", path)
         return path
 
     def get_bytes(self, key: str) -> bytes:
         """Download data from S3."""
         _validate_private_object_key(key)
-        logger.info("Downloading s3://%s/%s", self.bucket, key)
-        # Placeholder: integrate boto3
-        return b""
+        path = f"s3://{self.bucket}/{key}"
+
+        try:
+            client = _build_s3_client(self.region)
+            response = client.get_object(Bucket=self.bucket, Key=key)
+            body = response["Body"]
+            try:
+                data = body.read()
+            finally:
+                close = getattr(body, "close", None)
+                if callable(close):
+                    close()
+        except ImportError as exc:
+            logger.exception("boto3 is required to download artifacts from S3")
+            raise S3DownloadError(f"Failed to download object from {path}") from exc
+        except _boto_client_errors() as exc:
+            logger.exception("Failed to download object from %s", path)
+            raise S3DownloadError(f"Failed to download object from {path}") from exc
+
+        logger.info("Downloaded from %s", path)
+        return data
 
     def presign_download(
         self,
@@ -149,6 +191,31 @@ def _validate_private_object_key(key: str) -> None:
         raise S3ObjectKeyValidationError(
             "S3 object key must match orgs/{org_id}/incidents/{incident_id}/artifacts/{artifact_id}"
         )
+
+
+def _build_s3_client(region: str) -> Any:
+    """Construct a boto3 S3 client for the given region.
+
+    boto3 is imported lazily so this module still imports in environments where
+    the dependency is absent; callers translate a missing import into a
+    domain-specific upload/download error.
+    """
+    import boto3
+
+    return boto3.client("s3", region_name=region)
+
+
+def _boto_client_errors() -> tuple[type[BaseException], ...]:
+    """Return the botocore exception classes to catch around S3 calls.
+
+    Returns an empty tuple if botocore is unavailable so the surrounding
+    ``ImportError`` handler reports the missing dependency instead.
+    """
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError:
+        return ()
+    return (ClientError, BotoCoreError)
 
 
 def _enforce_short_presign_ttl(expires_in: int) -> int:

@@ -19,7 +19,8 @@ from app.core.metrics import MetricNames, increment, timed
 from app.db.models import Artifact, Event, Incident
 from app.domain.system_event_types import SystemEventType
 from app.services.incident_location_resolver import resolve_incident_location
-from app.services.vault_s3 import ArtifactObjectMetadata, VaultS3
+from app.services.storage import get_vault
+from app.services.vault_s3 import ArtifactObjectMetadata
 
 logger = logging.getLogger(__name__)
 _PROVIDER = "mapbox+twc"
@@ -254,7 +255,7 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         incident_id=cast(uuid.UUID, incident.incident_id),
         artifact_type=WEATHER_MAP_ARTIFACT_TYPE,
         status="pending",
-        s3_bucket=settings.S3_ARTIFACTS_BUCKET,
+        s3_bucket=settings.S3_BUCKET,
     )
     db.add(artifact)
     db.flush()
@@ -265,9 +266,7 @@ def _persist_snapshot_artifact(db: Session, *, incident: Incident, rendered: Ren
         captured_at_utc=datetime.now(timezone.utc),
     )
     try:
-        VaultS3(bucket=settings.S3_ARTIFACTS_BUCKET, region=settings.AWS_REGION).put_bytes(
-            key, rendered.image_bytes, metadata=metadata
-        )
+        get_vault(settings).put_bytes(key, rendered.image_bytes, metadata=metadata)
     except Exception:  # noqa: BLE001
         db.delete(artifact)
         db.flush()

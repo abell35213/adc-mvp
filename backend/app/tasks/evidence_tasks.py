@@ -1287,13 +1287,6 @@ def capture_telematics_bundle(
 capture_telematics = capture_telematics_bundle
 
 
-@celery_app.task
-def collect_evidence(incident_id: str):
-    """Collect all evidence artifacts for an incident."""
-    # Placeholder: orchestrate evidence collection
-    return {"incident_id": incident_id, "status": "collected"}
-
-
 # ---------------------------------------------------------------------------
 # Task: capture_driver_violation_history (FMCSA MCMIS)
 # ---------------------------------------------------------------------------
