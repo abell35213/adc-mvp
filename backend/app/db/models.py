@@ -1,12 +1,11 @@
 """SQLAlchemy database models."""
 
 import uuid
-from datetime import datetime
-from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Column,
     Enum,
     ForeignKey,
     Index,
@@ -16,16 +15,12 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import declarative_base
 
 from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
 from app.security.permissions import Role
 
-
-class Base(DeclarativeBase):
-    """Declarative base for all ORM models."""
-
-    pass
+Base = declarative_base()
 
 
 # ── Auth / multi-tenant models ─────────────────────────────────────
@@ -2178,7 +2173,7 @@ class DriverInstructionStep(Base):
         nullable=False,
         index=True,
     )
-    step_order: Mapped[int] = mapped_column("order", Integer, nullable=False, quote=True)
+    step_order = Column("order", Integer, nullable=False, quote=True)
     title = Column(Text, nullable=False)
     body = Column(Text, nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
