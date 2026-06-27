@@ -1,11 +1,12 @@
 """SQLAlchemy database models."""
 
 import uuid
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
-    Column,
     Enum,
     ForeignKey,
     Index,
@@ -15,12 +16,16 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.domain.exports import EXPORT_PROGRESS_STAGES, EXPORT_STATUSES, EXPORT_TYPES
 from app.security.permissions import Role
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Declarative base for all ORM models."""
+
+    pass
 
 
 # ── Auth / multi-tenant models ─────────────────────────────────────
@@ -31,27 +36,27 @@ class Org(Base):
 
     __tablename__ = "orgs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(Text, nullable=False)
-    legal_name = Column(Text, nullable=True)
-    display_name = Column(Text, nullable=True)
-    timezone = Column(Text, nullable=True)
-    region = Column(Text, nullable=True)
-    contacts_json = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    region: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contacts_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    implementation_contact_json = Column(
+    implementation_contact_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    logo_url = Column(Text, nullable=True)
-    require_driver_ack = Column(Boolean, nullable=False, default=False)
-    sms_enabled = Column(Boolean, nullable=False, default=False)
-    voice_enabled = Column(Boolean, nullable=False, default=False)
-    safety_manager_phone = Column(Text, nullable=True)
-    instruction_source = Column(Text, nullable=False, default="default")
-    require_org_admin_mfa = Column(Boolean, nullable=False, default=False)
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    require_driver_ack: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sms_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    voice_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    safety_manager_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instruction_source: Mapped[str] = mapped_column(Text, nullable=False, default="default")
+    require_org_admin_mfa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Carrier identity for the FMCSA MCMIS pull (single carrier per tenant).
-    usdot_number = Column(Text, nullable=True)
+    usdot_number: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class User(Base):
@@ -59,19 +64,19 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(Text, nullable=False, unique=True, index=True)
-    password_hash = Column(Text, nullable=False)
-    role = Column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
-    created_at_utc = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    is_active = Column(Boolean, nullable=False, default=True)
-    mfa_enabled = Column(Boolean, nullable=False, default=False)
-    mfa_secret_hash = Column(Text, nullable=True)
-    mfa_enrolled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    mfa_last_challenged_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    mfa_disabled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mfa_secret_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mfa_enrolled_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    mfa_last_challenged_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    mfa_disabled_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 
 class UserOrg(Base):
@@ -79,12 +84,12 @@ class UserOrg(Base):
 
     __tablename__ = "user_orgs"
 
-    user_id = Column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         primary_key=True,
@@ -96,23 +101,23 @@ class OrgUserInvite(Base):
 
     __tablename__ = "org_user_invites"
 
-    invite_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    invite_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    email = Column(Text, nullable=False, index=True)
-    role = Column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
-    status = Column(Text, nullable=False, default="pending", index=True)
-    invited_by_user_id = Column(
+    email: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default=Role.SAFETY_MANAGER.value)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", index=True)
+    invited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference to inviter
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    last_sent_at_utc = Column(
+    last_sent_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    deactivated_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    deactivated_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 
 # ── Core domain models ─────────────────────────────────────────────
@@ -123,24 +128,24 @@ class Event(Base):
 
     __tablename__ = "events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="SET NULL"),
         nullable=True,
         index=True,  # soft reference
     )
-    event_type = Column(Text, nullable=False, index=True)
-    occurred_at_utc = Column(
+    event_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    occurred_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
     )
-    actor_type = Column(Text, nullable=False)
-    actor_id = Column(Text, nullable=False)
-    payload = Column(JSONB, nullable=True)
-    created_at_utc = Column(
+    actor_type: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -155,40 +160,40 @@ class AuditEvent(Base):
 
     __tablename__ = "audit_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=False, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    export_id = Column(
+    export_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("exports.export_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    artifact_id = Column(
+    artifact_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("artifacts.artifact_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    actor_type = Column(Text, nullable=False)
-    actor_id = Column(Text, nullable=False, index=True)
-    action = Column(Text, nullable=False)
-    event_type = Column(Text, nullable=False, index=True)
-    outcome = Column(Text, nullable=True)
-    metadata_json = Column(JSONB, nullable=True)
-    occurred_at_utc = Column(
+    actor_type: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    occurred_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, index=True, server_default=func.now()
     )
-    retention_expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    retention_purged_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    retention_expires_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    retention_purged_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -226,14 +231,14 @@ class Incident(Base):
 
     __tablename__ = "incidents"
 
-    incident_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root; nullable for legacy only
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "open",
             "evidence_capturing",
@@ -244,13 +249,13 @@ class Incident(Base):
         nullable=False,
         default="open",
     )
-    adc_vehicle_id = Column(Text, nullable=True)
-    samsara_vehicle_id = Column(Text, nullable=True)
-    adc_driver_id = Column(Text, nullable=True)
+    adc_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    samsara_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adc_driver_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Phase 2: nullable opaque trailer reference; matches trailer.adc_trailer_id.
-    adc_trailer_id = Column(Text, nullable=True)
-    severity = Column(Text, nullable=True)
-    case_status = Column(
+    adc_trailer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity: Mapped[str | None] = mapped_column(Text, nullable=True)
+    case_status: Mapped[str] = mapped_column(
         Enum(
             "new",
             "in_review",
@@ -266,22 +271,22 @@ class Incident(Base):
         default="new",
         server_default="new",
     )
-    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # soft assignment
-    owner_assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    owner_assigned_by_user_id = Column(
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # soft assignment
+    owner_assigned_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    owner_assigned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    team_queue = Column(Text, nullable=True)
-    readiness_state = Column(Text, nullable=True)
-    completeness_percent = Column(Integer, nullable=True)
-    completeness_status = Column(Text, nullable=True)
-    first_reviewed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    last_activity_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    ready_for_export_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    is_test_incident = Column(
+    team_queue: Mapped[str | None] = mapped_column(Text, nullable=True)
+    readiness_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completeness_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completeness_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_reviewed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_activity_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    ready_for_export_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    is_test_incident: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"), index=True
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -308,42 +313,42 @@ class CaseNote(Base):
 
     __tablename__ = "case_notes"
 
-    note_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    note_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    body = Column(Text, nullable=False)
-    note_type = Column(
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    note_type: Mapped[str] = mapped_column(
         Enum("standard", "tagged", "decision", name="case_note_type"),
         nullable=False,
         default="standard",
         server_default="standard",
     )
-    tags_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
-    created_by_user_id = Column(
+    tags_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    edited_by_user_id = Column(
+    edited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    edited_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    deleted_by_user_id = Column(
+    edited_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    deleted_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    is_deleted = Column(
+    deleted_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -372,19 +377,19 @@ class CaseTask(Base):
 
     __tablename__ = "case_tasks"
 
-    task_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    title = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    task_type = Column(
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    task_type: Mapped[str] = mapped_column(
         Enum(
             "review",
             "evidence",
@@ -397,7 +402,7 @@ class CaseTask(Base):
         default="other",
         server_default="other",
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "open",
             "in_progress",
@@ -410,36 +415,36 @@ class CaseTask(Base):
         default="open",
         server_default="open",
     )
-    priority = Column(
+    priority: Mapped[str] = mapped_column(
         Enum("low", "medium", "high", "urgent", name="case_task_priority"),
         nullable=False,
         default="medium",
         server_default="medium",
     )
-    due_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    assigned_to_user_id = Column(
+    due_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    assigned_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft assignment
     )
-    assigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    assigned_by_user_id = Column(
+    assigned_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    assigned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completed_by_user_id = Column(
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    canceled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    canceled_by_user_id = Column(
+    canceled_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    canceled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    canceled_reason = Column(Text, nullable=True)
-    created_by_user_id = Column(
+    canceled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -457,31 +462,31 @@ class CaseReadinessOverride(Base):
 
     __tablename__ = "case_readiness_overrides"
 
-    override_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    override_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    readiness_state = Column(Text, nullable=True)
-    completeness_percent = Column(Integer, nullable=True)
-    completeness_status = Column(Text, nullable=True)
-    reason = Column(Text, nullable=False)
-    created_by_user_id = Column(
+    readiness_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completeness_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completeness_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    cleared_by_user_id = Column(
+    cleared_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    cleared_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    cleared_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -503,42 +508,42 @@ class Artifact(Base):
 
     __tablename__ = "artifacts"
 
-    artifact_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    artifact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=True, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    artifact_type = Column(Text, nullable=False)
-    status = Column(
+    artifact_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
         Enum("pending", "captured", "unavailable", name="artifact_status"),
         nullable=False,
         default="pending",
     )
-    capture_window_start_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    capture_window_end_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    s3_bucket = Column(Text, nullable=True)
-    s3_key = Column(Text, nullable=True)
-    sha256 = Column(Text, nullable=True)
-    byte_size = Column(BigInteger, nullable=True)
-    uploaded_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    unavailable_reason_code = Column(Text, nullable=True)
-    unavailable_reason_detail = Column(Text, nullable=True)
+    capture_window_start_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    capture_window_end_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    s3_bucket: Mapped[str | None] = mapped_column(Text, nullable=True)
+    s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    uploaded_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    unavailable_reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unavailable_reason_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Many-to-one link from a dock photo (or, when the imaging-integration
     # follow-on project lands, a digitized weigh ticket / dispatch sheet) to
     # a :class:`LoadingDockReport`. Nullable + indexed so existing artifact
     # queries are unaffected.
-    loading_dock_report_id = Column(
+    loading_dock_report_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("loading_dock_reports.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -553,69 +558,69 @@ class Export(Base):
 
     __tablename__ = "exports"
 
-    export_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    export_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="RESTRICT"), nullable=False, index=True  # tenant root
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    export_type = Column(
+    export_type: Mapped[str] = mapped_column(
         Enum(*EXPORT_TYPES, name="export_type"),
         nullable=False,
         default="court_defense",
         server_default="court_defense",
     )
-    profile_id = Column(
+    profile_id: Mapped[str] = mapped_column(
         Text,
         nullable=False,
         default="court_defense_v1",
         server_default="court_defense_v1",
     )
-    requested_by_user_id = Column(
+    requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    retry_parent_export_id = Column(
+    retry_parent_export_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("exports.export_id", ondelete="SET NULL"),
         nullable=True,
         index=True,  # self-ref: deleting parent shouldn't cascade
     )
-    options_json = Column(JSONB, nullable=False, default=dict)
-    status = Column(
+    options_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(
         Enum(*EXPORT_STATUSES, name="export_status"),
         nullable=False,
         default="requested",
         server_default="requested",
     )
-    progress_stage = Column(
+    progress_stage: Mapped[str] = mapped_column(
         Enum(*EXPORT_PROGRESS_STAGES, name="export_progress_stage"),
         nullable=False,
         default="request_accepted",
         server_default="request_accepted",
     )
-    error_message = Column(Text, nullable=True)
-    package_sha256 = Column(Text, nullable=True)
-    byte_size = Column(BigInteger, nullable=True)
-    artifact_count = Column(Integer, nullable=False, default=0, server_default="0")
-    timeline_event_count = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    package_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    timeline_event_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
-    requested_at_utc = Column(
+    requested_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    processing_started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    s3_bucket = Column(Text, nullable=True)
-    s3_key = Column(Text, nullable=True)
-    created_at_utc = Column(
+    processing_started_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    expires_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    s3_bucket: Mapped[str | None] = mapped_column(Text, nullable=True)
+    s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -630,13 +635,13 @@ class IntegrationConnection(Base):
 
     __tablename__ = "integration_connections"
 
-    connection_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    connection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "pending",
             "active",
@@ -649,16 +654,16 @@ class IntegrationConnection(Base):
         server_default="pending",
         index=True,
     )
-    external_reference = Column(Text, nullable=True, index=True)
-    credentials_ref = Column(Text, nullable=True)
-    config_json = Column(
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    credentials_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    last_synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    last_synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -687,26 +692,26 @@ class IntegrationOperation(Base):
 
     __tablename__ = "integration_operations"
 
-    operation_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    operation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    connection_id = Column(
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("integration_connections.connection_id", ondelete="SET NULL"),
         nullable=True,
         index=True,  # soft reference
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    operation_type = Column(Text, nullable=False, index=True)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    operation_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "requested",
             "submitted_to_provider",
@@ -726,31 +731,31 @@ class IntegrationOperation(Base):
         server_default="queued",
         index=True,
     )
-    correlation_id = Column(Text, nullable=True, index=True)
-    external_reference = Column(Text, nullable=True, index=True)
-    external_reference_id = Column(Text, nullable=True, index=True)
-    payload_json = Column(
+    correlation_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    result_json = Column(
+    result_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    error_message = Column(Text, nullable=True)
-    error_code = Column(Text, nullable=True, index=True)
-    error_category = Column(Text, nullable=True, index=True)
-    error_provider_key = Column(Text, nullable=True, index=True)
-    error_retryable = Column(Boolean, nullable=True)
-    error_user_facing_message = Column(Text, nullable=True)
-    error_operator_message = Column(Text, nullable=True)
-    requested_at_utc = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_category: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_provider_key: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    error_user_facing_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_operator_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    started_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -780,29 +785,29 @@ class IntegrationValidationResult(Base):
 
     __tablename__ = "integration_validation_results"
 
-    validation_result_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    validation_result_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    connection_id = Column(
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("integration_connections.connection_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    credential_status = Column(Text, nullable=False)
-    capability_status = Column(Text, nullable=False)
-    mapping_status = Column(Text, nullable=False)
-    messages_json = Column(
+    credential_status: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_status: Mapped[str] = mapped_column(Text, nullable=False)
+    mapping_status: Mapped[str] = mapped_column(Text, nullable=False)
+    messages_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    validated_at_utc = Column(
+    validated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -815,31 +820,31 @@ class IntegrationOperationStatusHistory(Base):
 
     __tablename__ = "integration_operation_status_history"
 
-    history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    operation_id = Column(
+    history_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("integration_operations.operation_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    from_status = Column(Text, nullable=True)
-    to_status = Column(Text, nullable=False, index=True)
-    correlation_id = Column(Text, nullable=True, index=True)
-    external_reference = Column(Text, nullable=True, index=True)
-    external_reference_id = Column(Text, nullable=True, index=True)
-    message = Column(Text, nullable=True)
-    created_at_utc = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    from_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -866,27 +871,27 @@ class EvidenceRequest(Base):
 
     __tablename__ = "evidence_requests"
 
-    evidence_request_id = Column(
+    evidence_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    operation_id = Column(
+    operation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("integration_operations.operation_id", ondelete="SET NULL"),
         nullable=True,
         index=True,  # soft reference
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "open",
             "in_progress",
@@ -900,29 +905,29 @@ class EvidenceRequest(Base):
         server_default="open",
         index=True,
     )
-    correlation_id = Column(Text, nullable=True, index=True)
-    external_reference = Column(Text, nullable=True, index=True)
-    request_payload_json = Column(
+    correlation_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    request_payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    response_payload_json = Column(
+    response_payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    error_code = Column(Text, nullable=True, index=True)
-    error_category = Column(Text, nullable=True, index=True)
-    error_provider_key = Column(Text, nullable=True, index=True)
-    error_retryable = Column(Boolean, nullable=True)
-    error_user_facing_message = Column(Text, nullable=True)
-    error_operator_message = Column(Text, nullable=True)
-    requested_at_utc = Column(
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_category: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_provider_key: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    error_retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    error_user_facing_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_operator_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    due_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    fulfilled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    due_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    fulfilled_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -952,29 +957,29 @@ class ExternalMapping(Base):
 
     __tablename__ = "external_mappings"
 
-    mapping_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    mapping_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    internal_entity_type = Column(Text, nullable=False, index=True)
-    internal_entity_id = Column(Text, nullable=False, index=True)
-    external_reference = Column(Text, nullable=False, index=True)
-    status = Column(Text, nullable=False, default="active", server_default="active")
-    metadata_json = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    internal_entity_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    internal_entity_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    external_reference: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", server_default="active")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1005,20 +1010,20 @@ class ProviderWebhookEvent(Base):
 
     __tablename__ = "provider_webhook_events"
 
-    webhook_event_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    webhook_event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    provider = Column(Text, nullable=False, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    event_type = Column(Text, nullable=False, index=True)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "received",
             "processed",
@@ -1031,27 +1036,27 @@ class ProviderWebhookEvent(Base):
         server_default="received",
         index=True,
     )
-    signature_valid = Column(Boolean, nullable=True, index=True)
-    idempotency_key = Column(Text, nullable=True, index=True)
-    processing_outcome = Column(Text, nullable=True, index=True)
-    correlation_id = Column(Text, nullable=True, index=True)
-    external_reference = Column(Text, nullable=True, index=True)
-    raw_payload = Column(Text, nullable=False, default="", server_default="")
-    payload_json = Column(
+    signature_valid: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    processing_outcome: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    raw_payload: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    error_details_json = Column(
+    error_details_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
         server_default=text("'{}'"),
     )
-    error_message = Column(Text, nullable=True)
-    received_at_utc = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    processed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    processed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1078,33 +1083,33 @@ class MessageOperation(Base):
 
     __tablename__ = "message_operations"
 
-    message_operation_id = Column(
+    message_operation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    operation_id = Column(
+    operation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("integration_operations.operation_id", ondelete="SET NULL"),
         nullable=True,
         index=True,  # soft reference
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-    provider = Column(Text, nullable=False, index=True)
-    purpose = Column(Text, nullable=False, server_default="notification", index=True)
-    to_e164 = Column(Text, nullable=True, index=True)
-    provider_message_id = Column(Text, nullable=True, index=True)
-    normalized_error_code = Column(Text, nullable=True, index=True)
-    domain = Column(Text, nullable=True, index=True)
-    channel = Column(Text, nullable=True, index=True)
-    direction = Column(Text, nullable=True, index=True)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False, server_default="notification", index=True)
+    to_e164: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    provider_message_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    normalized_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    direction: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "queued",
             "sent",
@@ -1119,18 +1124,18 @@ class MessageOperation(Base):
         server_default="queued",
         index=True,
     )
-    correlation_id = Column(Text, nullable=True, index=True)
-    external_reference = Column(Text, nullable=True, index=True)
-    template_name = Column(Text, nullable=True)
-    payload_json = Column(
+    correlation_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    template_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    sent_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    sent_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    delivered_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1160,21 +1165,21 @@ class MessageOperationStatusHistory(Base):
 
     __tablename__ = "message_operation_status_history"
 
-    history_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    message_operation_id = Column(
+    history_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_operation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("message_operations.message_operation_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    from_status = Column(Text, nullable=True)
-    to_status = Column(Text, nullable=False, index=True)
-    provider_message_id = Column(Text, nullable=True, index=True)
-    normalized_error_code = Column(Text, nullable=True, index=True)
-    details_json = Column(
+    from_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    provider_message_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    normalized_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    details_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
@@ -1184,26 +1189,26 @@ class SessionRecord(Base):
 
     __tablename__ = "sessions"
 
-    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Identifies the principal of a non-user session (e.g. a driver). For web
     # sessions this is left NULL because ``user_id`` already carries the subject.
-    subject_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-    client_type = Column(Text, nullable=False)
-    device_descriptor = Column(Text, nullable=True)
-    created_at = Column(
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    client_type: Mapped[str] = mapped_column(Text, nullable=False)
+    device_descriptor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    last_seen_at = Column(
+    last_seen_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    refresh_family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
 
 
 class RefreshToken(Base):
@@ -1211,24 +1216,24 @@ class RefreshToken(Base):
 
     __tablename__ = "refresh_tokens"
 
-    token_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(
+    token_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("sessions.session_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    refresh_family_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    parent_token_id = Column(
+    refresh_family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    parent_token_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("refresh_tokens.token_id", ondelete="CASCADE"), nullable=True  # self-ref: cascade revokes descendants
     )
-    token_hash = Column(Text, nullable=False, unique=True, index=True)
-    issued_at = Column(
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
+    issued_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    consumed_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class JobExecutionMeta(Base):
@@ -1236,11 +1241,11 @@ class JobExecutionMeta(Base):
 
     __tablename__ = "job_execution_meta"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    celery_task_id = Column(Text, nullable=False, unique=True, index=True)
-    task_name = Column(Text, nullable=False, index=True)
-    task_type = Column(Text, nullable=False, index=True)
-    status = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    celery_task_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
+    task_name: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    task_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
         Enum(
             "queued",
             "running",
@@ -1255,23 +1260,23 @@ class JobExecutionMeta(Base):
         server_default="queued",
         index=True,
     )
-    retry_count = Column(Integer, nullable=False, default=0, server_default="0")
-    max_retries = Column(Integer, nullable=True)
-    retry_category = Column(Text, nullable=True, index=True)
-    should_retry = Column(Boolean, nullable=True)
-    next_retry_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    finished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    last_heartbeat_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    last_error = Column(Text, nullable=True)
-    args_json = Column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
-    kwargs_json = Column(
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_retries: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retry_category: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    should_retry: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    next_retry_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    started_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    finished_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_heartbeat_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    args_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
+    kwargs_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1287,11 +1292,11 @@ class OrgLaunchReadinessSnapshot(Base):
 
     __tablename__ = "org_launch_readiness_snapshots"
 
-    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "not_started",
             "in_progress",
@@ -1304,14 +1309,14 @@ class OrgLaunchReadinessSnapshot(Base):
         default="not_started",
         server_default="not_started",
     )
-    percent_complete = Column(Integer, nullable=False, default=0, server_default="0")
-    summary_json = Column(
+    percent_complete: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_by_user_id = Column(
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1329,20 +1334,20 @@ class OrgLaunchReadinessStepProgress(Base):
 
     __tablename__ = "org_launch_readiness_step_progress"
 
-    step_progress_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    snapshot_id = Column(
+    step_progress_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("org_launch_readiness_snapshots.snapshot_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    step_key = Column(Text, nullable=False)
-    step_label = Column(Text, nullable=False)
-    step_order = Column(Integer, nullable=False)
-    status = Column(
+    step_key: Mapped[str] = mapped_column(Text, nullable=False)
+    step_label: Mapped[str] = mapped_column(Text, nullable=False)
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
         Enum(
             "not_started",
             "in_progress",
@@ -1354,11 +1359,11 @@ class OrgLaunchReadinessStepProgress(Base):
         default="not_started",
         server_default="not_started",
     )
-    metadata_json = Column(
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    updated_at_utc = Column(
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1377,31 +1382,31 @@ class OrgLaunchReadinessBlocker(Base):
 
     __tablename__ = "org_launch_readiness_blockers"
 
-    blocker_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    snapshot_id = Column(
+    blocker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("org_launch_readiness_snapshots.snapshot_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    code = Column(Text, nullable=False)
-    title = Column(Text, nullable=False)
-    detail = Column(Text, nullable=False)
-    severity = Column(
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(
         Enum("info", "warning", "error", name="org_launch_readiness_blocker_severity"),
         nullable=False,
         default="warning",
         server_default="warning",
     )
-    blocking_step_key = Column(Text, nullable=True)
-    is_resolved = Column(
+    blocking_step_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_resolved: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    resolved_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    resolved_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1420,20 +1425,20 @@ class OrgOnboardingStepCompletion(Base):
 
     __tablename__ = "org_onboarding_step_completions"
 
-    completion_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    completion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    step_key = Column(Text, nullable=False)
-    is_completed = Column(
+    step_key: Mapped[str] = mapped_column(Text, nullable=False)
+    is_completed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    completed_by_user_id = Column(
+    completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completion_source = Column(Text, nullable=True)
-    updated_at_utc = Column(
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completion_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1452,14 +1457,14 @@ class OrgTestIncidentRun(Base):
 
     __tablename__ = "org_test_incident_runs"
 
-    run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("incidents.incident_id", ondelete="CASCADE"), nullable=True, index=True
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "not_started",
             "in_progress",
@@ -1471,20 +1476,20 @@ class OrgTestIncidentRun(Base):
         default="in_progress",
         server_default="in_progress",
     )
-    step_results_json = Column(
+    step_results_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    findings_json = Column(
+    findings_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    created_by_user_id = Column(
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    started_at_utc = Column(
+    started_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    updated_at_utc = Column(
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1501,17 +1506,17 @@ class OrgExportValidationRun(Base):
 
     __tablename__ = "org_export_validation_runs"
 
-    validation_run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    validation_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("incidents.incident_id", ondelete="CASCADE"), nullable=True, index=True
     )
-    export_id = Column(
+    export_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exports.export_id", ondelete="CASCADE"), nullable=True, index=True
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "passed",
             "failed",
@@ -1522,22 +1527,22 @@ class OrgExportValidationRun(Base):
         server_default="failed",
         index=True,
     )
-    results_json = Column(
+    results_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    warnings_json = Column(
+    warnings_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    missing_items_json = Column(
+    missing_items_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    validated_at_utc = Column(
+    validated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
-    created_by_user_id = Column(
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1555,28 +1560,28 @@ class OrgPlanEntitlement(Base):
 
     __tablename__ = "org_plan_entitlements"
 
-    entitlement_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    entitlement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    plan_code = Column(Text, nullable=False, default="starter", server_default="starter")
-    billing_status = Column(
+    plan_code: Mapped[str] = mapped_column(Text, nullable=False, default="starter", server_default="starter")
+    billing_status: Mapped[str] = mapped_column(
         Text, nullable=False, default="active", server_default="active"
     )
-    core_incident_protocol = Column(
+    core_incident_protocol: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
-    entitlements_json = Column(
+    entitlements_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    effective_from_utc = Column(
+    effective_from_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    effective_to_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    effective_to_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1593,23 +1598,23 @@ class DemoScenario(Base):
 
     __tablename__ = "demo_scenarios"
 
-    scenario_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    scenario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    scenario_key = Column(Text, nullable=False)
-    name = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
-    seeded_by = Column(Text, nullable=True)
-    seed_batch_id = Column(Text, nullable=True)
-    seed_metadata_json = Column(
+    scenario_key: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    seeded_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seed_batch_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seed_metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1627,26 +1632,26 @@ class HelpCategory(Base):
 
     __tablename__ = "help_categories"
 
-    category_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    slug = Column(Text, nullable=False)
-    title = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    sort_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    metadata_json = Column(
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    is_published = Column(
+    is_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"), index=True
     )
-    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    published_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    unpublished_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1664,35 +1669,35 @@ class HelpArticle(Base):
 
     __tablename__ = "help_articles"
 
-    article_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    article_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    category_id = Column(
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("help_categories.category_id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
-    slug = Column(Text, nullable=False)
-    title = Column(Text, nullable=False)
-    summary = Column(Text, nullable=True)
-    body_markdown = Column(Text, nullable=False)
-    metadata_json = Column(
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    is_published = Column(
+    is_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"), index=True
     )
-    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
-    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_by_user_id = Column(
+    published_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    unpublished_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    updated_by_user_id = Column(
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1716,26 +1721,26 @@ class TrustSection(Base):
 
     __tablename__ = "trust_sections"
 
-    section_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    section_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    slug = Column(Text, nullable=False)
-    title = Column(Text, nullable=False)
-    body_markdown = Column(Text, nullable=False)
-    metadata_json = Column(
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    sort_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    is_published = Column(
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    is_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"), index=True
     )
-    published_at_utc = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
-    unpublished_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    published_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    unpublished_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1759,16 +1764,16 @@ class DeploymentScopeSnapshot(Base):
 
     __tablename__ = "deployment_scope_snapshots"
 
-    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    scope_version = Column(Text, nullable=False)
-    scope_json = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
-    captured_by_user_id = Column(
+    scope_version: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'"))
+    captured_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True  # soft reference
     )
-    captured_at_utc = Column(
+    captured_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1786,21 +1791,21 @@ class HelpArticleView(Base):
 
     __tablename__ = "help_article_views"
 
-    view_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    view_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    article_id = Column(
+    article_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("help_articles.article_id", ondelete="CASCADE"), nullable=False, index=True
     )
-    viewer_user_id = Column(
+    viewer_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True  # soft reference
     )
-    source = Column(Text, nullable=True)
-    metadata_json = Column(
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    viewed_at_utc = Column(
+    viewed_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
@@ -1819,24 +1824,24 @@ class ExpansionReadinessSnapshot(Base):
 
     __tablename__ = "expansion_readiness_snapshots"
 
-    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    scope_key = Column(Text, nullable=False)
-    readiness_score = Column(Integer, nullable=True)
-    status = Column(Text, nullable=False, default="unknown", server_default="unknown")
-    summary_json = Column(
+    scope_key: Mapped[str] = mapped_column(Text, nullable=False)
+    readiness_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="unknown", server_default="unknown")
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    computed_at_utc = Column(
+    computed_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    expires_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1866,14 +1871,14 @@ class Driver(Base):
 
     __tablename__ = "drivers"
 
-    driver_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    driver_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    phone_e164 = Column(Text, nullable=False, unique=True, index=True)
-    display_name = Column(Text, nullable=False)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at_utc = Column(
+    phone_e164: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -1883,21 +1888,21 @@ class OtpChallenge(Base):
 
     __tablename__ = "otp_challenges"
 
-    challenge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    phone_e164 = Column(Text, nullable=False, index=True)
-    otp_code_hash = Column(Text, nullable=False)
-    created_at_utc = Column(
+    challenge_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_e164: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    otp_code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    expires_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
-    attempt_count = Column(Integer, nullable=False, default=0)
-    status = Column(
+    expires_at_utc: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(
         Enum("pending", "verified", "expired", "locked", name="otp_challenge_status"),
         nullable=False,
         default="pending",
     )
-    twilio_sid = Column(Text, nullable=True)
-    last_sent_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    twilio_sid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sent_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 
 class DriverVehicleAssignment(Base):
@@ -1905,19 +1910,19 @@ class DriverVehicleAssignment(Base):
 
     __tablename__ = "driver_vehicle_assignments"
 
-    assignment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    driver_id = Column(
+    driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.driver_id", ondelete="CASCADE"), nullable=False, index=True
     )
-    adc_vehicle_id = Column(Text, nullable=False, index=True)
-    assigned_at_utc = Column(
+    adc_vehicle_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    assigned_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    unassigned_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    source = Column(
+    unassigned_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(
         Enum("tms", "eld", "manual", "driver_app", name="driver_assignment_source"),
         nullable=False,
     )
@@ -1928,18 +1933,18 @@ class OrgVehicleRegistry(Base):
 
     __tablename__ = "org_vehicle_registry"
 
-    vehicle_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    vehicle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    unit_number = Column(Text, nullable=False)
-    vin = Column(Text, nullable=True)
-    provider = Column(Text, nullable=True)
-    provider_vehicle_id = Column(Text, nullable=True)
-    is_active = Column(
+    unit_number: Mapped[str] = mapped_column(Text, nullable=False)
+    vin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
-    qr_deployment_status = Column(
+    qr_deployment_status: Mapped[str] = mapped_column(
         Enum(
             "not_generated",
             "generated",
@@ -1952,19 +1957,19 @@ class OrgVehicleRegistry(Base):
         server_default="not_generated",
         index=True,
     )
-    qr_generated_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    qr_distributed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    qr_confirmed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    license_plate = Column(Text, nullable=True)
-    license_state = Column(Text, nullable=True)
-    dot_unit_type = Column(
+    qr_generated_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    qr_distributed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    qr_confirmed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    license_plate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dot_unit_type: Mapped[str | None] = mapped_column(
         Enum("tractor", "straight_truck", "other", name="dot_unit_type"),
         nullable=True,
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -1993,12 +1998,12 @@ class VehicleImportJob(Base):
 
     __tablename__ = "vehicle_import_jobs"
 
-    job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    provider = Column(Text, nullable=False)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
         Enum(
             "pending",
             "running",
@@ -2011,38 +2016,38 @@ class VehicleImportJob(Base):
         server_default="pending",
         index=True,
     )
-    records_total = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    records_processed = Column(
+    records_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_processed: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_imported = Column(
+    records_imported: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_updated = Column(
+    records_updated: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_skipped = Column(
+    records_skipped: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_errored = Column(
+    records_errored: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    warnings_json = Column(
+    warnings_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    outcomes_json = Column(
+    outcomes_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    summary_json = Column(
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    error_message = Column(Text, nullable=True)
-    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2055,12 +2060,12 @@ class DriverImportJob(Base):
 
     __tablename__ = "driver_import_jobs"
 
-    job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    provider = Column(Text, nullable=False)
-    status = Column(
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
         Enum(
             "pending", "running", "succeeded", "failed", name="driver_import_job_status"
         ),
@@ -2069,38 +2074,38 @@ class DriverImportJob(Base):
         server_default="pending",
         index=True,
     )
-    records_total = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    records_processed = Column(
+    records_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    records_processed: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_imported = Column(
+    records_imported: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_updated = Column(
+    records_updated: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_skipped = Column(
+    records_skipped: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    records_errored = Column(
+    records_errored: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    warnings_json = Column(
+    warnings_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    outcomes_json = Column(
+    outcomes_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    summary_json = Column(
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    error_message = Column(Text, nullable=True)
-    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    completed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2113,20 +2118,20 @@ class VehicleQrToken(Base):
 
     __tablename__ = "vehicle_qr_tokens"
 
-    qr_token = Column(Text, primary_key=True)
-    org_id = Column(
+    qr_token: Mapped[str] = mapped_column(Text, primary_key=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    adc_vehicle_id = Column(Text, nullable=False, index=True)
-    status = Column(
+    adc_vehicle_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
         Enum("active", "revoked", "rotated", name="vehicle_qr_token_status"),
         nullable=False,
         default="active",
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    rotated_from_token = Column(Text, nullable=True)
+    rotated_from_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index(
@@ -2144,19 +2149,19 @@ class DriverInstructionSet(Base):
 
     __tablename__ = "driver_instruction_sets"
 
-    instruction_set_id = Column(
+    instruction_set_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    scope = Column(
+    scope: Mapped[str] = mapped_column(
         Enum("default", "company", "insurer", name="driver_instruction_scope"),
         nullable=False,
         default="default",
     )
-    require_ack = Column(Boolean, nullable=False, default=False)
-    created_at_utc = Column(
+    require_ack: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -2166,17 +2171,17 @@ class DriverInstructionStep(Base):
 
     __tablename__ = "driver_instruction_steps"
 
-    step_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    instruction_set_id = Column(
+    step_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instruction_set_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("driver_instruction_sets.instruction_set_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    step_order = Column("order", Integer, nullable=False, quote=True)
-    title = Column(Text, nullable=False)
-    body = Column(Text, nullable=False)
-    enabled = Column(Boolean, nullable=False, default=True)
+    step_order: Mapped[int] = mapped_column("order", Integer, nullable=False, quote=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 # ── Crash-packet notification (Phase 1 of demo workflow) ───────────
@@ -2191,24 +2196,24 @@ class OrgNotificationRecipient(Base):
 
     __tablename__ = "org_notification_recipients"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    email = Column(Text, nullable=False)
-    full_name = Column(Text, nullable=True)
-    role_tag = Column(Text, nullable=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_tag: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON array of channel strings: ["email"], ["email","sms"], etc.
-    channels = Column(
+    channels: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[\"email\"]'")
     )
-    active = Column(
+    active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -2230,20 +2235,20 @@ class CrashPacketDelivery(Base):
 
     __tablename__ = "crash_packet_deliveries"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    incident_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
-    status = Column(
+    status: Mapped[str] = mapped_column(
         Enum(
             "queued",
             "dispatched",
@@ -2257,27 +2262,27 @@ class CrashPacketDelivery(Base):
         default="queued",
         server_default="queued",
     )
-    target_sla_seconds = Column(Integer, nullable=False, default=900)
-    idempotency_key = Column(Text, nullable=False, unique=True)
-    payload_hash = Column(Text, nullable=True)
-    sent_to = Column(
+    target_sla_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    payload_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_to: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    failed_to = Column(
+    failed_to: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    message_ids = Column(
+    message_ids: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    error_summary = Column(Text, nullable=True)
-    dispatched_at_utc = Column(
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispatched_at_utc: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    delivered_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    delivered_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2301,34 +2306,34 @@ class Trailer(Base):
 
     __tablename__ = "trailers"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     # Stable per-org opaque id matching incident.adc_trailer_id.
-    adc_trailer_id = Column(Text, nullable=False)
-    vin = Column(Text, nullable=True)
-    make = Column(Text, nullable=True)
-    model = Column(Text, nullable=True)
-    year = Column(Integer, nullable=True)
-    plate = Column(Text, nullable=True)
-    last_inspection_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    source = Column(
+    adc_trailer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    vin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    make: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    plate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_inspection_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(
         Enum("manual", "tms", name="trailer_source"),
         nullable=False,
         default="manual",
         server_default="manual",
     )
     # External id from the source-of-truth TMS (used as upsert key with org_id).
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2350,40 +2355,40 @@ class MaintenanceRecord(Base):
 
     __tablename__ = "maintenance_records"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    asset_kind = Column(
+    asset_kind: Mapped[str] = mapped_column(
         Enum("tractor", "trailer", name="maintenance_asset_kind"),
         nullable=False,
     )
     # Free-form per-org asset id: tractor unit_number or trailer.adc_trailer_id.
-    asset_id = Column(Text, nullable=False)
-    performed_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
-    vendor = Column(Text, nullable=True)
-    summary = Column(Text, nullable=True)
-    mileage = Column(Integer, nullable=True)
-    doc_artifact_id = Column(
+    asset_id: Mapped[str] = mapped_column(Text, nullable=False)
+    performed_at_utc: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    vendor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mileage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    doc_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
         nullable=True,
     )
-    source = Column(
+    source: Mapped[str] = mapped_column(
         Enum("manual", "tms", name="maintenance_source"),
         nullable=False,
         default="manual",
         server_default="manual",
     )
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2422,59 +2427,59 @@ class DispatchInstruction(Base):
 
     __tablename__ = "dispatch_instructions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     # Linkage — opaque per-org ids, like Trailer/Incident.
-    adc_driver_id = Column(Text, nullable=True)
-    adc_vehicle_id = Column(Text, nullable=True)
-    adc_trailer_id = Column(Text, nullable=True)
-    incident_id = Column(
+    adc_driver_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adc_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adc_trailer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="SET NULL"),
         nullable=True,
     )
 
     # Trip identity.
-    dispatch_id = Column(Text, nullable=True)
-    load_number = Column(Text, nullable=True)
-    dispatched_by = Column(Text, nullable=True)
+    dispatch_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    load_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispatched_by: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Times.
-    dispatched_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    pickup_appointment_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    delivery_appointment_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    eta_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    dispatched_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    pickup_appointment_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    delivery_appointment_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    eta_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     # Locations (free text — not a structured address — matches paper dispatch).
-    origin_address = Column(Text, nullable=True)
-    destination_address = Column(Text, nullable=True)
+    origin_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    destination_address: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Compliance fields used by the crash brief callouts.
-    hos_remaining_drive_minutes = Column(Integer, nullable=True)
-    hos_remaining_duty_minutes = Column(Integer, nullable=True)
-    forced_dispatch_flag = Column(
+    hos_remaining_drive_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hos_remaining_duty_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    forced_dispatch_flag: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    notes = Column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Source plumbing.
-    source = Column(
+    source: Mapped[str] = mapped_column(
         Enum("manual", "tms", name="dispatch_instruction_source"),
         nullable=False,
         default="manual",
         server_default="manual",
     )
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2513,42 +2518,42 @@ class WeighStationReport(Base):
 
     __tablename__ = "weigh_station_reports"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    adc_vehicle_id = Column(Text, nullable=True)
-    adc_trailer_id = Column(Text, nullable=True)
-    dispatch_instruction_id = Column(
+    adc_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adc_trailer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispatch_instruction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dispatch_instructions.id", ondelete="SET NULL"),
         nullable=True,
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="SET NULL"),
         nullable=True,
     )
 
-    weighed_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    station_name = Column(Text, nullable=True)
-    station_location = Column(Text, nullable=True)
-    ticket_number = Column(Text, nullable=True)
+    weighed_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    station_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    station_location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ticket_number: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Weights (lb).
-    gross_weight_lb = Column(Integer, nullable=True)
-    steer_axle_weight_lb = Column(Integer, nullable=True)
-    drive_axle_weight_lb = Column(Integer, nullable=True)
-    trailer_axle_weight_lb = Column(Integer, nullable=True)
-    legal_limit_lb = Column(Integer, nullable=True)
-    is_over_legal_limit = Column(
+    gross_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    steer_axle_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    drive_axle_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    trailer_axle_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    legal_limit_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_over_legal_limit: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    result = Column(
+    result: Mapped[str | None] = mapped_column(
         Enum(
             "pass",
             "bypass",
@@ -2558,27 +2563,27 @@ class WeighStationReport(Base):
         ),
         nullable=True,
     )
-    citation_text = Column(Text, nullable=True)
-    inspector_name = Column(Text, nullable=True)
+    citation_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inspector_name: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    doc_artifact_id = Column(
+    doc_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
         nullable=True,
     )
 
-    source = Column(
+    source: Mapped[str] = mapped_column(
         Enum("manual", "tms", name="weigh_station_report_source"),
         nullable=False,
         default="manual",
         server_default="manual",
     )
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2617,68 +2622,68 @@ class LoadingDockReport(Base):
 
     __tablename__ = "loading_dock_reports"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    adc_trailer_id = Column(Text, nullable=True)
-    adc_vehicle_id = Column(Text, nullable=True)
-    dispatch_instruction_id = Column(
+    adc_trailer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adc_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispatch_instruction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dispatch_instructions.id", ondelete="SET NULL"),
         nullable=True,
     )
-    incident_id = Column(
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="SET NULL"),
         nullable=True,
     )
 
-    loaded_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    facility_name = Column(Text, nullable=True)
-    facility_address = Column(Text, nullable=True)
+    loaded_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    facility_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facility_address: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Cargo.
-    commodity = Column(Text, nullable=True)
-    pieces = Column(Integer, nullable=True)
-    gross_weight_lb = Column(Integer, nullable=True)
-    net_weight_lb = Column(Integer, nullable=True)
-    seal_number = Column(Text, nullable=True)
+    commodity: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pieces: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gross_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    net_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seal_number: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Securement / load quality.
-    securement_method = Column(Text, nullable=True)
-    weight_distribution_notes = Column(Text, nullable=True)
-    is_overloaded = Column(
+    securement_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    weight_distribution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_overloaded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    is_improperly_loaded = Column(
+    is_improperly_loaded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
     # Sign-off.
-    loaded_by = Column(Text, nullable=True)
-    dock_supervisor = Column(Text, nullable=True)
-    signature_artifact_id = Column(
+    loaded_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dock_supervisor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signature_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
         nullable=True,
     )
 
-    source = Column(
+    source: Mapped[str] = mapped_column(
         Enum("manual", "tms", name="loading_dock_report_source"),
         nullable=False,
         default="manual",
         server_default="manual",
     )
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2711,15 +2716,15 @@ class TmsConnection(Base):
 
     __tablename__ = "tms_connections"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    name = Column(Text, nullable=False)
-    vendor_hint = Column(
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    vendor_hint: Mapped[str] = mapped_column(
         Enum(
             "mcleod",
             "tmw",
@@ -2734,25 +2739,25 @@ class TmsConnection(Base):
     )
     # Reference key into SECRET_PROVIDER (e.g. AWS Secrets Manager). The
     # actual ODBC DSN / connection string is *never* stored in the DB.
-    odbc_secret_ref = Column(Text, nullable=False)
-    schedule_cron = Column(
+    odbc_secret_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    schedule_cron: Mapped[str] = mapped_column(
         Text, nullable=False, default="0 3 * * *", server_default="0 3 * * *"
     )
-    last_synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    last_error = Column(Text, nullable=True)
-    status = Column(
+    last_synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
         Enum("active", "disabled", "error", name="tms_connection_status"),
         nullable=False,
         default="active",
         server_default="active",
     )
-    created_by_user_id = Column(
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2767,14 +2772,14 @@ class TmsFieldMap(Base):
 
     __tablename__ = "tms_field_maps"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tms_connection_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tms_connection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tms_connections.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    entity = Column(
+    entity: Mapped[str] = mapped_column(
         Enum(
             "trailer",
             "maintenance_record",
@@ -2786,16 +2791,16 @@ class TmsFieldMap(Base):
         ),
         nullable=False,
     )
-    source_table = Column(Text, nullable=False)
-    source_column = Column(Text, nullable=False)
-    target_field = Column(Text, nullable=False)
-    transform = Column(
+    source_table: Mapped[str] = mapped_column(Text, nullable=False)
+    source_column: Mapped[str] = mapped_column(Text, nullable=False)
+    target_field: Mapped[str] = mapped_column(Text, nullable=False)
+    transform: Mapped[str] = mapped_column(
         Text, nullable=False, default="none", server_default="none"
     )
-    is_key = Column(
+    is_key: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -2821,39 +2826,39 @@ class InsuranceFormTemplate(Base):
 
     __tablename__ = "insurance_form_templates"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    name = Column(Text, nullable=False)
-    carrier = Column(Text, nullable=True)
-    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
-    status = Column(
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    carrier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    status: Mapped[str] = mapped_column(
         Enum("draft", "finalized", "archived", name="insurance_form_template_status"),
         nullable=False,
         default="draft",
         server_default="draft",
     )
-    s3_bucket = Column(Text, nullable=True)
-    s3_key = Column(Text, nullable=True)
-    sha256 = Column(Text, nullable=True)
-    page_count = Column(Integer, nullable=True)
-    created_by_user_id = Column(
+    s3_bucket: Mapped[str | None] = mapped_column(Text, nullable=True)
+    s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
     )
-    finalized_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
+    finalized_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(
@@ -2882,8 +2887,8 @@ class InsuranceFormTemplateField(Base):
 
     __tablename__ = "insurance_form_template_fields"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    template_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(
             "insurance_form_templates.id", ondelete="CASCADE"
@@ -2891,10 +2896,10 @@ class InsuranceFormTemplateField(Base):
         nullable=False,
         index=True,
     )
-    name = Column(Text, nullable=False)
-    label = Column(Text, nullable=True)
-    page = Column(Integer, nullable=True)
-    kind = Column(
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(
         Enum(
             "text",
             "date",
@@ -2906,22 +2911,22 @@ class InsuranceFormTemplateField(Base):
         default="text",
         server_default="text",
     )
-    bbox_json = Column(JSONB, nullable=True)
-    source_path = Column(Text, nullable=True)
-    transform = Column(
+    bbox_json: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transform: Mapped[str] = mapped_column(
         Text, nullable=False, default="none", server_default="none"
     )
-    required = Column(
+    required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    default_value = Column(Text, nullable=True)
-    sort_order = Column(
+    default_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -2949,21 +2954,21 @@ class InsuranceFormFilling(Base):
 
     __tablename__ = "insurance_form_fillings"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    incident_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    template_id = Column(
+    template_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("insurance_form_templates.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
-    template_version = Column(Integer, nullable=False)
-    status = Column(
+    template_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
         Enum(
             "pending",
             "filled",
@@ -2974,24 +2979,24 @@ class InsuranceFormFilling(Base):
         default="pending",
         server_default="pending",
     )
-    payload_json = Column(
+    payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    payload_hash = Column(Text, nullable=True, index=True)
-    output_artifact_id = Column(
+    payload_hash: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    output_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("artifacts.artifact_id", ondelete="SET NULL"),
         nullable=True,
     )
-    missing_required_fields = Column(
+    missing_required_fields: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    error_message = Column(Text, nullable=True)
-    filled_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    filled_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -3021,31 +3026,31 @@ class DriverUnitHistory(Base):
 
     __tablename__ = "driver_unit_history"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    driver_id = Column(
+    driver_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("drivers.driver_id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    adc_driver_id = Column(Text, nullable=True)
-    unit_kind = Column(
+    adc_driver_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_kind: Mapped[str] = mapped_column(
         Enum("tractor", "trailer", name="driver_unit_kind"), nullable=False
     )
-    adc_vehicle_id = Column(Text, nullable=True)
-    unit_number = Column(Text, nullable=True)
-    vin = Column(Text, nullable=True)
-    license_plate = Column(Text, nullable=True)
-    license_state = Column(Text, nullable=True)
-    started_at_utc = Column(TIMESTAMP(timezone=True), nullable=False)
-    ended_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    source = Column(
+    adc_vehicle_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_plate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at_utc: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    ended_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(
         Enum(
             "tms",
             "eld",
@@ -3057,20 +3062,20 @@ class DriverUnitHistory(Base):
         default="tms",
         server_default="tms",
     )
-    source_record_ref = Column(Text, nullable=True)
-    confidence = Column(
+    source_record_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[str] = mapped_column(
         Enum("high", "medium", "low", name="driver_unit_history_confidence"),
         nullable=False,
         default="medium",
         server_default="medium",
     )
-    confidence_reason = Column(Text, nullable=True)
-    external_id = Column(Text, nullable=True)
-    synced_at_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    created_at_utc = Column(
+    confidence_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    synced_at_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_at_utc = Column(
+    updated_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -3105,30 +3110,30 @@ class FmcsaInspectionSnapshot(Base):
 
     __tablename__ = "fmcsa_inspection_snapshots"
 
-    snapshot_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    usdot_number = Column(Text, nullable=False)
-    fetched_at_utc = Column(
+    usdot_number: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    window_start_utc = Column(TIMESTAMP(timezone=True), nullable=False)
-    window_end_utc = Column(TIMESTAMP(timezone=True), nullable=False)
-    record_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    status = Column(
+    window_start_utc: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    window_end_utc: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    status: Mapped[str] = mapped_column(
         Enum("succeeded", "partial", "failed", name="fmcsa_snapshot_status"),
         nullable=False,
         default="succeeded",
         server_default="succeeded",
     )
-    error_json = Column(
+    error_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    is_stale = Column(
+    is_stale: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
@@ -3151,44 +3156,44 @@ class FmcsaInspection(Base):
 
     __tablename__ = "fmcsa_inspections"
 
-    inspection_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    snapshot_id = Column(
+    inspection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("fmcsa_inspection_snapshots.snapshot_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    org_id = Column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orgs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    report_number = Column(Text, nullable=False)
-    inspection_date_utc = Column(TIMESTAMP(timezone=True), nullable=True)
-    report_state = Column(Text, nullable=True)
-    usdot_number = Column(Text, nullable=False)
-    vehicle_vin = Column(Text, nullable=True)
-    vehicle_license_plate = Column(Text, nullable=True)
-    vehicle_license_state = Column(Text, nullable=True)
-    unit_type = Column(
+    report_number: Mapped[str] = mapped_column(Text, nullable=False)
+    inspection_date_utc: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    report_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usdot_number: Mapped[str] = mapped_column(Text, nullable=False)
+    vehicle_vin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vehicle_license_plate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vehicle_license_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_type: Mapped[str] = mapped_column(
         Enum("tractor", "trailer", "other", name="fmcsa_unit_type"),
         nullable=False,
         default="other",
         server_default="other",
     )
-    inspection_level = Column(Text, nullable=True)
-    oos_total = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    violation_count = Column(
+    inspection_level: Mapped[str | None] = mapped_column(Text, nullable=True)
+    oos_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    violation_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    violations_json = Column(
+    violations_json: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
-    raw_json = Column(
+    raw_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    created_at_utc = Column(
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -3222,44 +3227,44 @@ class IncidentDriverViolationHistory(Base):
 
     __tablename__ = "incident_driver_violation_history"
 
-    link_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    incident_id = Column(
+    link_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("incidents.incident_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    inspection_id = Column(
+    inspection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("fmcsa_inspections.inspection_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    driver_id = Column(
+    driver_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("drivers.driver_id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    unit_history_id = Column(
+    unit_history_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("driver_unit_history.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    match_basis = Column(
+    match_basis: Mapped[str] = mapped_column(
         Enum("vin", "plate_state", name="fmcsa_match_basis"),
         nullable=False,
     )
-    match_confidence = Column(
+    match_confidence: Mapped[str] = mapped_column(
         Enum("high", "medium", "low", name="fmcsa_match_confidence"),
         nullable=False,
     )
-    included_in_brief = Column(
+    included_in_brief: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    excluded_reason = Column(Text, nullable=True)
-    created_at_utc = Column(
+    excluded_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
