@@ -1,0 +1,34 @@
+{
+  "family": "<ADC_WORKER_TASK_FAMILY>",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "<ADC_TASK_EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<ADC_TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "worker",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/adc-api:<IMAGE_TAG>",
+      "essential": true,
+      "command": ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"],
+      "environment": [
+        { "name": "APP_ENV", "value": "staging" },
+        { "name": "SECRET_PROVIDER", "value": "aws_secrets_manager" },
+        { "name": "AWS_REGION", "value": "<REGION>" },
+        { "name": "RELEASE", "value": "<IMAGE_TAG>" }
+      ],
+      "secrets": [
+        { "name": "AWS_SECRETS_MANAGER_SECRET_ID", "valueFrom": "<ADC_RUNTIME_SECRET_ARN>" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/adc-worker",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

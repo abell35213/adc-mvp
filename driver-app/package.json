@@ -12,7 +12,8 @@
     "test:rntl": "jest --selectProjects rntl",
     "test:coverage": "jest --coverage",
     "test:serial": "jest --runInBand",
-    "test:open-handles": "jest --runInBand --detectOpenHandles"
+    "test:open-handles": "jest --runInBand --detectOpenHandles",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

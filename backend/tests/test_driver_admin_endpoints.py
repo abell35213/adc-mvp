@@ -535,7 +535,9 @@ class TestDriverInitiate:
             .all()
         )
         assert len(initiated_events) == 1
-        assert initiated_events[0].payload["idempotency_key"] == "idem-001"
+        assert initiated_events[0].payload["idempotency_key_hash"]
+        assert initiated_events[0].payload["idempotency_key_redacted"] is True
+        assert "idempotency_key" not in initiated_events[0].payload
 
         lockdown_events = (
             db_session.query(Event)

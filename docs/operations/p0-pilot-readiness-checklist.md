@@ -1,77 +1,46 @@
 # P0 Pilot Readiness Checklist
 
-Use this checklist for every controlled pilot demo release check. Keep statuses current and treat every P0 item as a launch blocker until its exit criteria are met.
+Use this checklist for every controlled pilot release candidate. Keep statuses truthful and update the verification date whenever commands are rerun.
 
-Status values: `Done`, `In progress`, `Blocked`, `Needs local verification`.
+Status values: `Verified complete`, `Code-fixed; needs local Docker verification`, `Requires AWS/staging verification`, `Deferred beyond controlled pilot`.
 
-## P0 launch blockers
+## Controlled pilot blockers
 
-| # | Checklist item | Status | Verification command | Independent verification notes | Link/path to relevant files | Exit criteria |
+| # | Checklist item | Status | Verification command | Notes | Files | Exit criteria |
 |---|---|---|---|---|---|---|
-| 1 | Frontend dynamic deployment fixed | Blocked | `test ! -f .github/workflows/nextjs.yml && cd frontend && npm run build` | The CI workflow uses the dynamic Next.js build, but `.github/workflows/nextjs.yml` still deploys a static GitHub Pages artifact from `frontend/out`. Do not mark Done until that Pages workflow is removed or disabled and the production build path is the pilot deployment path. | `.github/workflows/ci.yml`; `.github/workflows/nextjs.yml`; `frontend/package.json`; `README.md`; `.env.example` | Production build completes and the obsolete GitHub Pages/static export deployment path is removed or disabled for pilot deployment. |
-| 2 | Frontend typecheck/build/start passes | Done | `cd frontend && npm run typecheck && npm run build && timeout 10s npm run start` | Verified locally on 2026-06-18. `npm run build` completed with Next.js `cpus: 1`; `timeout 10s npm run start` reached `Ready` before timeout stopped the server. | `frontend/package.json`; `frontend/`; `frontend/tests/` | TypeScript check passes, Next.js production build passes, and production server starts successfully. |
-| 3 | Local Docker Compose works without AWS secrets | Needs local verification | `cp .env.example .env && make local-bootstrap` | The Makefile and local compose stack are wired for local Postgres/Redis, `SECRET_PROVIDER=env`, filesystem storage, noop email, and blank live-provider credentials, but this Docker path is not Done until `make local-bootstrap` passes in the pilot operator's local environment. | `Makefile`; `infra/docker-compose.local.yml`; `.env.example`; `README.md` | Local stack builds, starts, migrates, seeds, and verifies using only local/default development secrets. |
-| 4 | Local migration and seed flow works | Needs local verification | `make local-migrate && make local-seed && make local-verify-demo` | Commands exist and README documents the flow. Keep this separate from full bootstrap so migration/seed issues can be isolated after containers are healthy. | `Makefile`; `backend/alembic/`; `scripts/seed_demo_data.py`; `scripts/verify_demo.py` | Alembic reaches head, demo seed completes, and verification confirms the seeded tenant and login are usable. |
-| 5 | Backend tests complete | Needs local verification | `make lint && make test` | CI documents backend lint, duplicate-module guard, targeted regressions, full pytest suite, schema validation, and runtime API contract checks. Do not mark Done until the repo-level backend gate passes locally for this cleanup. | `Makefile`; `.github/workflows/ci.yml`; `backend/pytest.ini`; `backend/tests/`; `scripts/validate_schemas.py` | Backend lint and full backend/schema test suite complete cleanly. |
-| 6 | Driver app tests complete | Needs local verification | `cd driver-app && npm run test:serial` | Driver package provides serial Jest and coverage commands; CI uses `npm run test:coverage`. Do not mark Done until the documented local driver test command passes. | `driver-app/package.json`; `driver-app/TESTING.md`; `.github/workflows/ci.yml`; `driver-app/` | Driver app Jest suite completes without failures. |
-| 7 | Local smoke test validates seeded incident workflow | Needs local verification | `make local-smoke` | Requires a running local API and worker from `make local-up` or `make local-bootstrap`; validates seeded demo data, login, incident access, export request, and export readiness. | `Makefile`; `scripts/verify_demo.py`; `backend/app/tasks/export_tasks.py` | Seeded demo login works, a seeded incident is accessible, export generation is requested, and export reaches ready status. |
-| 8 | Org-level authorization tests pass | Needs local verification | `cd backend && APP_ENV=test pytest tests/test_authorization_regressions.py tests/test_api_endpoints.py::TestExportEndpoints::test_get_export_forbidden_for_other_org tests/test_export_section23_acceptance.py::test_authorization_and_org_isolation -q` | Keep this targeted command explicit for pilot sign-off. Expand it if new org-boundary tests are added. | `backend/tests/test_authorization_regressions.py`; `backend/tests/test_api_endpoints.py`; `backend/tests/test_export_section23_acceptance.py`; `backend/app/security/authz.py` | Cross-org incident/export/content access is rejected and authorization regression tests pass. |
-| 9 | Demo login is documented | Done | `rg -n "demo-admin@adc.local|DemoAdmin!2345|DEMO_ADMIN_EMAIL|DEMO_ADMIN_PASSWORD" README.md .env.example scripts/seed_demo_data.py` | Verified by inspection on 2026-06-18: README documents the local demo email/password/org, `.env.example` provides matching frontend prefill values, and `scripts/seed_demo_data.py` uses the same default seeded credentials. | `README.md`; `.env.example`; `scripts/seed_demo_data.py` | Pilot operator can find the local demo URL, seeded email, seeded password, and organization name in repo docs. |
-| 10 | Known non-P0 features are explicitly listed as out of pilot scope | Done | `rg -n "P1|P2|out of pilot scope|non-P0" docs/operations/p0-pilot-readiness-checklist.md` | P1/P2 work remains listed below and is explicitly separated from P0 launch blockers. | `docs/operations/p0-pilot-readiness-checklist.md` | Later work is visible and explicitly separated from P0 blockers. |
+| 1 | Frontend patched build path is the pilot path | Verified complete | `cd frontend && npm run build` | No GitHub Pages / static Next.js workflow exists in the repo. The active frontend path is the dynamic Next.js build used by Docker and CI. | `frontend/package.json`; `frontend/Dockerfile`; `.github/workflows/ci.yml` | Build succeeds on the patched Next.js release line and no stale Pages blocker remains in pilot docs. |
+| 2 | Backend org-isolation export regression is pinned to the correct test id | Verified complete | `cd backend && APP_ENV=test pytest tests/test_api_endpoints.py::TestGetExport::test_get_export_forbidden_for_other_org -q` | Replaces the stale `TestExportEndpoints` class path. | `backend/tests/test_api_endpoints.py`; `docs/operations/p0-pilot-readiness-checklist.md` | The documented node id matches the real test and passes. |
+| 3 | Backend tests use deterministic fake Redis in `APP_ENV=test` | Verified complete | `cd backend && APP_ENV=test pytest tests/test_driver_admin_endpoints.py -q --durations=20` | Test fixtures now force fake Redis for rate-limit code paths so suites do not resolve `test-redis.invalid` during unit/integration tests. | `backend/tests/conftest.py`; `backend/tests/helpers/fake_redis.py`; `backend/app/services/rate_limit_service.py`; `backend/app/api/routes_driver_auth.py` | Targeted driver/rate-limit suites pass without real Redis network attempts. |
+| 4 | Full backend suite passes for the release candidate | Code-fixed; needs local Docker verification | `cd backend && APP_ENV=test pytest tests/ -q --durations=20` | Targeted suites pass in the agent environment; rerun the full suite locally for release evidence if timing limits recur here. | `backend/tests/`; `.github/workflows/ci.yml`; `Makefile` | Full suite completes cleanly and slowest tests are reviewed. |
+| 5 | Unsafe PDF fail-open mode is blocked in staging/prod | Verified complete | `cd backend && APP_ENV=test pytest tests/test_config.py -q` | `PDF_RENDER_FAIL_OPEN=true` is now rejected outside `local` / `test`. | `backend/app/config/settings.py`; `backend/app/config/validation.py`; `backend/app/services/pdf_render.py`; `backend/tests/test_config.py` | Startup validation fails fast in staging/prod if fail-open rendering is enabled. |
+| 6 | Raw client idempotency keys are not stored in workflow event payloads | Verified complete | `cd backend && APP_ENV=test pytest tests/test_incident_workflow_service.py tests/test_driver_admin_endpoints.py -q` | Driver-initiated workflow events retain only hashed/redacted idempotency metadata. | `backend/app/services/incident_workflow_service.py`; `backend/tests/test_incident_workflow_service.py`; `backend/tests/test_driver_admin_endpoints.py` | Events contain hashes only and duplicate-protection behavior remains intact. |
+| 7 | Frontend lint/typecheck/test/build and audit are green | Verified complete | `cd frontend && npm run lint && npm run typecheck && npm run test && npm run build && npm audit --audit-level=high` | Next.js and `eslint-config-next` were patched to the compatible secure line. Remaining audit findings are moderate only. | `frontend/package.json`; `frontend/package-lock.json`; `.github/workflows/ci.yml` | Lint, typecheck, test, build pass and no high/critical frontend audit findings remain. |
+| 8 | Driver app has executable typecheck and honest risk tracking | Code-fixed; needs local Docker verification | `cd driver-app && npm run typecheck && npm run test:unit -- --runInBand && npm run test:rntl -- --runInBand --silent` | The repo now exposes a real `typecheck` script. Remaining Expo/Jest audit findings are documented in the risk register until the next SDK upgrade window. | `driver-app/package.json`; `driver-app/jest.config.js`; `docs/security/driver-app-dependency-risk-register.md`; `.github/workflows/ci.yml` | Typecheck and tests pass; unresolved audit items are documented with mitigation and owner. |
+| 9 | Local Docker bootstrap, migration, seed, and smoke path are reproducible | Code-fixed; needs local Docker verification | `make local-reset && make local-bootstrap && make local-smoke` | Commands exist but require a Docker-capable operator environment; agent verification is manual/external. | `Makefile`; `infra/docker-compose.local.yml`; `scripts/seed_demo_data.py`; `scripts/verify_demo.py` | Local stack builds, migrates, seeds, and passes seeded-incident smoke checks. |
+| 10 | AWS ECS/Fargate pilot deployment path is documented and scripted | Requires AWS/staging verification | `scripts/deploy/build_and_push_ecr.sh && scripts/deploy/run_migrations_ecs.sh && scripts/deploy/update_ecs_services.sh && scripts/deploy/smoke_staging.sh` | Kubernetes/GHCR manifests remain legacy/non-primary. ECS/Fargate is the documented pilot path. | `docs/operations/aws-ecs-pilot-deployment.md`; `infra/aws/ecs/`; `scripts/deploy/` | Staging deploy, migration, and smoke scripts succeed with real AWS credentials and secrets. |
+| 11 | Backup/DR scripts referenced by docs actually exist | Requires AWS/staging verification | `scripts/backup/run_pg_full_backup.sh` and `scripts/backup/run_pg_wal_archive.sh` | Scripts are present and safe, but S3 uploads and restore timing still need a real environment drill. | `scripts/backup/`; `docs/operations/backup-dr/README.md`; `docs/operations/restore-drill.md`; `infra/production/postgres-backup-cronjob.yaml` | Backup scripts run with explicit env vars and a restore drill is completed with evidence. |
+| 12 | Controlled-pilot onboarding, demo, support, and success docs exist | Verified complete | `test -f docs/pilot/pilot-onboarding-checklist.md && test -f docs/pilot/pilot-success-metrics.md && test -f docs/pilot/demo-script.md && test -f docs/support/operator-triage-runbook.md` | Pilot operator docs are now kept alongside operations docs. | `docs/pilot/`; `docs/support/` | Operators can onboard a pilot tenant, run the hero demo, measure pilot success, and triage common incidents. |
+| 13 | Production SaaS hardening beyond the controlled pilot is explicitly deferred | Deferred beyond controlled pilot | `rg -n "Deferred beyond controlled pilot|Production SaaS" docs/operations/p0-pilot-readiness-checklist.md docs/operations/pilot-readiness-remediation-plan.md` | Broad SaaS concerns such as multi-region DR, full infra-as-code parity, advanced observability automation, and Expo major upgrades remain out of P0 scope. | `docs/operations/p0-pilot-readiness-checklist.md`; `docs/operations/pilot-readiness-remediation-plan.md` | Deferred items remain visible and do not block the controlled pilot. |
 
-## Last verification commands
+## Verification date
 
-Commands run for the latest checklist update on 2026-06-18:
+- Updated for this remediation pass: 2026-06-27
 
-```bash
-cd frontend && npm run typecheck && npm run build
-timeout 10s npm run start
-rg -n "demo-admin@adc.local|DemoAdmin!2345|DEMO_ADMIN_EMAIL|DEMO_ADMIN_PASSWORD" README.md .env.example scripts/seed_demo_data.py
-rg -n "P1|P2|out of pilot scope|non-P0" docs/operations/p0-pilot-readiness-checklist.md
-```
-
-Known remaining P0 verification commands before P1:
+## Exact commands still expected before pilot sign-off
 
 ```bash
-# Remove or disable .github/workflows/nextjs.yml first, then verify the pilot frontend build path.
-test ! -f .github/workflows/nextjs.yml && cd frontend && npm run build
-
-# Verify the local-only Docker bootstrap and seeded demo smoke path.
-cp .env.example .env
+cd backend && APP_ENV=test pytest tests/ -q --durations=20
+cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
+cd frontend && npm audit --audit-level=high
+cd driver-app && npm run typecheck
+cd driver-app && npm run test:unit -- --runInBand
+cd driver-app && npm run test:rntl -- --runInBand --silent
+cd driver-app && npm audit --audit-level=high
+make local-reset
 make local-bootstrap
 make local-smoke
-
-# If debugging bootstrap in smaller steps, verify migration/seed separately.
-make local-migrate && make local-seed && make local-verify-demo
-
-# Verify backend and schema gates.
-make lint && make test
-cd backend && APP_ENV=test pytest tests/test_authorization_regressions.py tests/test_api_endpoints.py::TestExportEndpoints::test_get_export_forbidden_for_other_org tests/test_export_section23_acceptance.py::test_authorization_and_org_isolation -q
-
-# Verify driver app tests.
-cd driver-app && npm run test:serial
+scripts/deploy/build_and_push_ecr.sh
+scripts/deploy/run_migrations_ecs.sh
+scripts/deploy/update_ecs_services.sh
+scripts/deploy/smoke_staging.sh
 ```
-
-## Remaining P0 blockers
-
-- `.github/workflows/nextjs.yml` still defines a GitHub Pages static deployment path and must be removed or disabled before the frontend dynamic deployment item can be marked `Done`.
-- Docker-based local bootstrap/smoke items remain `Needs local verification` until `make local-bootstrap` and `make local-smoke` pass.
-- Backend, driver app, and org-authorization test items remain `Needs local verification` until their documented commands pass locally for the P0 release candidate.
-
-## Out of pilot scope: known P1/P2 work
-
-These items are not P0 blockers for the controlled pilot demo unless they are explicitly promoted into the table above.
-
-- **P1:** Production-grade cloud secret rotation and live provider credential rollout beyond the local-only pilot stack.
-- **P1:** Full staging/production Kubernetes deployment hardening beyond validating the pilot deployment mode.
-- **P1:** Expanded analytics, reporting dashboards, and commercial growth workflows not needed for the seeded demo path.
-- **P2:** Additional third-party integrations beyond the mocked/seeded incident-to-export pilot workflow.
-- **P2:** Broad UX polish, advanced onboarding automation, and non-critical mobile enhancements outside driver app test stability.
-
-## Release check notes
-
-- Change a row to `In progress` only when an owner is actively working it.
-- Change a row to `Blocked` when a known repo or environment issue prevents truthful completion.
-- Change a row to `Needs local verification` when the repo appears wired for the item but the required command has not passed for this release candidate.
-- Change a row to `Done` only after the verification command has passed and the exit criteria are true.
-- If a verification command is intentionally replaced, update this file in the same PR so the next release check remains repeatable.

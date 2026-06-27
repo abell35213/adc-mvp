@@ -20,6 +20,8 @@ def validate_startup_config(settings: AppSettings) -> None:
     errors: list[str] = []
 
     if not settings.is_local and not settings.is_test:
+        if settings.PDF_RENDER_FAIL_OPEN:
+            errors.append("PDF_RENDER_FAIL_OPEN cannot be enabled outside local/test")
         critical_required = {
             "DATABASE_URL": settings.DATABASE_URL,
             "REDIS_URL": settings.REDIS_URL,

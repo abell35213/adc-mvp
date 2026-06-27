@@ -1,0 +1,41 @@
+{
+  "family": "<ADC_API_TASK_FAMILY>",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "<ADC_TASK_EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<ADC_TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/adc-api:<IMAGE_TAG>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8000, "protocol": "tcp" }],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8000/health/live || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "environment": [
+        { "name": "APP_ENV", "value": "staging" },
+        { "name": "SECRET_PROVIDER", "value": "aws_secrets_manager" },
+        { "name": "AWS_REGION", "value": "<REGION>" },
+        { "name": "RELEASE", "value": "<IMAGE_TAG>" }
+      ],
+      "secrets": [
+        { "name": "AWS_SECRETS_MANAGER_SECRET_ID", "valueFrom": "<ADC_RUNTIME_SECRET_ARN>" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/adc-api",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
