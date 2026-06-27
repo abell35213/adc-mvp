@@ -24,7 +24,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 type PaperIconProps = {
   name: string;
-  color: string;
+  color?: string;
   size: number;
   direction?: 'ltr' | 'rtl';
   testID?: string;

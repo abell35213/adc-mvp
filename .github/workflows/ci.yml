@@ -80,8 +80,11 @@ jobs:
       - name: Build (next)
         run: npm run build
 
+      - name: Audit (npm)
+        run: npm audit --audit-level=high
+
   driver-app:
-    name: Driver app tests + coverage
+    name: Driver app type/tests/audit
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -98,6 +101,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type check (tsc)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit -- --runInBand
+
+      - name: RNTL tests
+        run: npm run test:rntl -- --runInBand --silent
+
       - name: Tests with coverage (enforces thresholds)
         # ``test:coverage`` runs both the ``unit`` and ``rntl`` Jest
         # projects and applies the global coverage thresholds defined in
@@ -113,6 +125,9 @@ jobs:
           path: driver-app/coverage/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Audit (npm)
+        run: npm audit --audit-level=high
 
   migration-integrity:
     name: Migration integrity checks
@@ -187,7 +202,13 @@ jobs:
 
       - name: Frontend vulnerability scan (npm audit)
         working-directory: frontend
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=high
+
+      - name: Driver app vulnerability scan (npm audit)
+        working-directory: driver-app
+        run: |
+          npm ci
+          npm audit --audit-level=high
 
   required-checks:
     name: Required checks gate

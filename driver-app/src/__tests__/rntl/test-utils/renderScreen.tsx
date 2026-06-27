@@ -35,14 +35,14 @@ type AnyScreenName = keyof RootStackParamList;
 
 export type SiblingRoute = {
   name: AnyScreenName;
-  component?: ComponentType<unknown>;
+  component?: ComponentType<any>;
 };
 
 export type RenderScreenOptions<RouteName extends AnyScreenName> = {
   /** The screen route name being mounted. */
   name: RouteName;
   /** The screen component implementation. */
-  component: ComponentType<unknown>;
+  component: ComponentType<any>;
   /**
    * Initial params for the mounted route. Required-shape per
    * `RootStackParamList[RouteName]`.
@@ -102,7 +102,7 @@ export function renderScreen<RouteName extends AnyScreenName>(
   const tree: ReactElement = (
     <NavigationContainer
       ref={(ref) => {
-        navRef = ref;
+        navRef = ref as NavigationContainerRef<RootStackParamList> | null;
       }}
       onStateChange={onStateChange}
     >

@@ -154,7 +154,7 @@ describe('protocolFlowController', () => {
     act(() => {
       controller.current?.resolveVehicle({
         vehicleId: 'veh-123',
-        method: 'qr',
+        method: 'qr_scan',
         qrToken: 'tok',
       });
     });
