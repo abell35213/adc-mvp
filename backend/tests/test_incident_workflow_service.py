@@ -88,8 +88,11 @@ def test_initiate_driver_incident_writes_protocol_and_lockdown_exactly_once_for_
     )
     assert len(protocol_events) == 1
     assert len(lockdown_events) == 1
-    assert protocol_events[0].payload["idempotency_key"] == "retry-key"
     assert protocol_events[0].payload["idempotency_key_hash"]
+    assert protocol_events[0].payload["idempotency_key_redacted"] is True
+    assert "idempotency_key" not in protocol_events[0].payload
+    assert lockdown_events[0].payload["idempotency_key_hash"]
+    assert lockdown_events[0].payload["idempotency_key_redacted"] is True
 
 
 def test_initiate_driver_incident_does_not_duplicate_with_new_key_after_protocol_started(

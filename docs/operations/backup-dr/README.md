@@ -10,7 +10,7 @@ This package defines production backup automation requirements, disaster recover
 - DNS/ingress recovery.
 - Third-party/key dependency outage response.
 
-Use this directory with `infra/production/postgres-backup-cronjob.yaml` and `infra/production/object-storage-policies.yaml`.
+Use this directory with `infra/production/postgres-backup-cronjob.yaml`, `infra/production/object-storage-policies.yaml`, `scripts/backup/run_pg_full_backup.sh`, and `scripts/backup/run_pg_wal_archive.sh`.
 
 ## Explicit service targets (RPO/RTO)
 
@@ -43,6 +43,18 @@ Use this directory with `infra/production/postgres-backup-cronjob.yaml` and `inf
 - Use the restore checklist in `restore-validation-checklist.md`.
 - Persist drill evidence (timestamps, query outputs, object checksum samples, screenshots/log excerpts) in the incident knowledge base.
 - Track: achieved RPO, achieved RTO, gaps, and owner/due-date for corrective actions.
+
+## Scripted backup entry points
+
+- `scripts/backup/run_pg_full_backup.sh`
+- `scripts/backup/run_pg_wal_archive.sh`
+
+Required environment variables:
+
+- `DATABASE_URL` for full backups
+- `WAL_SOURCE_DIR` for WAL archive uploads
+- `PG_BACKUP_BUCKET`
+- `AWS_REGION`
 
 ## Playbook index
 

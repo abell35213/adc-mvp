@@ -11,6 +11,8 @@ import pytest
 from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB, UUID as PG_UUID
 from sqlalchemy.ext.compiler import compiles
 
+from tests.helpers.fake_redis import FakeRedisRateLimiter
+
 _TEST_TIMEOUT_SECONDS = int(os.getenv("ADC_PYTEST_TIMEOUT_SECONDS", "60"))
 
 _TEST_ENV_DEFAULTS = {
@@ -79,3 +81,20 @@ def _fake_weasyprint(monkeypatch: pytest.MonkeyPatch) -> None:
             return b"%PDF-1.4\nfake-weasyprint:" + digest.encode("ascii")
 
     monkeypatch.setitem(__import__("sys").modules, "weasyprint", SimpleNamespace(HTML=_FakeHTML))
+
+
+@pytest.fixture(autouse=True)
+def _fake_rate_limit_redis() -> None:
+    from app.api import routes_driver_auth
+    from app.services import rate_limit_service
+
+    fake_redis = FakeRedisRateLimiter()
+    routes_driver_auth._redis_client = fake_redis
+    routes_driver_auth._rate_limit_script_sha = None
+    rate_limit_service._redis_client = fake_redis
+    rate_limit_service._rate_limit_script_sha = None
+    yield
+    routes_driver_auth._redis_client = None
+    routes_driver_auth._rate_limit_script_sha = None
+    rate_limit_service._redis_client = None
+    rate_limit_service._rate_limit_script_sha = None

@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from app.config.validation import validate_startup_config
 from app.core.config import Settings
@@ -127,6 +128,14 @@ class TestSettingsValidation:
         settings = Settings(**self._non_local_minimum())
 
         validate_startup_config(settings)
+
+    def test_pdf_render_fail_open_is_rejected_outside_local_test(self):
+        with pytest.raises(ValidationError, match="PDF_RENDER_FAIL_OPEN"):
+            Settings(**(self._non_local_minimum() | {"PDF_RENDER_FAIL_OPEN": True}))
+
+    def test_settings_reject_pdf_render_fail_open_in_prod_like_envs(self):
+        with pytest.raises(ValueError, match="PDF_RENDER_FAIL_OPEN"):
+            Settings(APP_ENV="staging", PDF_RENDER_FAIL_OPEN=True)
 
 
 class TestAwsSecretsManagerSource:

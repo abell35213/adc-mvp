@@ -72,7 +72,7 @@ function makeProbe(routeName: ProtocolRouteName, replaceSpy: jest.Mock) {
         replaceSpy(target);
         // Forward to the real navigator so `getCurrentRoute()` reflects
         // the effect — gives us a second axis of verification.
-        navigation.replace(target as keyof RootStackParamList);
+        (navigation.replace as (screen: ProtocolRouteName) => void)(target);
       },
     };
     useProtocolRouteGuard(routeName, wrappedNav);

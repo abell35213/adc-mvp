@@ -89,6 +89,15 @@ def _idempotency_key_hash(raw_key: str | None) -> str | None:
     return hmac.new(settings.JWT_SECRET_KEY.encode(), normalized.encode(), hashlib.sha256).hexdigest()
 
 
+def _redacted_idempotency_payload(key_hash: str | None) -> dict[str, Any]:
+    if not key_hash:
+        return {}
+    return {
+        "idempotency_key_hash": key_hash,
+        "idempotency_key_redacted": True,
+    }
+
+
 def initiate_driver_incident(
     db: Session,
     *,
@@ -155,10 +164,7 @@ def initiate_driver_incident(
         "device_location": device_location,
         "device": device,
     }
-    if idempotency_key:
-        event_payload["idempotency_key"] = idempotency_key
-    if key_hash:
-        event_payload["idempotency_key_hash"] = key_hash
+    event_payload.update(_redacted_idempotency_payload(key_hash))
 
     protocol_event = Event(
         org_id=org_id,
@@ -174,7 +180,7 @@ def initiate_driver_incident(
         event_type=SystemEventType.EVIDENCE_LOCKDOWN_STARTED.value,
         actor_type="driver_app",
         actor_id=str(driver_id),
-        payload=({"idempotency_key": idempotency_key, "idempotency_key_hash": key_hash} if idempotency_key else None),
+        payload=_redacted_idempotency_payload(key_hash) or None,
     )
     db.add(protocol_event)
     db.add(lockdown_event)

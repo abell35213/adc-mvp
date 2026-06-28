@@ -26,10 +26,11 @@ which is intended for non-production environments only.
 from __future__ import annotations
 
 import logging
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ _PLACEHOLDER_PDF = _build_placeholder_pdf()
 
 
 def _fail_open() -> bool:
-    return os.getenv("PDF_RENDER_FAIL_OPEN", "").strip().lower() in {"1", "true", "yes"}
+    return settings.PDF_RENDER_FAIL_OPEN
 
 
 @lru_cache(maxsize=1)

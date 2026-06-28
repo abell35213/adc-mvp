@@ -133,6 +133,8 @@ class AppSettings(BaseSettings):
     # Crash packet SLA (15 minutes)
     CRASH_PACKET_SLA_SECONDS: int = 900
 
+    PDF_RENDER_FAIL_OPEN: bool = False
+
     # Driver OTP
     OTP_HASH_PEPPER: str = INSECURE_DEFAULT_SENTINEL
     OTP_RESEND_COOLDOWN_SECONDS: int = 60
@@ -300,6 +302,9 @@ class AppSettings(BaseSettings):
             raise ValueError(
                 "WEATHER_RETRY_MAX_BACKOFF_SECONDS must be >= WEATHER_RETRY_BASE_BACKOFF_SECONDS"
             )
+
+        if self.APP_ENV in {"staging", "prod"} and self.PDF_RENDER_FAIL_OPEN:
+            raise ValueError("PDF_RENDER_FAIL_OPEN cannot be enabled in staging or prod")
 
         self.RELEASE = self.RELEASE.strip() or "dev"
 
