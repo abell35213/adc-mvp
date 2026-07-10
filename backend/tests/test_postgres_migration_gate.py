@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import os
 import re
 import subprocess
@@ -24,6 +23,14 @@ ARCHIVE = BACKEND / "app" / "db" / "migrations" / "archived_broken_history_20260
 def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
     database_url = os.environ["POSTGRES_MIGRATION_DATABASE_URL"]
     env = {**os.environ, "DATABASE_URL": database_url}
+    engine = sa.create_engine(database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(sa.text("CREATE SCHEMA public"))
+            conn.execute(sa.text("GRANT ALL ON SCHEMA public TO CURRENT_USER"))
+    finally:
+        engine.dispose()
 
     result = subprocess.run(
         ["alembic", "-c", "alembic.ini", "upgrade", "head"],
@@ -32,6 +39,7 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
         text=True,
         capture_output=True,
         check=False,
+        timeout=120,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -44,38 +52,21 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
         }
         orm_tables = set(Base.metadata.tables)
         assert migrated_tables == orm_tables
+        for table in orm_tables:
+            migrated_columns = {column["name"] for column in inspector.get_columns(table, schema="public")}
+            orm_columns = {column.name for column in Base.metadata.tables[table].columns}
+            assert migrated_columns == orm_columns
     finally:
         engine.dispose()
-
-
-def _literal_first_arg(call: ast.Call) -> str | None:
-    if not call.args:
-        return None
-    arg = call.args[0]
-    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-        return arg.value
-    return None
-
-
-def _walk_calls(path: Path) -> list[tuple[str, str]]:
-    tree = ast.parse(path.read_text())
-    calls: list[tuple[str, str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Attribute):
-            calls.append((func.attr, _literal_first_arg(node) or ""))
-    return calls
 
 
 def test_archived_migration_lineage_documents_known_missing_tables() -> None:
     created: dict[str, str] = {}
     referenced: dict[str, list[str]] = {}
     for path in sorted(ARCHIVE.glob("*.py")):
-        revision = re.search(r"revision:\s*str\s*=\s*['\"]([^'\"]+)", path.read_text())
-        revision_id = revision.group(1) if revision else path.stem
         text = path.read_text()
+        revision = re.search(r"revision:\s*str\s*=\s*['\"]([^'\"]+)", text)
+        revision_id = revision.group(1) if revision else path.stem
         for match in re.finditer(r"op\.create_table\(\s*['\"]([^'\"]+)", text):
             created.setdefault(match.group(1), revision_id)
         for table in Base.metadata.tables:
