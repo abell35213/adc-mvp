@@ -1,5 +1,7 @@
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -18,6 +20,12 @@ if config.config_file_name is not None:
 # Override sqlalchemy.url from DATABASE_URL env var when available
 if os.environ.get("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+
+# Ensure Alembic can import the backend application package when invoked via
+# console scripts, where the current working directory may not be on sys.path.
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.db.models import Base  # noqa: E402
 
