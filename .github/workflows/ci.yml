@@ -132,6 +132,20 @@ jobs:
   migration-integrity:
     name: Migration integrity checks
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adc_test
+          POSTGRES_PASSWORD: adc_test_password
+          POSTGRES_DB: adc_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U adc_test -d adc_migration_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: backend
@@ -151,7 +165,9 @@ jobs:
           pip install pytest
 
       - name: Verify Alembic chain integrity
-        run: pytest tests/test_migration_integrity.py -v
+        env:
+          POSTGRES_MIGRATION_DATABASE_URL: postgresql://adc_test:adc_test_password@localhost:5432/adc_migration_test
+        run: pytest tests/test_migration_integrity.py tests/test_postgres_migration_gate.py -v
 
   schema-validation:
     name: Schema validation
