@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,19 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 VERSIONS = BACKEND / "app" / "db" / "migrations" / "versions"
 ARCHIVE = BACKEND / "app" / "db" / "migrations" / "archived_broken_history_20260710"
+BASELINE = VERSIONS / "0001_mvp_postgresql_baseline.py"
+
+
+def _load_baseline_module():
+    spec = importlib.util.spec_from_file_location("baseline_0001", BASELINE)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _active_migration_text() -> str:
+    return "\n".join(path.read_text() for path in sorted(VERSIONS.glob("*.py")))
 
 
 @pytest.mark.skipif(
@@ -52,10 +66,76 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
         }
         orm_tables = set(Base.metadata.tables)
         assert migrated_tables == orm_tables
+        assert len(migrated_tables) == 63
         for table in orm_tables:
-            migrated_columns = {column["name"] for column in inspector.get_columns(table, schema="public")}
+            migrated_columns = {
+                column["name"] for column in inspector.get_columns(table, schema="public")
+            }
             orm_columns = {column.name for column in Base.metadata.tables[table].columns}
             assert migrated_columns == orm_columns
+
+            migrated_pk = inspector.get_pk_constraint(table, schema="public")[
+                "constrained_columns"
+            ]
+            orm_pk = [column.name for column in Base.metadata.tables[table].primary_key.columns]
+            assert migrated_pk == orm_pk
+
+            migrated_unique = {
+                tuple(constraint["column_names"])
+                for constraint in inspector.get_unique_constraints(table, schema="public")
+            }
+            orm_unique = {
+                tuple(column.name for column in constraint.columns)
+                for constraint in Base.metadata.tables[table].constraints
+                if isinstance(constraint, sa.UniqueConstraint)
+            }
+            assert migrated_unique == orm_unique
+
+            migrated_fks = {
+                (
+                    tuple(fk["constrained_columns"]),
+                    fk["referred_table"],
+                    tuple(fk["referred_columns"]),
+                    fk["options"].get("ondelete"),
+                )
+                for fk in inspector.get_foreign_keys(table, schema="public")
+            }
+            orm_fks = {
+                (
+                    tuple(column.name for column in constraint.columns),
+                    next(iter(constraint.elements)).column.table.name,
+                    tuple(element.column.name for element in constraint.elements),
+                    constraint.ondelete,
+                )
+                for constraint in Base.metadata.tables[table].foreign_key_constraints
+            }
+            assert migrated_fks == orm_fks
+
+        baseline = _load_baseline_module()
+        migrated_enums = {
+            enum["name"]: tuple(enum["labels"])
+            for enum in inspector.get_enums(schema="public")
+            if enum["name"] in baseline.ENUMS
+        }
+        assert migrated_enums == {
+            name: tuple(values) for name, values in baseline.ENUMS.items()
+        }
+
+        with engine.connect() as conn:
+            trigger_exists = conn.scalar(
+                sa.text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_trigger "
+                    "WHERE tgname = 'trg_prevent_audit_events_mutation')"
+                )
+            )
+            function_exists = conn.scalar(
+                sa.text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_proc "
+                    "WHERE proname = 'prevent_audit_events_mutation')"
+                )
+            )
+        assert trigger_exists
+        assert function_exists
     finally:
         engine.dispose()
 
@@ -93,18 +173,32 @@ def test_active_migrations_do_not_reference_tables_before_creation() -> None:
     orm_tables = set(Base.metadata.tables)
     for path in sorted(VERSIONS.glob("*.py")):
         text = path.read_text()
+        if path == BASELINE:
+            baseline = _load_baseline_module()
+            created.update(table["name"] for table in baseline.TABLES)
         for table in orm_tables:
             if re.search(rf"['\"]{re.escape(table)}['\"]", text):
-                assert table in created or "Base.metadata.create_all" in text
+                assert table in created
         created.update(re.findall(r"op\.create_table\(\s*['\"]([^'\"]+)", text))
-    if not created:
-        assert "Base.metadata.create_all" in "\n".join(
-            p.read_text() for p in VERSIONS.glob("*.py")
-        )
+    assert created == orm_tables
+
+
+def test_active_migrations_do_not_use_application_metadata_create_or_drop() -> None:
+    text = _active_migration_text()
+    assert "Base.metadata.create_all" not in text
+    assert "Base.metadata.drop_all" not in text
+    assert "from app.db.models import Base" not in text
+    assert "import app.db.models" not in text
+
+
+def test_fixed_baseline_creates_exact_current_orm_table_set() -> None:
+    baseline = _load_baseline_module()
+    baseline_tables = {table["name"] for table in baseline.TABLES}
+    assert len(baseline_tables) == 63
+    assert baseline_tables == set(Base.metadata.tables)
 
 
 def test_active_migrations_do_not_explicitly_create_named_enum_then_reuse_it() -> None:
     for path in VERSIONS.glob("*.py"):
         text = path.read_text()
         assert ".create(op.get_bind(), checkfirst=True)" not in text
-        assert ".create(bind, checkfirst=True)" not in text
