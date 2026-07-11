@@ -124,14 +124,30 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
         with engine.connect() as conn:
             trigger_exists = conn.scalar(
                 sa.text(
-                    "SELECT EXISTS (SELECT 1 FROM pg_trigger "
-                    "WHERE tgname = 'trg_prevent_audit_events_mutation')"
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE t.tgname = 'trg_prevent_audit_events_mutation'
+                          AND c.relname = 'audit_events'
+                          AND n.nspname = 'public'
+                    )
+                    """
                 )
             )
             function_exists = conn.scalar(
                 sa.text(
-                    "SELECT EXISTS (SELECT 1 FROM pg_proc "
-                    "WHERE proname = 'prevent_audit_events_mutation')"
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                        WHERE p.proname = 'prevent_audit_events_mutation'
+                          AND n.nspname = 'public'
+                    )
+                    """
                 )
             )
         assert trigger_exists
