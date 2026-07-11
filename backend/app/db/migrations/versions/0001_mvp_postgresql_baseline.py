@@ -8732,7 +8732,7 @@ def _column(column):
     if server_default is not None:
         default_value = server_default
         column_kind = column["type"][0]
-        if column_kind in {"enum", "text", "str"} and server_default.isidentifier():
+        if column_kind in {"enum", "text", "str"} and (server_default == "" or server_default.isidentifier()):
             default_value = f"'{server_default}'"
         kwargs["server_default"] = sa.text(default_value)
     return sa.Column(column["name"], _type(column["type"]), **kwargs)
