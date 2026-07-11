@@ -4922,7 +4922,7 @@ TABLES = [
                 "name": "schedule_cron",
                 "type": ("text",),
                 "nullable": False,
-                "server_default": "0 3 * * *",
+                "server_default": "'0 3 * * *'",
             },
             {
                 "name": "last_synced_at_utc",
