@@ -8728,8 +8728,13 @@ def _type(spec):
 
 def _column(column):
     kwargs = {"nullable": column["nullable"]}
-    if column["server_default"] is not None:
-        kwargs["server_default"] = sa.text(column["server_default"])
+    server_default = column["server_default"]
+    if server_default is not None:
+        default_value = server_default
+        column_kind = column["type"][0]
+        if column_kind in {"enum", "text", "str"} and server_default.isidentifier():
+            default_value = f"'{server_default}'"
+        kwargs["server_default"] = sa.text(default_value)
     return sa.Column(column["name"], _type(column["type"]), **kwargs)
 
 
