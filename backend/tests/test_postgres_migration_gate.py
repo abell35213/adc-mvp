@@ -121,6 +121,15 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
             name: tuple(values) for name, values in baseline.ENUMS.items()
         }
 
+        for index in baseline.INDEXES:
+            indexes_by_name = {
+                ix["name"]: ix
+                for ix in inspector.get_indexes(index["table"], schema="public")
+            }
+            migrated = indexes_by_name.get(index["name"])
+            assert migrated is not None
+            assert tuple(migrated["column_names"]) == tuple(index["cols"])
+            assert bool(migrated.get("unique")) == bool(index["unique"])
         with engine.connect() as conn:
             trigger_exists = conn.scalar(
                 sa.text(
