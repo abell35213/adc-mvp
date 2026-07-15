@@ -67,7 +67,7 @@ def create_session(
         refresh_family_id=refresh_family_id,
     )
     db.add(session)
-
+    db.flush([session])
     refresh_token_value = _new_refresh_token_value()
     refresh_row = RefreshToken(
         token_id=uuid.uuid4(),

@@ -56,12 +56,12 @@ local-migrate: local-wait-db
 
 ## Seed the local-only Docker Postgres database with the deterministic demo tenant.
 local-seed: local-wait-db
-	$(LOCAL_COMPOSE) run --rm api python /scripts/seed_demo_data.py
+	$(LOCAL_COMPOSE) run --rm -e PYTHONPATH=/app api python /scripts/seed_demo_data.py
 
 ## Verify seeded local demo data and the live incident-to-export workflow.
 ## Requires the local worker included in `make local-up` for async export readiness.
 local-verify-demo: local-wait-api
-	$(LOCAL_COMPOSE) run --rm -e DEMO_API_BASE_URL=http://api:8000 api python /scripts/verify_demo.py --local-db
+	$(LOCAL_COMPOSE) run --rm -e PYTHONPATH=/app -e DEMO_API_BASE_URL=http://api:8000 api python /scripts/verify_demo.py --local-db
 
 ## Smoke-test the seeded demo workflow against the running local-only stack.
 local-smoke: local-verify-demo
@@ -88,7 +88,7 @@ dev:
 ## Run backend tests and contract validation from repo root
 test:
 	python scripts/check_no_duplicate_modules.py
-	cd backend && pip install -q -r requirements.txt && APP_ENV=test pytest tests/ -q --durations=20
+	cd backend && pip install -q -r requirements.txt && APP_ENV=test python -m pytest tests/ -q --durations=20
 	python scripts/validate_schemas.py
 
 ## Format & lint backend code (from repo root)

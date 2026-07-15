@@ -210,6 +210,13 @@ make local-reset        # LOCAL ONLY: stop containers and delete local volumes
 
 Common troubleshooting:
 
+
+Docker Desktop file-sharing troubleshooting (macOS):
+
+- Run the repo from a Docker-shared path. On macOS, prefer the canonical path spelling, for example `/Users/<name>/Documents/adc-mvp`, rather than a lowercase `/users/...` alias or symlinked path.
+- If Docker reports `Mounts denied` for the repo or `scripts` directory, add the repo folder or its parent `Documents` folder in Docker Desktop under **Settings → Resources → File Sharing**.
+- Restart Docker Desktop after changing file-sharing settings, then rerun `make local-bootstrap`.
+
 - Port `3000` already in use: stop the other frontend/dev server, then rerun `make local-bootstrap` or `make local-up`.
 - Port `8000` already in use: stop the other API process/container and rerun `make local-wait-api`; inspect logs with `make local-logs`.
 - Port `5432` already in use: stop your host Postgres or change the local Compose port mapping before bootstrapping. The backend container still uses the Compose service hostname `db`.
@@ -246,8 +253,10 @@ uvicorn app.main:app --reload
 
 ### Run Tests Manually (from repo root)
 
+Use `python -m pytest` instead of bare `pytest` when running inside the backend `.venv`; this ensures the interpreter and installed packages (for example `boto3`) come from the same environment.
+
 ```bash
-cd backend && pytest tests/ -v
+cd backend && python -m pytest tests/ -v
 python scripts/validate_schemas.py
 ```
 
