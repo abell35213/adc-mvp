@@ -1,7 +1,18 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode } from "react";
+import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode, ReactElement } from "react";
 import { cloneElement, isValidElement } from "react";
 import { cn } from "@/lib/design/utilities";
 import { designTokens } from "@/lib/design/tokens";
+
+type FormControlProps = {
+  id?: string;
+  required?: boolean;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
+};
+
+function isFormControlElement(node: ReactNode): node is ReactElement<FormControlProps> {
+  return isValidElement<FormControlProps>(node);
+}
 
 export function FormField({
   id,
@@ -18,19 +29,19 @@ export function FormField({
   error?: ReactNode;
   children: ReactNode;
 }) {
-  const controlId = isValidElement(children) ? ((children.props as any).id ?? id) : id;
+  const controlId = isFormControlElement(children) ? (children.props.id ?? id) : id;
   const helpId = helpText ? `${controlId}-help` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;
   const describedBy = [helpId, errorId].filter(Boolean).join(" ") || undefined;
 
-  const control = isValidElement(children)
-    ? cloneElement(children as any, {
+  const control = isFormControlElement(children)
+    ? cloneElement(children, {
         id: controlId,
-        "aria-describedby": [((children.props as any)["aria-describedby"] as string | undefined), describedBy]
+        "aria-describedby": [children.props["aria-describedby"], describedBy]
           .filter(Boolean)
           .join(" ") || undefined,
-        "aria-invalid": error ? true : (children.props as any)["aria-invalid"],
-        required: required ?? (children.props as any).required,
+        "aria-invalid": error ? true : children.props["aria-invalid"],
+        required: required ?? children.props.required,
       })
     : children;
 

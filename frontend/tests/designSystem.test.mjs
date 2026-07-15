@@ -34,7 +34,7 @@ test('Tabs expose keyboard and ARIA behavior', () => {
 
 test('FormField associates labels, help, and errors', () => {
   const s = read('components/ui/FormField.tsx');
-  assert.match(s, /htmlFor=\{id\}/);
+  assert.match(s, /htmlFor=\{controlId\}/);
   assert.match(s, /role="alert"/);
   assert.match(s, /aria-invalid/);
 });
