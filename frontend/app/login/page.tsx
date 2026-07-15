@@ -1,139 +1,31 @@
 "use client";
 
-import { Suspense, useEffect, useState, FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Alert, Button, Card, CardContent, FormField, Input } from "@/components/ui";
 import { login } from "@/lib/api";
 
-// Demo-mode prefill is opt-in: it requires both NEXT_PUBLIC_DEMO_EMAIL and
-// NEXT_PUBLIC_DEMO_PASSWORD to be set at build time, AND a non-production
-// build. We deliberately do NOT embed credential fallbacks in the client
-// bundle so production deployments cannot leak a plaintext demo password
-// just because a visitor appended `?demo=1` to the URL.
 const DEMO_EMAIL_ENV = process.env.NEXT_PUBLIC_DEMO_EMAIL;
 const DEMO_PASSWORD_ENV = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
-const DEMO_PREFILL_ENABLED =
-  process.env.NODE_ENV !== "production" &&
-  Boolean(DEMO_EMAIL_ENV) &&
-  Boolean(DEMO_PASSWORD_ENV);
+const DEMO_PREFILL_ENABLED = process.env.NODE_ENV !== "production" && Boolean(DEMO_EMAIL_ENV) && Boolean(DEMO_PASSWORD_ENV);
 
-/**
- * Login page.  Provides a simple email and password form for users to
- * authenticate.  Upon successful login the user is redirected to the
- * dashboard.  Any errors are displayed to the user.  Styling
- * matches the overall dashboard aesthetic.
- *
- * When the URL carries `?demo=1` AND a non-production build has both
- * NEXT_PUBLIC_DEMO_EMAIL and NEXT_PUBLIC_DEMO_PASSWORD configured, the
- * form is prefilled with the seeded demo-tenant credentials and a
- * sandbox banner is rendered above the form.  This is the entry point
- * used by the marketing-site "Try the demo" CTAs.  Production builds
- * never render the demo affordances, even with `?demo=1`.
- */
-export default function LoginPage() {
-  // useSearchParams() requires a Suspense boundary at static-render time
-  // (Next.js bails out of prerender otherwise). Keep the form as an inner
-  // component and render it inside <Suspense> so `next build` can succeed.
-  return (
-    <Suspense fallback={null}>
-      <LoginPageInner />
-    </Suspense>
-  );
+export default function LoginPage() { return <Suspense fallback={null}><LoginPageInner /></Suspense>; }
+
+function safeAuthMessage(error: unknown) {
+  if (!(error instanceof Error)) return "We could not sign you in. Check your email and password and try again.";
+  if (/401|403|invalid|unauthorized/i.test(error.message)) return "The email or password did not match an ADC account.";
+  return "We could not sign you in. Please try again.";
 }
 
 function LoginPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const isDemoRequest = searchParams?.get("demo") === "1";
-  const isDemoMode = isDemoRequest && DEMO_PREFILL_ENABLED;
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isDemoMode) return;
-    // Both env vars are guaranteed non-empty by DEMO_PREFILL_ENABLED.
-    const demoEmail = DEMO_EMAIL_ENV as string;
-    const demoPassword = DEMO_PASSWORD_ENV as string;
-    setEmail((current) => current || demoEmail);
-    setPassword((current) => current || demoPassword);
-  }, [isDemoMode]);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      await login(email, password);
-      router.push(isDemoMode ? "/dashboard?demo=1" : "/dashboard");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg bg-white p-8 shadow dark:bg-gray-800"
-      >
-        <h1 className="mb-6 text-2xl font-bold text-gray-900 dark:text-white">
-          ADC Dashboard
-        </h1>
-
-        {isDemoMode && (
-          <div
-            role="status"
-            data-testid="demo-sandbox-banner"
-            className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"
-          >
-            <p className="font-semibold">You&apos;re entering the ADC demo sandbox.</p>
-            <p className="mt-1">
-              Credentials are prefilled. Data is seeded for demonstration only and
-              may be reset periodically.
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Email
-        </label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:text-white"
-        />
-
-        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Password
-        </label>
-        <input
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-6 w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:text-white"
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-    </div>
-  );
+  const router = useRouter(); const searchParams = useSearchParams();
+  const isDemoRequest = searchParams?.get("demo") === "1"; const isDemoMode = isDemoRequest && DEMO_PREFILL_ENABLED;
+  const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [error,setError]=useState(""); const [loading,setLoading]=useState(false); const [showPassword,setShowPassword]=useState(false);
+  useEffect(()=>{ if (!isDemoMode) return; setEmail((current)=>current || (DEMO_EMAIL_ENV as string)); setPassword((current)=>current || (DEMO_PASSWORD_ENV as string)); },[isDemoMode]);
+  async function handleSubmit(e: FormEvent) { e.preventDefault(); setError(""); setLoading(true); try { await login(email,password); router.push(isDemoMode?"/dashboard?demo=1":"/dashboard"); } catch(err) { setError(safeAuthMessage(err)); } finally { setLoading(false); } }
+  return <main className="min-h-screen bg-page px-4 py-8 text-text-primary sm:px-6"><div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center"><div className="grid w-full gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center"><section className="hidden lg:block"><p className="text-sm font-semibold uppercase tracking-[0.16em] text-action-primary">Accident Defense Center</p><h1 className="mt-4 text-4xl font-semibold tracking-tight text-text-primary">ADC</h1><p className="mt-4 max-w-md text-lg text-text-secondary">Organize incident evidence, resolve case blockers, and prepare defense-ready records.</p><div className="mt-8 rounded-xl border border-border-default bg-surface p-5 shadow-bordered"><p className="text-sm font-semibold text-text-primary">Operational workspace</p><p className="mt-2 text-sm text-text-secondary">A calm case command center for commercial vehicle incident response teams.</p></div></section><Card className="w-full"><CardContent className="p-6 sm:p-8"><div className="mb-6"><p className="text-sm font-semibold uppercase tracking-[0.14em] text-action-primary">ADC</p><h2 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Sign in to Accident Defense Center</h2><p className="mt-2 text-sm text-text-secondary">Use your organization credentials to continue.</p></div>{isDemoMode && (
+              <div data-testid="demo-sandbox-banner" className="mb-5">
+                <Alert tone="informational" title="Explore the ADC Demo" description={<span>Review a prepared commercial vehicle incident, identify missing evidence, and see how ADC organizes defense-ready case materials. Select <strong>Enter Demo Workspace</strong> to use the prefilled local demo sandbox account.</span>} />
+              </div>
+            )}{error && <Alert tone="critical" title="Sign-in failed" description={error} className="mb-5" />}<form onSubmit={handleSubmit} className="space-y-4"><FormField id="email" label="Email" required><Input autoFocus type="email" autoComplete="email" value={email} onChange={(e)=>setEmail(e.target.value)} /></FormField><FormField id="password" label="Password" required><div className="relative"><Input type={showPassword?"text":"password"} autoComplete="current-password" value={password} onChange={(e)=>setPassword(e.target.value)} className="pr-24"/><button type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?"Hide password":"Show password"} className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-text-secondary hover:bg-surface-subtle focus-visible:ring-2 focus-visible:ring-action-primary">{showPassword?"Hide":"Show"}</button></div></FormField><Button type="submit" fullWidth loading={loading} loadingLabel="Signing in" disabled={!email || !password}>{isDemoMode?"Enter Demo Workspace":"Sign in"}</Button></form></CardContent></Card></div></div></main>;
 }

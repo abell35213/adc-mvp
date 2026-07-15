@@ -35,3 +35,12 @@ Phase 2 should extract app shell components into `frontend/components/app-shell`
 
 ## Legacy cleanup backlog
 Raw Tailwind color/status/button/card class strings remain across login, shell, dashboard, incident detail, exports, reports, and admin surfaces by design. Those screens are intentionally not comprehensively redesigned in Phase 1.
+
+## Phase 2 shell and navigation guidance
+Authenticated product screens should use `frontend/components/app-shell/AppShell` through the existing `MainLayout` and `AdminLayout` compatibility wrappers. The shell owns the desktop sidebar, mobile drawer navigation, top bar, user menu, skip link, page canvas, and authenticated `PageContainer` spacing. Do not recreate separate sidebar/header systems for admin or incident pages; use the shell variant when an admin navigation emphasis is required.
+
+Primary navigation labels are Command Center, Cases, Evidence, Exports, Vehicles, and Reports. Secondary navigation labels are Settings, Help, and Administration. Navigation visibility must continue to be driven by `hasRoleCapability`, and active states must combine text, background, and the left indicator rather than color alone.
+
+Global top-bar actions should stay restrained. `Create Incident` is the persistent primary action. Page-specific operational actions belong in each page header or content section.
+
+Login screens should use `Card`, `FormField`, `Input`, `Button`, and `Alert`, keep demo credentials gated by non-production demo environment configuration, and avoid exposing raw provider or API internals in user-facing errors.
