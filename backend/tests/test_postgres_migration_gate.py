@@ -143,7 +143,7 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
             assert migrated is not None
             assert tuple(migrated["column_names"]) == tuple(index["cols"])
             assert bool(migrated.get("unique")) == bool(index["unique"])
-        TestSession = sessionmaker(bind=engine)
+        TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         db = TestSession()
         try:
             org = Org(name="Login FK Regression Org")
