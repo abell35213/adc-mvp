@@ -65,6 +65,7 @@ def create_session(
         created_at=now,
         last_seen_at=now,
         refresh_family_id=refresh_family_id,
+    )
     db.add(session)
     db.flush([session])
     refresh_token_value = _new_refresh_token_value()
