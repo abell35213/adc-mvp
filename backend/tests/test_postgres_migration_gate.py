@@ -8,9 +8,14 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from fastapi.testclient import TestClient
 from sqlalchemy import inspect
+from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Base
+from app.core.security import hash_password
+from app.db.models import Base, Org, RefreshToken, SessionRecord, User, UserOrg
+from app.db.session import get_db
+from app.main import app
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
@@ -69,20 +74,28 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
         assert len(migrated_tables) == 63
         for table in orm_tables:
             migrated_columns = {
-                column["name"] for column in inspector.get_columns(table, schema="public")
+                column["name"]
+                for column in inspector.get_columns(table, schema="public")
             }
-            orm_columns = {column.name for column in Base.metadata.tables[table].columns}
+            orm_columns = {
+                column.name for column in Base.metadata.tables[table].columns
+            }
             assert migrated_columns == orm_columns
 
             migrated_pk = inspector.get_pk_constraint(table, schema="public")[
                 "constrained_columns"
             ]
-            orm_pk = [column.name for column in Base.metadata.tables[table].primary_key.columns]
+            orm_pk = [
+                column.name
+                for column in Base.metadata.tables[table].primary_key.columns
+            ]
             assert migrated_pk == orm_pk
 
             migrated_unique = {
                 tuple(constraint["column_names"])
-                for constraint in inspector.get_unique_constraints(table, schema="public")
+                for constraint in inspector.get_unique_constraints(
+                    table, schema="public"
+                )
             }
             orm_unique = {
                 tuple(column.name for column in constraint.columns)
@@ -130,6 +143,50 @@ def test_fresh_postgres_upgrade_head_creates_all_orm_tables() -> None:
             assert migrated is not None
             assert tuple(migrated["column_names"]) == tuple(index["cols"])
             assert bool(migrated.get("unique")) == bool(index["unique"])
+        TestSession = sessionmaker(bind=engine)
+        db = TestSession()
+        try:
+            org = Org(name="Login FK Regression Org")
+            user = User(
+                email="login-fk-regression@adc.local",
+                password_hash=hash_password("LoginFk!2345"),
+                role="org_admin",
+                is_active=True,
+            )
+            db.add_all([org, user])
+            db.flush()
+            db.add(UserOrg(user_id=user.id, org_id=org.id))
+            db.commit()
+
+            def _override_db():
+                session = TestSession()
+                try:
+                    yield session
+                finally:
+                    session.close()
+
+            app.dependency_overrides[get_db] = _override_db
+            with TestClient(app) as client:
+                response = client.post(
+                    "/auth/login",
+                    json={
+                        "email": "login-fk-regression@adc.local",
+                        "password": "LoginFk!2345",
+                    },
+                )
+            assert response.status_code == 200, response.text
+            assert response.json()["access_token"]
+
+            session_count = db.query(SessionRecord).count()
+            refresh_count = db.query(RefreshToken).count()
+            assert session_count == 1
+            assert refresh_count == 1
+            refresh_row = db.query(RefreshToken).one()
+            assert db.get(SessionRecord, refresh_row.session_id) is not None
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+            db.close()
+
         with engine.connect() as conn:
             trigger_exists = conn.scalar(
                 sa.text(

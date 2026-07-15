@@ -29,7 +29,8 @@ COPY . .
 # when bind-mounts are used in development.
 RUN groupadd --system --gid 1000 appuser \
     && useradd --system --uid 1000 --gid appuser --no-create-home --shell /sbin/nologin appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /var/adc/vault \
+    && chown -R appuser:appuser /app /var/adc/vault
 USER appuser
 
 EXPOSE 8000
