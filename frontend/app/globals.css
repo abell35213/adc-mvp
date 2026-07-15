@@ -4,45 +4,77 @@
   /* Shell / page / surface */
   --shell: #0b1d33;
   --page: #ebf2fa;
+  --canvas: #ebf2fa;
   --surface: #ffffff;
   --surface-muted: #f4f8fc;
+  --surface-subtle: #f4f8fc;
   --surface-elevated: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-inverse: #0b1d33;
 
   /* Border */
   --border-default: #cdd7e6;
   --border-subtle: #dbe4f0;
   --border-strong: #9fb0c7;
+  --border-focus: #1b6ef3;
+  --border-disabled: #dbe4f0;
 
   /* Text */
   --text-primary: #062040;
   --text-secondary: #334b68;
   --text-muted: #5c718c;
   --text-inverse: #f7fbff;
+  --text-link: #1558c9;
+  --text-disabled: #8ba0b8;
 
   /* Accent */
   --accent: #1b6ef3;
   --accent-strong: #1558c9;
   --accent-soft: #dfeafe;
+  --action-primary: #1b6ef3;
+  --action-primary-hover: #1558c9;
+  --action-primary-active: #1148a7;
+  --action-secondary: #ffffff;
+  --action-quiet: #eef5ff;
+  --action-destructive: #b42318;
 
   /* Status */
+  --status-neutral: #52657a;
+  --status-neutral-text: #334b68;
+  --status-neutral-border: #cdd7e6;
+  --status-neutral-soft: #f4f8fc;
   --status-success: #1f8a54;
+  --status-success-text: #176a40;
+  --status-success-border: #a8dec1;
   --status-success-soft: #e8f7ef;
   --status-warning: #a66405;
+  --status-warning-text: #7a4a04;
+  --status-warning-border: #f1c27a;
   --status-warning-soft: #fff3de;
   --status-critical: #b42318;
+  --status-critical-text: #912018;
+  --status-critical-border: #f4aaa5;
   --status-critical-soft: #feeceb;
   --status-info: #1f64d8;
+  --status-informational: #1f64d8;
+  --status-informational-text: #174ea6;
+  --status-informational-border: #abc7ff;
   --status-info-soft: #e8f0ff;
+  --status-informational-soft: #e8f0ff;
 
   /* Radius */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+  --radius-full: 9999px;
 
   /* Shadow */
-  --shadow-card: 0 1px 2px rgba(6, 32, 64, 0.08), 0 6px 16px rgba(6, 32, 64, 0.08);
-  --shadow-card-hover: 0 2px 4px rgba(6, 32, 64, 0.1), 0 10px 24px rgba(6, 32, 64, 0.12);
+  --shadow-bordered: 0 1px 2px rgba(6, 32, 64, 0.04);
+  --shadow-raised: 0 8px 20px rgba(6, 32, 64, 0.10);
+  --shadow-overlay: 0 20px 48px rgba(6, 32, 64, 0.20);
+  --shadow-card: var(--shadow-bordered);
+  --shadow-card-hover: var(--shadow-raised);
   --shadow-panel: -8px 0 20px rgba(6, 32, 64, 0.18);
 
   --background: var(--page);
@@ -55,37 +87,69 @@
 
   --color-shell: var(--shell);
   --color-page: var(--page);
+  --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-subtle: var(--surface-subtle);
   --color-surface-elevated: var(--surface-elevated);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inverse: var(--surface-inverse);
 
   --color-border-default: var(--border-default);
   --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
+  --color-border-focus: var(--border-focus);
+  --color-border-disabled: var(--border-disabled);
 
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
   --color-text-inverse: var(--text-inverse);
+  --color-text-link: var(--text-link);
+  --color-text-disabled: var(--text-disabled);
 
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-action-primary: var(--action-primary);
+  --color-action-primary-hover: var(--action-primary-hover);
+  --color-action-primary-active: var(--action-primary-active);
+  --color-action-secondary: var(--action-secondary);
+  --color-action-quiet: var(--action-quiet);
+  --color-action-destructive: var(--action-destructive);
 
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-text: var(--status-neutral-text);
+  --color-status-neutral-border: var(--status-neutral-border);
+  --color-status-neutral-soft: var(--status-neutral-soft);
   --color-status-success: var(--status-success);
+  --color-status-success-text: var(--status-success-text);
+  --color-status-success-border: var(--status-success-border);
   --color-status-success-soft: var(--status-success-soft);
   --color-status-warning: var(--status-warning);
+  --color-status-warning-text: var(--status-warning-text);
+  --color-status-warning-border: var(--status-warning-border);
   --color-status-warning-soft: var(--status-warning-soft);
   --color-status-critical: var(--status-critical);
+  --color-status-critical-text: var(--status-critical-text);
+  --color-status-critical-border: var(--status-critical-border);
   --color-status-critical-soft: var(--status-critical-soft);
   --color-status-info: var(--status-info);
+  --color-status-informational: var(--status-informational);
+  --color-status-informational-text: var(--status-informational-text);
+  --color-status-informational-border: var(--status-informational-border);
   --color-status-info-soft: var(--status-info-soft);
+  --color-status-informational-soft: var(--status-informational-soft);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
 
+  --shadow-bordered: var(--shadow-bordered);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
   --shadow-card: var(--shadow-card);
   --shadow-card-hover: var(--shadow-card-hover);
   --shadow-panel: var(--shadow-panel);
