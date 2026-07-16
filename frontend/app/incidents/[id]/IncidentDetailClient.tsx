@@ -178,7 +178,7 @@ export default function IncidentDetailClient() {
               <div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-semibold tracking-tight text-text-primary">{view.caseReference}</h1><StatusBadge tone={view.statusTone}>{view.statusLabel}</StatusBadge></div>
               <p className="text-xl font-medium text-text-primary">{view.title}</p>
               <p className="text-sm text-text-secondary"><time dateTime={view.createdAbsolute}>{view.createdLabel}</time> · {view.location}</p>
-              <p className="text-sm text-text-secondary">Owner: <span className="font-medium text-text-primary">{view.ownerLabel}</span> · Last updated: <span title={formatDateTime(view.createdAbsolute)}>{view.updatedLabel}</span></p>
+              <p className="text-sm text-text-secondary">Owner: <span className="font-medium text-text-primary">{view.ownerLabel}</span> · Last updated: <span title={formatDateTime(view.timelineItems[0]?.absolute ?? view.createdAbsolute)}>{view.updatedLabel}</span></p>
               <div className="max-w-xl"><ProgressBar value={view.readinessPercent} label={`Evidence readiness: ${view.readinessPercent}%`} tone={view.readinessTone} /></div>
             </div>
             <div className="flex flex-wrap gap-2 lg:justify-end">
