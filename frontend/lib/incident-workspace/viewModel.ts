@@ -122,7 +122,7 @@ export function buildIncidentWorkspaceViewModel({ incident, workspace, notes, ta
   const ownerLabel = workspace?.owner?.email ?? (workspace?.owner?.user_id ? `User ${shortId(workspace.owner.user_id)}` : "Unassigned");
   return {
     caseReference: caseReference(incident.incident_id),
-    title: `${humanize(incident.severity)} Incident`,
+    title: incident.severity ? `${humanize(incident.severity)} Incident` : "Incident",
     statusLabel: humanize(workspace?.case_status ?? incident.status),
     statusTone: statusTone(workspace?.case_status ?? incident.status),
     readinessLabel: humanize(readiness),
