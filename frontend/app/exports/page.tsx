@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MainLayout from "@/components/MainLayout";
-import ExportListItem from "@/components/exports/ExportListItem";
+import { Alert, Button, Card, CardContent, CardHeader, Drawer, EmptyState, FormField, Input, MetricCard, Select, Skeleton, StatusBadge } from "@/components/ui";
+import { DocumentExportList } from "@/components/exports/DocumentExportList";
 import { downloadExport, getExport, getExportContents, getExportDownloadHistory, listExports, retryExport, type ExportContentsItem, type ExportDownloadAuditResponse, type ExportListItem as ExportItem, type ExportStatus, type ExportSummary, toUserErrorMessage } from "@/lib/api";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
-import { designTokens } from "@/lib/design/tokens";
 import { EXPORT_STATUS_OPTIONS } from "@/lib/status";
+import { buildExportDocumentViewModel, formatBytes, formatDateTime, sortExportDocuments } from "@/lib/exportDocuments";
 
 export default function ExportsPage() {
   const [exports, setExports] = useState<ExportItem[]>([]);
@@ -14,248 +15,40 @@ export default function ExportsPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | ExportStatus>("all");
+  const [sort, setSort] = useState("priority");
   const [selectedExportId, setSelectedExportId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ExportSummary | null>(null);
   const [contents, setContents] = useState<ExportContentsItem[] | null>(null);
   const [audit, setAudit] = useState<ExportDownloadAuditResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    listExports()
-      .then(setExports)
-      .catch((err) => setError(toUserErrorMessage(err, "Failed to load exports")))
-      .finally(() => setLoading(false));
-  }, []);
+  async function refresh() { const data = await listExports(); setExports(data); }
+  useEffect(() => { refresh().catch((err) => setError(toUserErrorMessage(err, "Documents could not be loaded."))).finally(() => setLoading(false)); }, []);
 
-  const filtered = useMemo(
-    () =>
-      exports.filter((item) => {
-        const matchesSearch =
-          !query ||
-          item.export_id.toLowerCase().includes(query.toLowerCase()) ||
-          item.incident_id.toLowerCase().includes(query.toLowerCase()) ||
-          (item.package_sha256 ?? "").toLowerCase().includes(query.toLowerCase());
-        const matchesStatus = status === "all" || item.status === status;
-        return matchesSearch && matchesStatus;
-      }),
-    [exports, query, status],
-  );
+  const filtered = useMemo(() => {
+    const base = exports.filter((item) => { const vm = buildExportDocumentViewModel(item); return (status === "all" || item.status === status) && (!query || vm.searchText.includes(query.toLowerCase())); });
+    if (sort === "newest") return [...base].sort((a, b) => new Date(b.created_at_utc ?? 0).getTime() - new Date(a.created_at_utc ?? 0).getTime());
+    if (sort === "oldest") return [...base].sort((a, b) => new Date(a.created_at_utc ?? 0).getTime() - new Date(b.created_at_utc ?? 0).getTime());
+    if (sort === "type") return [...base].sort((a, b) => buildExportDocumentViewModel(a).typeLabel.localeCompare(buildExportDocumentViewModel(b).typeLabel));
+    if (sort === "case") return [...base].sort((a, b) => buildExportDocumentViewModel(a).caseReference.localeCompare(buildExportDocumentViewModel(b).caseReference));
+    return sortExportDocuments(base);
+  }, [exports, query, sort, status]);
 
-  const counts = useMemo(() => ({
-    queued: exports.filter((item) => item.status === "queued" || item.status === "requested").length,
-    processing: exports.filter((item) => item.status === "processing").length,
-    ready: exports.filter((item) => item.status === "ready").length,
-    failed: exports.filter((item) => item.status === "failed" || item.status === "expired").length,
-  }), [exports]);
+  const counts = useMemo(() => ({ ready: exports.filter((i) => i.status === "ready").length, generating: exports.filter((i) => ["requested", "queued", "processing"].includes(i.status)).length, attention: exports.filter((i) => i.status === "failed" || i.status === "expired").length, week: exports.filter((i) => i.completed_at_utc && Date.now() - new Date(i.completed_at_utc).getTime() < 7 * 86400000).length }), [exports]);
+  const activeFilters = (query ? 1 : 0) + (status !== "all" ? 1 : 0);
 
-  function getBlockedDownloadMessage(downloadUrl: string) {
-    try {
-      const { host } = new URL(downloadUrl);
-      return `Download URL from unrecognized host "${host}" was blocked. Verify the export download configuration or contact support if this host should be allowed.`;
-    } catch {
-      return "Download URL from an unrecognized host was blocked. Verify the export download configuration or contact support if this URL should be allowed.";
-    }
-  }
+  function blockedMessage(url: string) { try { return `Download URL from unrecognized host "${new URL(url).host}" was blocked.`; } catch { return "Download URL from an unrecognized host was blocked."; } }
+  async function handleDetails(exportId: string) { setDetailLoading(true); setSelectedExportId(exportId); setDetail(null); setContents(null); setAudit(null); try { const [d, c, a] = await Promise.all([getExport(exportId), getExportContents(exportId), getExportDownloadHistory(exportId)]); setDetail(d); setContents(c.file_manifest); setAudit(a); } catch (err) { setError(toUserErrorMessage(err, "Document details could not be loaded.")); } finally { setDetailLoading(false); } }
+  async function handleRetry(exportId: string) { setBusyId(exportId); setError(""); try { await retryExport(exportId); await refresh(); } catch (err) { setError(toUserErrorMessage(err, "Retry could not be started.")); } finally { setBusyId(null); } }
+  async function handleDownload(exportId: string) { setBusyId(exportId); setError(""); try { const result = await downloadExport(exportId); if (!safeOpenDownloadUrl(result.url)) setError(blockedMessage(result.url)); } catch (err) { setError(toUserErrorMessage(err, "Document could not be downloaded.")); } finally { setBusyId(null); } }
 
-  function formatBytes(size?: number | null) {
-    if (size == null || size < 0) return "—";
-    if (size < 1024) return `${size} B`;
-    const units = ["KB", "MB", "GB", "TB"];
-    let value = size / 1024;
-    let unitIdx = 0;
-    while (value >= 1024 && unitIdx < units.length - 1) { value /= 1024; unitIdx += 1; }
-    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIdx]}`;
-  }
-
-  function formatDateTime(value?: string | null) {
-    if (!value) return "—";
-    return new Date(value).toLocaleString();
-  }
-
-  async function handleDetails(exportId: string) {
-    setDetailLoading(true);
-    setDetail(null);
-    setContents(null);
-    setAudit(null);
-    setSelectedExportId(exportId);
-    try {
-      const [exportDetail, exportContents, exportAudit] = await Promise.all([
-        getExport(exportId),
-        getExportContents(exportId),
-        getExportDownloadHistory(exportId),
-      ]);
-      setDetail(exportDetail);
-      setContents(exportContents.file_manifest);
-      setAudit(exportAudit);
-    } catch (err: unknown) {
-      setError(toUserErrorMessage(err, "Failed to load export detail"));
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  async function handleRetry(exportId: string) {
-    try {
-      await retryExport(exportId);
-      const updated = await listExports();
-      setExports(updated);
-    } catch (err: unknown) {
-      setError(toUserErrorMessage(err, "Retry failed"));
-    }
-  }
-
-  async function handleDownload(exportId: string) {
-    try {
-      const result = await downloadExport(exportId);
-      const opened = safeOpenDownloadUrl(result.url);
-      if (!opened) setError(getBlockedDownloadMessage(result.url));
-    } catch (err: unknown) {
-      setError(toUserErrorMessage(err, "Download failed"));
-    }
-  }
-
-  return (
-    <MainLayout title="Exports">
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-text-primary">Exports</h2>
-          <p className="text-sm text-text-secondary">Track packet readiness, warnings, and package integrity.</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[
-            ["Queued", counts.queued],
-            ["Processing", counts.processing],
-            ["Ready", counts.ready],
-            ["Failed", counts.failed],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-border-default bg-surface p-4 shadow-card">
-              <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
-              <p className="mt-2 text-2xl font-semibold text-text-primary">{value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 rounded-lg border border-border-default bg-surface p-3 shadow-card md:grid-cols-4">
-          <input
-            className={designTokens.control.input}
-            placeholder="Filter by export, incident, or SHA"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select className={designTokens.control.input} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-            <option value="all">All statuses</option>
-            {EXPORT_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {loading ? (
-          <p className="text-sm text-text-secondary">Loading exports…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-text-secondary">No exports match the selected filters.</p>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((item) => (
-              <ExportListItem key={item.export_id} item={item} showIncident onDownload={handleDownload} onRetry={handleRetry} onDetails={handleDetails} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {selectedExportId && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/40">
-          <aside className="h-full w-full max-w-2xl overflow-y-auto bg-surface p-4 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-text-primary">Export Detail</h3>
-              <button
-                onClick={() => setSelectedExportId(null)}
-                className="rounded border border-border-default px-2 py-1 text-sm text-text-secondary hover:bg-surface-muted"
-              >
-                Close
-              </button>
-            </div>
-
-            {detailLoading && <p className="text-sm text-text-secondary">Loading detail…</p>}
-            {!detailLoading && detail && (
-              <div className="space-y-4">
-                <section className="rounded-lg border border-border-default p-3">
-                  <h4 className="mb-2 font-medium text-text-primary">Metadata</h4>
-                  <dl className="space-y-1 text-sm text-text-secondary">
-                    <div><span className="font-medium text-text-primary">ID:</span> {detail.export_id}</div>
-                    <div><span className="font-medium text-text-primary">Incident:</span> {detail.incident_id ?? "—"}</div>
-                    <div><span className="font-medium text-text-primary">Type:</span> {detail.export_type}</div>
-                    <div><span className="font-medium text-text-primary">Status:</span> {detail.status}</div>
-                    <div><span className="font-medium text-text-primary">Created:</span> {formatDateTime(detail.created_at_utc)}</div>
-                    <div><span className="font-medium text-text-primary">Completed:</span> {formatDateTime(detail.completed_at_utc)}</div>
-                  </dl>
-                </section>
-
-                <section className="rounded-lg border border-border-default p-3">
-                  <h4 className="mb-2 font-medium text-text-primary">Checksum &amp; counts</h4>
-                  <dl className="space-y-1 text-sm text-text-secondary">
-                    <div><span className="font-medium text-text-primary">SHA256:</span> {detail.package_sha256 ?? "—"}</div>
-                    <div><span className="font-medium text-text-primary">Size:</span> {formatBytes(detail.byte_size)}</div>
-                    <div><span className="font-medium text-text-primary">Artifacts:</span> {detail.artifact_count}</div>
-                    <div><span className="font-medium text-text-primary">Timeline events:</span> {detail.timeline_event_count}</div>
-                  </dl>
-                </section>
-
-                <section className="rounded-lg border border-border-default p-3">
-                  <h4 className="mb-2 font-medium text-text-primary">Request options</h4>
-                  <pre className="overflow-auto rounded-md bg-surface-muted p-2 text-xs text-text-secondary">
-                    {JSON.stringify(detail.options_json ?? {}, null, 2)}
-                  </pre>
-                </section>
-
-                {contents && (
-                  <section className="grid gap-3 rounded-lg border border-border-default p-3 md:grid-cols-3">
-                    {[
-                      { label: "Included", items: contents.filter((f) => f.classification === "included") },
-                      { label: "Excluded", items: contents.filter((f) => f.classification === "excluded_by_option") },
-                      { label: "Unavailable", items: contents.filter((f) => f.classification === "unavailable" || f.classification === "failed_to_retrieve") },
-                    ].map(({ label, items }) => (
-                      <div key={label}>
-                        <h4 className="mb-2 font-medium text-text-primary">{label} files</h4>
-                        {items.length === 0 ? (
-                          <p className="text-sm text-text-muted">None</p>
-                        ) : (
-                          <ul className="space-y-1">
-                            {items.map((item) => (
-                              <li key={`${item.kind}-${item.path ?? item.item ?? ""}`} className="rounded-md border border-border-default px-2 py-1 text-sm text-text-secondary">
-                                <p className="font-medium">{item.item ?? item.kind}</p>
-                                <p className="text-xs text-text-muted">{item.reason ?? "—"} · {formatBytes(item.byte_size)}</p>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ))}
-                  </section>
-                )}
-
-                <section className="rounded-lg border border-border-default p-3">
-                  <h4 className="mb-2 font-medium text-text-primary">Download audit history</h4>
-                  {audit?.downloads.length ? (
-                    <ul className="space-y-1 text-sm text-text-secondary">
-                      {audit.downloads.map((event, idx) => (
-                        <li key={`${event.occurred_at_utc}-${idx}`} className="rounded-md border border-border-default px-2 py-1">
-                          <p>{formatDateTime(event.occurred_at_utc)}</p>
-                          <p className="text-xs text-text-muted">{event.actor_type}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-text-muted">No download events.</p>
-                  )}
-                </section>
-              </div>
-            )}
-          </aside>
-        </div>
-      )}
-    </MainLayout>
-  );
+  const selectedVm = detail ? buildExportDocumentViewModel(detail) : null;
+  return <MainLayout title="Exports & Documents"><div className="space-y-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="text-3xl font-semibold tracking-tight text-text-primary">Exports &amp; Documents</h1><p className="mt-2 text-sm text-text-secondary">Generate, monitor, and download defense-ready case materials.</p></div><Button variant="secondary" onClick={() => setError("Open a case Documents tab to generate a document with incident context.")}>Generate Document</Button></div>
+    <div className="grid gap-3 md:grid-cols-4">{loading ? [0,1,2,3].map((i) => <Skeleton key={i} className="h-28"/>) : <><MetricCard label="Ready to Download" value={counts.ready}/><MetricCard label="Generating" value={counts.generating}/><MetricCard label="Needs Attention" value={counts.attention}/><MetricCard label="Completed This Week" value={counts.week}/></>}</div>
+    <Card><CardContent className="grid gap-3 md:grid-cols-[1fr_180px_180px_auto]"><FormField id="document-search" label="Search"><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Document, case, file, or type" /></FormField><FormField id="document-status" label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="all">All statuses</option>{EXPORT_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></FormField><FormField id="document-sort" label="Sort"><Select value={sort} onChange={(e) => setSort(e.target.value)}><option value="priority">Operational priority</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="case">Case</option><option value="type">Document type</option></Select></FormField><div className="flex items-end"><Button variant="quiet" onClick={() => { setQuery(""); setStatus("all"); }} disabled={!activeFilters}>Clear filters{activeFilters ? ` (${activeFilters})` : ""}</Button></div></CardContent></Card>
+    {error ? <Alert tone="critical" title="Document workflow needs attention" description={error}/> : null}
+    {loading ? <div className="space-y-2"><Skeleton className="h-16"/><Skeleton className="h-16"/><Skeleton className="h-16"/></div> : filtered.length === 0 ? <EmptyState title={exports.length ? "No documents match these filters" : "No documents yet"} message={exports.length ? "Clear filters or select another document status." : "Open an incident Documents tab to generate the first defense-ready case document."}/> : <DocumentExportList items={filtered} onDownload={handleDownload} onRetry={handleRetry} onDetails={handleDetails} busyId={busyId}/>} 
+    <Drawer open={Boolean(selectedExportId)} onClose={() => setSelectedExportId(null)} title={selectedVm?.title ?? "Document details"} description={selectedVm?.caseReference}>{detailLoading ? <div className="space-y-3"><Skeleton className="h-24"/><Skeleton className="h-48"/></div> : detail && selectedVm ? <div className="space-y-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm text-text-secondary">{selectedVm.typeLabel}</p><p className="text-xs text-text-muted">{selectedVm.fileMeta}</p></div><StatusBadge tone={selectedVm.statusTone}>{selectedVm.statusLabel}</StatusBadge></div><Alert tone={selectedVm.statusTone === "critical" ? "critical" : "informational"} title={selectedVm.statusDescription} description={selectedVm.safeFailureReason ?? selectedVm.stageLabel}/><Card><CardHeader title="Case context"/><CardContent><p className="text-sm text-text-secondary">{selectedVm.caseReference} · {selectedVm.incidentContext}</p></CardContent></Card>{selectedVm.missingRequirements.length ? <Card><CardHeader title="Requirements / missing information"/><CardContent><ul className="list-disc pl-5 text-sm text-text-secondary">{selectedVm.missingRequirements.map((m) => <li key={m}>{m}</li>)}</ul></CardContent></Card> : null}<Card><CardHeader title="File details"/><CardContent><dl className="grid gap-2 text-sm text-text-secondary"><div>File: {selectedVm.fileMeta}</div><div>Generated: {selectedVm.generatedLabel}</div><div>Expires: {formatDateTime(detail.expires_at_utc)}</div><div>Artifacts: {detail.artifact_count}</div><div>Timeline events: {detail.timeline_event_count}</div></dl></CardContent></Card><Card><CardHeader title="Generation history"/><CardContent><ul className="space-y-2 text-sm text-text-secondary"><li>Requested {formatDateTime(detail.requested_at_utc ?? detail.created_at_utc)}</li>{detail.processing_started_at_utc ? <li>Started {formatDateTime(detail.processing_started_at_utc)}</li> : null}{detail.completed_at_utc ? <li>Completed {formatDateTime(detail.completed_at_utc)}</li> : null}{audit?.downloads.map((event, idx) => <li key={`${event.occurred_at_utc}-${idx}`}>Downloaded {formatDateTime(event.occurred_at_utc)}</li>)}</ul></CardContent></Card>{contents ? <Card><CardHeader title="Document contents"/><CardContent><ul className="space-y-2 text-sm text-text-secondary">{contents.map((item) => <li key={`${item.kind}-${item.path ?? item.item}`}>{item.item ?? item.kind} · {item.classification} · {formatBytes(item.byte_size)}</li>)}</ul></CardContent></Card> : null}<details className="rounded-lg border border-border-subtle p-3 text-xs text-text-secondary"><summary className="cursor-pointer font-medium text-text-primary">Technical details</summary><dl className="mt-3 space-y-2"><div>Export ID: <span className="font-mono">{detail.export_id}</span></div><div>Incident ID: <span className="font-mono">{detail.incident_id}</span></div><div>Status: {detail.status}</div><div>Stage: {detail.progress_stage}</div><div>SHA256: {detail.package_sha256 ?? "—"}</div></dl></details></div> : null}</Drawer>
+  </div></MainLayout>;
 }

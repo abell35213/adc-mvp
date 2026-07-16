@@ -1,0 +1,24 @@
+"use client";
+
+import Link from "next/link";
+import type { ExportSummary } from "@/lib/api";
+import { Button, DropdownMenu, StatusBadge, TableContainer, Avatar } from "@/components/ui";
+import { buildExportDocumentViewModel } from "@/lib/exportDocuments";
+
+interface Props {
+  items: ExportSummary[];
+  showIncident?: boolean;
+  onDownload: (exportId: string) => void;
+  onRetry: (exportId: string) => void;
+  onDetails: (exportId: string) => void;
+  busyId?: string | null;
+}
+
+function RowActions({ item, vm, onDownload, onRetry, onDetails, busyId }: { item: ExportSummary; vm: ReturnType<typeof buildExportDocumentViewModel>; onDownload: (id: string) => void; onRetry: (id: string) => void; onDetails: (id: string) => void; busyId?: string | null }) {
+  const primary = vm.canDownload ? { label: "Download", action: () => onDownload(item.export_id) } : vm.canRetry ? { label: "Review issue", action: () => onDetails(item.export_id) } : { label: item.status === "expired" ? "Regenerate" : item.status === "ready" ? "Download" : "View status", action: () => onDetails(item.export_id) };
+  return <div className="flex items-center justify-end gap-2"><Button size="sm" variant={vm.canDownload ? "primary" : "secondary"} loading={busyId === item.export_id} loadingLabel="Working" onClick={primary.action} aria-label={`${primary.label} ${vm.title}`}>{primary.label}</Button><DropdownMenu label="More" items={[{ label: "View details", onSelect: () => onDetails(item.export_id) }, ...(vm.incidentId ? [{ label: "View case", onSelect: () => { window.location.href = `/incidents/${vm.incidentId}`; } }] : []), { label: "Retry generation", disabled: !vm.canRetry, onSelect: () => onRetry(item.export_id) }, { label: "Copy export ID", onSelect: () => void navigator.clipboard?.writeText(item.export_id) }, ...(vm.incidentId ? [{ label: "Copy case ID", onSelect: () => void navigator.clipboard?.writeText(vm.incidentId!) }] : [])]} /></div>;
+}
+
+export function DocumentExportList({ items, showIncident = true, onDownload, onRetry, onDetails, busyId }: Props) {
+  return <><div className="hidden md:block"><TableContainer caption="Exports and documents"><thead className="bg-surface-subtle"><tr>{["Document", "Case", "Type", "Status", "Progress / Stage", "Generated", "Requested By", "Actions"].map((h) => <th key={h} scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">{h}</th>)}</tr></thead><tbody className="divide-y divide-border-subtle">{items.map((item) => { const vm = buildExportDocumentViewModel(item); return <tr key={item.export_id} className="align-top"><td className="px-4 py-4"><p className="font-medium text-text-primary">{vm.title}</p><p className="mt-1 text-xs text-text-muted">{vm.versionLabel ? `${vm.versionLabel} · ` : ""}{vm.fileMeta}</p></td><td className="px-4 py-4"><p className="text-sm font-medium text-text-primary">{vm.caseReference}</p>{showIncident && vm.incidentId ? <Link className="text-xs text-text-link hover:underline" href={`/incidents/${vm.incidentId}`}>{vm.incidentContext}</Link> : <p className="text-xs text-text-muted">{vm.incidentContext}</p>}</td><td className="px-4 py-4 text-sm text-text-secondary">{vm.typeLabel}</td><td className="px-4 py-4"><StatusBadge tone={vm.statusTone}>{vm.statusLabel}</StatusBadge><p className="mt-1 max-w-44 text-xs text-text-muted">{vm.statusDescription}</p></td><td className="px-4 py-4 text-sm text-text-secondary">{vm.stageLabel}</td><td className="px-4 py-4 text-sm text-text-secondary"><time dateTime={vm.generatedTitle}>{vm.generatedLabel}</time></td><td className="px-4 py-4"><div className="flex items-center gap-2"><Avatar name={vm.requestedBy} size="sm"/><span className="text-sm text-text-secondary">{vm.requestedBy}</span></div></td><td className="px-4 py-4"><RowActions item={item} vm={vm} onDownload={onDownload} onRetry={onRetry} onDetails={onDetails} busyId={busyId}/></td></tr>; })}</tbody></TableContainer></div><div className="grid gap-3 md:hidden">{items.map((item) => { const vm = buildExportDocumentViewModel(item); return <article key={item.export_id} className="rounded-lg border border-border-default bg-surface p-4 shadow-bordered"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-text-primary">{vm.title}</h3><p className="text-sm text-text-secondary">{vm.caseReference}</p></div><StatusBadge tone={vm.statusTone}>{vm.statusLabel}</StatusBadge></div><dl className="mt-3 grid gap-2 text-sm text-text-secondary"><div><dt className="text-xs text-text-muted">Stage</dt><dd>{vm.stageLabel}</dd></div><div><dt className="text-xs text-text-muted">Generated</dt><dd>{vm.generatedLabel}</dd></div><div><dt className="text-xs text-text-muted">Requested by</dt><dd>{vm.requestedBy}</dd></div></dl><div className="mt-4"><RowActions item={item} vm={vm} onDownload={onDownload} onRetry={onRetry} onDetails={onDetails} busyId={busyId}/></div></article>; })}</div></>;
+}
