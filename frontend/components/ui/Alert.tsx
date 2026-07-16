@@ -23,7 +23,7 @@ export function Alert({
   "aria-label"?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title" | "aria-label">) {
   return (
-    <div role={tone === "critical" ? "alert" : "status"} className={cn("rounded-lg border border-border-default bg-surface p-4", className)} {...props}>
+    <div role={tone==="critical"?"alert":"status"} className={cn("rounded-lg border border-border-default bg-surface p-4", className)} {...props}>
       <div className="flex gap-3">
         <StatusBadge tone={tone} dot>
           {tone}
