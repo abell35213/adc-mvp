@@ -25,7 +25,7 @@ Evidence is grouped by the currently supported ADC artifact inventory. Captured,
 Timeline combines incident event data and workspace activity where available, sorts newest first deterministically, and hides raw payload JSON behind View technical details disclosures.
 
 ## 9. Documents behavior
-Documents remain backed by the existing export workflow. The Documents tab wraps the existing incident export panel so generation, polling, retry, and download behavior remain intact.
+Documents remain backed by the existing export workflow. The Documents tab now uses the shared export document view model and shared document list so generation, status/stage language, retry, download, safe failure messaging, and technical details match the global Exports & Documents page while staying scoped to the current incident.
 
 ## 10. Activity behavior
 Activity is reserved for human collaboration and case-level tasks/notes. System events belong in Timeline. Notes and tasks keep existing create/complete mutations.
@@ -52,4 +52,4 @@ No demo seed changes were made. The workspace uses existing deterministic incide
 Incident detail now uses the Phase 2 shell and Phase 1 primitives: Button, StatusBadge, Card, Tabs, ProgressBar, DropdownMenu, Alert, EmptyState, and Skeleton. The legacy raw CaseHeroHeader, EvidenceStatusPanel, TimelineFeed, MissingItemsPanel, CaseReadinessCard, CaseTasksPanel, CaseNotesPanel, and StickySidebar are no longer composed by the incident detail route.
 
 ## 18. Remaining Phase 5 dependencies
-Remaining dependencies are authoritative human-readable incident fields, richer document metadata, richer evidence source/uploader metadata, a more complete permission-aware secondary action menu, and broader legacy component cleanup outside incident detail.
+Remaining dependencies are authoritative human-readable incident fields, richer document metadata, explicit preview availability, explicit regenerate support, richer evidence source/uploader metadata, a more complete permission-aware secondary action menu, and broader legacy component cleanup outside incident detail.

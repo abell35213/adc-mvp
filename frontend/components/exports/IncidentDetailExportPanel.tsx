@@ -16,7 +16,8 @@ import {
 } from "@/lib/api";
 import { safeOpenDownloadUrl } from "@/lib/safeUrl";
 import GenerateExportModal from "@/components/exports/GenerateExportModal";
-import ExportListItem from "@/components/exports/ExportListItem";
+import { DocumentExportList } from "@/components/exports/DocumentExportList";
+import { Alert, Button, Card, CardContent, CardHeader, EmptyState } from "@/components/ui";
 import EvidenceStatusPanel, {
   type EvidenceStatusItem,
 } from "@/components/integrations/EvidenceStatusPanel";
@@ -31,10 +32,10 @@ interface IncidentDetailExportPanelProps {
 
 const STAGE_TEXT: Record<ExportProgressStage, string> = {
   request_accepted: "Request accepted",
-  gathering_incident_data: "Gathering incident data",
-  assembling_documents: "Assembling documents",
+  gathering_incident_data: "Preparing case data",
+  assembling_documents: "Rendering packet",
   packaging_evidence: "Packaging evidence",
-  uploading_export: "Uploading export",
+  uploading_export: "Uploading document",
   ready_for_download: "Ready for download",
 };
 
@@ -237,9 +238,8 @@ export default function IncidentDetailExportPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded border border-gray-200 p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Integration evidence preflight</p>
-        <p className="mb-3 text-xs text-gray-500">
+      <Card><CardHeader title="Evidence preflight" description="Review evidence availability, missing reasons, and retryability before packet generation."/><CardContent>
+        <p className="sr-only">
           Review evidence availability, missing reasons, and retryability before packet generation.
         </p>
         <EvidenceStatusPanel
@@ -247,16 +247,11 @@ export default function IncidentDetailExportPanel({
           onRetry={(item) => item.retryAvailable && latestFailedExportId && handleRetry(latestFailedExportId)}
           retrying={submitting}
         />
-      </div>
+      </CardContent></Card>
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">Recent exports and generation status.</p>
-        <button
-          onClick={() => setShowModal(true)}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          New export
-        </button>
+        <Button onClick={() => setShowModal(true)}>Generate Document</Button>
       </div>
 
       {latestReadinessSnapshot && (
@@ -276,56 +271,23 @@ export default function IncidentDetailExportPanel({
       )}
 
       {isProcessing && (
-        <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-          <p className="font-medium">ExportProcessingState</p>
-          <p>{stage ? STAGE_TEXT[stage] : "Starting export workflow"}</p>
-          <p className="text-xs">Polling /exports/{activeExportId}/status…</p>
-        </div>
+        <Alert tone="informational" title="Document generation is in progress" description={stage ? STAGE_TEXT[stage] : "Starting document workflow"} />
       )}
 
       {readyExport && (
-        <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">
-          <p className="font-medium">ExportReadyState</p>
-          <p>Checksum: {readyExport.package_sha256 ?? "—"}</p>
-          <p>Size: {formatBytes(readyExport.byte_size)}</p>
-          <button
-            onClick={() => handleDownload(readyExport.export_id)}
-            className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-          >
-            Download export
-          </button>
-        </div>
+        <Alert tone="success" title="Defense document is ready" description={`Size: ${formatBytes(readyExport.byte_size)}`} action={<Button size="sm" onClick={() => handleDownload(readyExport.export_id)}>Download document</Button>} />
       )}
 
       {isFailed && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <p className="font-medium">Export failed</p>
-          <p>{errorMessage || "Export did not complete successfully."}</p>
-          <button
-            className="mt-2 rounded border border-red-300 px-3 py-1 text-xs"
-            onClick={() => latestFailedExportId && handleRetry(latestFailedExportId)}
-            disabled={!latestFailedExportId || submitting}
-          >
-            Retry failed export
-          </button>
-        </div>
+        <Alert tone="critical" title="Document could not be generated" description={errorMessage || "Document rendering failed. Retry generation or contact support if the problem continues."} action={<Button size="sm" variant="secondary" onClick={() => latestFailedExportId && handleRetry(latestFailedExportId)} disabled={!latestFailedExportId || submitting}>Retry generation</Button>} />
       )}
 
-      {errorMessage && !isFailed && <p className="text-sm text-red-600">{errorMessage}</p>}
+      {errorMessage && !isFailed && <Alert tone="critical" title="Document workflow needs attention" description={errorMessage} />}
 
       {recentExports.length === 0 ? (
-        <p className="text-sm text-gray-400">No exports yet.</p>
+        <EmptyState title="No documents for this case" message="Generate the first defense-ready case document when required evidence is available."/>
       ) : (
-        <div className="space-y-2">
-          {recentExports.map((item) => (
-            <ExportListItem
-              key={item.export_id}
-              item={item}
-              onDownload={handleDownload}
-              onRetry={handleRetry}
-            />
-          ))}
-        </div>
+        <DocumentExportList items={recentExports} showIncident={false} onDownload={handleDownload} onRetry={handleRetry} onDetails={() => undefined} />
       )}
 
       <GenerateExportModal
