@@ -44,3 +44,8 @@ Primary navigation labels are Command Center, Cases, Evidence, Exports, Vehicles
 Global top-bar actions should stay restrained. `Create Incident` is the persistent primary action. Page-specific operational actions belong in each page header or content section.
 
 Login screens should use `Card`, `FormField`, `Input`, `Button`, and `Alert`, keep demo credentials gated by non-production demo environment configuration, and avoid exposing raw provider or API internals in user-facing errors.
+
+## Phase 3 Command Center guidance
+The authenticated dashboard composes the existing Phase 1 primitives rather than defining a dashboard-only visual language. Use `PageHeader` for the page title/action hierarchy, four `MetricCard` components for operational metrics, `Card`/`TableContainer` for the Priority Case Queue, `StatusBadge` for case status, `ProgressBar` for readiness, `Avatar` for owner affordances, `DropdownMenu` for secondary row actions, `FormField` with `Input`/`Select` for filters, `EmptyState` for no-data states, `Skeleton` for loading states, and `Alert` for partial and full failure states.
+
+Dashboard status color should be restrained: status belongs in badges, progress indicators, and alerts, not as full-row tints or large colored panels. The queue should remain visually dominant; Needs Attention is a secondary panel summarizing actionable categories without duplicating the full table.

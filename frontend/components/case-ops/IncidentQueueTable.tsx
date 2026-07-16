@@ -1,17 +1,15 @@
-import Link from "next/link";
-import type { CaseOpsQueueItem, CaseStatus } from "@/lib/api";
-import { CASE_STATUS_META, getCaseStatusMeta, getReadinessMeta } from "@/lib/status";
+import type { CaseOpsQueueItem, CaseOpsQueueSort, CaseStatus } from "@/lib/api";
+import { Button, Card, CardContent, CardHeader, DropdownMenu, EmptyState, ProgressBar, Skeleton, StatusBadge, TableContainer, Avatar } from "@/components/ui";
+import { CASE_STATUS_META, getCaseStatusMeta } from "@/lib/status";
+import { caseLabel, formatAbsoluteDate, formatRelativeTime, incidentContext, ownerLabel, sortPriorityCases } from "@/lib/commandCenter";
 
 type QueueTabKey = "all" | "new" | "in_review" | "awaiting_evidence" | "ready_for_export" | "escalated" | "awaiting_follow_up" | "exported" | "closed";
 
-interface QueueTab {
-  key: QueueTabKey;
-  label: string;
-  count: number;
-}
+interface QueueTab { key: QueueTabKey; label: string; count: number; }
 
 interface IncidentQueueTableProps {
   items: CaseOpsQueueItem[];
+  sort: CaseOpsQueueSort;
   loading: boolean;
   error: string;
   tabs: QueueTab[];
@@ -20,144 +18,79 @@ interface IncidentQueueTableProps {
   onOpen: (incidentId: string) => void;
   onAssignMe: (incidentId: string) => void;
   onCaseStatusChange: (incidentId: string, caseStatus: CaseStatus) => void;
+  onCopyCaseId?: (incidentId: string) => void;
+}
+type QueueRowActions = Pick<IncidentQueueTableProps, "onOpen" | "onAssignMe" | "onCaseStatusChange" | "onCopyCaseId">;
+
+const STATUSES: CaseStatus[] = ["new", "awaiting_evidence", "in_review", "ready_for_export", "awaiting_follow_up", "escalated", "exported", "closed"];
+
+function readinessContext(item: CaseOpsQueueItem) {
+  if (item.blockers.critical > 0) return `${item.blockers.critical} critical items missing`;
+  if (item.blockers.important > 0) return `${item.blockers.important} important items missing`;
+  if (item.case_status === "ready_for_export") return "Defense packet can be generated";
+  return "Evidence readiness";
 }
 
-const STATUSES: CaseStatus[] = [
-  "new",
-  "awaiting_evidence",
-  "in_review",
-  "ready_for_export",
-  "awaiting_follow_up",
-  "escalated",
-  "exported",
-  "closed",
-];
+function QueueRow({ item, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: QueueRowActions & { item: CaseOpsQueueItem }) {
+  const status = getCaseStatusMeta(item.case_status);
+  const incident = incidentContext(item);
+  const owner = ownerLabel(item.owner_user_id);
+  const updatedAt = item.last_activity_at_utc ?? item.created_at_utc ?? null;
+  const absoluteUpdated = formatAbsoluteDate(updatedAt);
+  const menuItems = [
+    { label: "Assign to me", onSelect: () => onAssignMe(item.incident_id), disabled: Boolean(item.owner_user_id) },
+    ...STATUSES.filter((statusOption) => statusOption !== item.case_status).map((statusOption) => ({ label: `Set ${CASE_STATUS_META[statusOption].label}`, onSelect: () => onCaseStatusChange(item.incident_id, statusOption) })),
+    ...(onCopyCaseId ? [{ label: "Copy case ID", onSelect: () => onCopyCaseId(item.incident_id), separatorBefore: true }] : []),
+  ];
 
-function getUrgencyTone(item: CaseOpsQueueItem) {
-  if (item.blockers.critical > 0 || item.case_status === "escalated") {
-    return {
-      row: "border-l-4 border-status-critical bg-status-critical-soft/40",
-      badge: "bg-status-critical-soft text-status-critical",
-      label: "First priority",
-    };
-  }
-
-  if (item.case_status === "new" || item.blockers.important > 0 || item.readiness_state === "not_ready") {
-    return {
-      row: "border-l-4 border-status-warning bg-status-warning-soft/40",
-      badge: "bg-status-warning-soft text-status-warning",
-      label: "Needs attention",
-    };
-  }
-
-  return {
-    row: "border-l-4 border-transparent",
-    badge: "bg-status-success-soft text-status-success",
-    label: "On track",
-  };
-}
-
-export default function IncidentQueueTable({
-  items,
-  loading,
-  error,
-  tabs,
-  activeTab,
-  onTabChange,
-  onOpen,
-  onAssignMe,
-  onCaseStatusChange,
-}: IncidentQueueTableProps) {
   return (
-    <section className="rounded-lg border border-border-default bg-surface shadow-card">
-      <div className="border-b border-border-subtle px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {tabs.map((tab) => {
-            const active = tab.key === activeTab;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                className={[
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition",
-                  active
-                    ? "bg-status-info-soft text-status-info"
-                    : "border border-border-subtle text-text-secondary hover:bg-surface-raised",
-                ].join(" ")}
-              >
-                {tab.label} <span className="ml-1 text-xs">({tab.count})</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <tr className="border-t border-border-subtle hover:bg-surface-subtle/60">
+      <td className="px-4 py-4 align-top">
+        <div className="font-semibold text-text-primary">{caseLabel(item)}</div>
+        <div className="mt-1 max-w-52 truncate text-xs text-text-muted" title={item.incident_id}>Technical ID available in actions</div>
+      </td>
+      <td className="px-4 py-4 align-top">
+        <div className="font-medium text-text-primary">{incident.primary}</div>
+        <div className="mt-1 text-xs text-text-secondary">{incident.secondary || "Incident details pending"}</div>
+      </td>
+      <td className="px-4 py-4 align-top"><StatusBadge tone={status.tone} dot>{status.label}</StatusBadge></td>
+      <td className="px-4 py-4 align-top"><ProgressBar label={`Readiness for ${caseLabel(item)}`} value={Math.round(item.completeness_percent)} tone={item.completeness_percent >= 80 ? "success" : item.blockers.critical > 0 ? "critical" : "warning"} /><p className="mt-1 text-xs text-text-secondary">{readinessContext(item)}</p></td>
+      <td className="px-4 py-4 align-top"><div className="flex items-center gap-2"><Avatar name={owner} size="sm"/><span className="text-sm text-text-primary">{owner}</span></div></td>
+      <td className="px-4 py-4 align-top"><time dateTime={updatedAt ?? undefined} title={absoluteUpdated || undefined} className="text-sm text-text-secondary">{formatRelativeTime(updatedAt)}</time><span className="sr-only"> {absoluteUpdated}</span></td>
+      <td className="px-4 py-4 align-top"><div className="flex items-center gap-2"><Button size="sm" onClick={() => onOpen(item.incident_id)} aria-label={`Open case ${caseLabel(item)}`}>Open case</Button><DropdownMenu label="More" items={menuItems}/></div></td>
+    </tr>
+  );
+}
 
-      {loading ? <div className="p-4 text-sm text-text-secondary">Loading incident queue…</div> : null}
-      {!loading && error ? <div className="m-4 rounded-md border border-status-critical/40 bg-status-critical-soft px-3 py-2 text-sm text-status-critical">{error}</div> : null}
-      {!loading && !error && items.length === 0 ? (
-        <div className="p-4 text-sm text-text-secondary">No incidents match current filters.</div>
-      ) : null}
+function MobileCaseCard(props: Parameters<typeof QueueRow>[0]) {
+  const { item, onOpen } = props;
+  const status = getCaseStatusMeta(item.case_status);
+  const incident = incidentContext(item);
+  const owner = ownerLabel(item.owner_user_id);
+  const onCopyCaseId = props.onCopyCaseId;
+  return (
+    <Card variant="subtle" className="md:hidden">
+      <CardContent className="space-y-4">
+        <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-text-primary">{caseLabel(item)}</h3><p className="mt-1 text-sm text-text-secondary">{incident.primary}</p><p className="text-xs text-text-muted">{incident.secondary}</p></div><StatusBadge tone={status.tone} dot>{status.label}</StatusBadge></div>
+        <ProgressBar label={`Readiness for ${caseLabel(item)}`} value={Math.round(item.completeness_percent)} tone={item.completeness_percent >= 80 ? "success" : item.blockers.critical > 0 ? "critical" : "warning"}/>
+        <div className="grid gap-2 text-sm text-text-secondary"><div>Owner: <span className="text-text-primary">{owner}</span></div><div>Updated: <time dateTime={item.last_activity_at_utc ?? item.created_at_utc ?? undefined} title={formatAbsoluteDate(item.last_activity_at_utc ?? item.created_at_utc)}>{formatRelativeTime(item.last_activity_at_utc ?? item.created_at_utc)}</time></div></div>
+        <div className="flex gap-2"><Button size="sm" onClick={() => onOpen(item.incident_id)} aria-label={`Open case ${caseLabel(item)}`}>Open case</Button><DropdownMenu label="More" items={[{ label: "Assign to me", onSelect: () => props.onAssignMe(item.incident_id), disabled: Boolean(item.owner_user_id) }, ...(onCopyCaseId ? [{ label: "Copy case ID", onSelect: () => onCopyCaseId(item.incident_id) }] : [])]}/></div>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {!loading && !error && items.length > 0 ? (
-        <div className="max-h-[620px] overflow-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-surface-raised">
-              <tr>
-                <th className="px-3 py-2">Priority</th>
-                <th className="px-3 py-2">Incident</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Readiness</th>
-                <th className="px-3 py-2">Owner</th>
-                <th className="px-3 py-2">Blockers</th>
-                <th className="px-3 py-2">Completeness</th>
-                <th className="px-3 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const urgency = getUrgencyTone(item);
-                return (
-                  <tr key={item.incident_id} className={`border-t border-border-subtle ${urgency.row}`}>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${urgency.badge}`}>
-                        {urgency.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs">
-                      <Link href={`/incidents/${item.incident_id}`} className="font-semibold text-status-info hover:underline">
-                        {item.incident_id.slice(0, 8)}…
-                      </Link>
-                      <div className="text-text-secondary">{item.adc_vehicle_id ?? "—"} / {item.adc_driver_id ?? "—"}</div>
-                    </td>
-                    <td className="px-3 py-3 text-text-primary">{getCaseStatusMeta(item.case_status).label}</td>
-                    <td className="px-3 py-3 text-text-primary">{getReadinessMeta(item.readiness_state).label}</td>
-                    <td className="px-3 py-3 font-mono text-xs text-text-primary">{item.owner_user_id ? item.owner_user_id.slice(0, 8) : "Unassigned"}</td>
-                    <td className="px-3 py-3 text-text-primary">{item.blockers.critical} critical · {item.blockers.important} important</td>
-                    <td className="px-3 py-3 text-text-primary">{Math.round(item.completeness_percent)}%</td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => onOpen(item.incident_id)} className="rounded bg-status-info px-2 py-1 text-xs font-medium text-white hover:opacity-90">Open</button>
-                        <button type="button" onClick={() => onAssignMe(item.incident_id)} className="rounded border border-border-default px-2 py-1 text-xs text-text-secondary hover:bg-surface-raised">Assign me</button>
-                        <select
-                          value={item.case_status}
-                          onChange={(e) => onCaseStatusChange(item.incident_id, e.target.value as CaseStatus)}
-                          className="rounded border border-border-default bg-surface px-2 py-1 text-xs"
-                        >
-                          {STATUSES.map((status) => (
-                            <option key={status} value={status}>{CASE_STATUS_META[status].label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </section>
+export default function IncidentQueueTable({ items, sort, loading, error, tabs, activeTab, onTabChange, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: IncidentQueueTableProps) {
+  const sortedItems = sort === "urgency" ? sortPriorityCases(items) : items;
+  return (
+    <Card className="overflow-visible">
+      <CardHeader title="Priority Case Queue" description="Cases are ordered by blockers, readiness risk, ownership, and latest activity." />
+      <div className="border-b border-border-subtle px-5 py-3"><div className="flex flex-wrap gap-2" aria-label="Queue status filters">{tabs.map((tab) => <Button key={tab.key} variant={tab.key === activeTab ? "primary" : "secondary"} size="sm" onClick={() => onTabChange(tab.key)}>{tab.label} <span className="text-xs">({tab.count})</span></Button>)}</div></div>
+      {loading ? <CardContent><div className="space-y-3" aria-live="polite" aria-label="Loading priority cases">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-16" />)}</div></CardContent> : null}
+      {!loading && error ? <CardContent><EmptyState title="Priority queue unavailable" message={error} /></CardContent> : null}
+      {!loading && !error && sortedItems.length === 0 ? <CardContent><EmptyState title="No cases match these filters" message="Clear filters or broaden your search to return to the active queue." /></CardContent> : null}
+      {!loading && !error && sortedItems.length > 0 ? <><div className="hidden md:block"><TableContainer caption="Priority cases"><thead className="bg-surface-subtle"><tr><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Case</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Incident</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Status</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Readiness</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Owner</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Updated</th><th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Actions</th></tr></thead><tbody>{sortedItems.map((item) => <QueueRow key={item.incident_id} item={item} onOpen={onOpen} onAssignMe={onAssignMe} onCaseStatusChange={onCaseStatusChange} onCopyCaseId={onCopyCaseId}/>)}</tbody></TableContainer></div><div className="space-y-3 p-4 md:hidden">{sortedItems.map((item) => <MobileCaseCard key={item.incident_id} item={item} onOpen={onOpen} onAssignMe={onAssignMe} onCaseStatusChange={onCaseStatusChange} onCopyCaseId={onCopyCaseId}/>)}</div></> : null}
+    </Card>
   );
 }
 
