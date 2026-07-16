@@ -88,8 +88,7 @@ export default function IncidentDetailClient() {
     rawTab && TABS.some((tab) => tab.id === rawTab) ? (rawTab as WorkspaceTab) : "overview";
 
   const artifactStatuses = useMemo(() => incident?.evidence_inventory.map((artifact) => artifact.status) ?? [], [incident]);
-  const isCapturing = artifactStatuses.some((status) => status === "pending");
-
+  const isCapturing = incident?.status === "evidence_capturing" || artifactStatuses.some((status) => status === "pending");
   const refreshIncident = useCallback(() => getIncident(id).then(setIncident).catch((err) => console.warn("Incident refresh failed", err)), [id]);
   const refreshWorkspacePanels = useCallback(() => Promise.all([
     getIncidentWorkspace(id).then(setWorkspace),
