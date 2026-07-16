@@ -1,5 +1,5 @@
 export { default as EvidenceTable } from "./EvidenceTable";
-export { EVIDENCE_TYPES } from "./EvidenceTable";
+export { EVIDENCE_TYPES } from "@/lib/evidenceTypes";
 export { default as Timeline } from "./Timeline";
 export { default as MetricCard } from "./MetricCard";
 export { default as StatusChip } from "./StatusChip";

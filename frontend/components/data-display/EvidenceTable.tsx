@@ -12,21 +12,8 @@
 "use client";
 
 import { type ArtifactSummary } from "@/lib/api";
+import { EVIDENCE_TYPES } from "@/lib/evidenceTypes";
 import { getEvidenceMeta, getStatusBadgeClass } from "@/lib/status";
-
-// The canonical list of evidence types supported by the platform.  If
-// additional types are added server‑side they should be reflected here
-// for a complete inventory display.
-export const EVIDENCE_TYPES: { type: string; label: string }[] = [
-  { type: "dashcam_road", label: "Dashcam Road" },
-  { type: "dashcam_driver", label: "Dashcam Driver" },
-  { type: "eld_duty_status", label: "ELD Duty Status" },
-  { type: "gps_trace", label: "GPS Trace" },
-  { type: "safety_events", label: "Safety Events" },
-  { type: "vehicle_state", label: "Vehicle State" },
-  { type: "evidence_inventory", label: "Evidence Inventory" },
-  { type: "chain_of_custody", label: "Chain of Custody" },
-];
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";

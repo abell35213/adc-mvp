@@ -27,6 +27,7 @@ test('incident detail weather panel supports partial degraded weather data', () 
   assertContains('weatherLocationSource === "eld_last_known"', 'degraded location source should be detected');
   assertContains('Using last known location', 'degraded location messaging should render');
   assertContains('weatherMetrics.length > 0 ? (', 'partial data should still render available metrics');
+  assertContains('.filter(([key]) => key.trim().length > 0)', 'blank normalized weather keys should be ignored');
 });
 
 test('incident detail weather panel handles unavailable weather data', () => {
@@ -38,4 +39,10 @@ test('incident detail weather panel handles unavailable weather data', () => {
 test('incident detail weather panel renders unresolved location as Location unavailable', () => {
   assertContains('weatherLocationSource === "unavailable"', 'unresolved location source should be detected');
   assertContains('Location unavailable', 'unresolved location messaging should render');
+});
+
+test('incident detail wires next action buttons and avoids note completion actions', () => {
+  assertContains('const nextActionTab: WorkspaceTab =', 'next-action navigation target should be centralized');
+  assertContains('actions={<Button onClick={() => onChangeTab(nextActionTab)}>{view.nextAction.label}</Button>}', 'overview next-action button should navigate');
+  assertContains('item.kind === "task" && item.taskStatus === "open"', 'mark-complete control should only render for open tasks');
 });
