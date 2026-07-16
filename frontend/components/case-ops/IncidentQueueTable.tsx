@@ -1,4 +1,4 @@
-import type { CaseOpsQueueItem, CaseStatus } from "@/lib/api";
+import type { CaseOpsQueueItem, CaseOpsQueueSort, CaseStatus } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, DropdownMenu, EmptyState, ProgressBar, Skeleton, StatusBadge, TableContainer, Avatar } from "@/components/ui";
 import { CASE_STATUS_META, getCaseStatusMeta } from "@/lib/status";
 import { caseLabel, formatAbsoluteDate, formatRelativeTime, incidentContext, ownerLabel, sortPriorityCases } from "@/lib/commandCenter";
@@ -9,6 +9,7 @@ interface QueueTab { key: QueueTabKey; label: string; count: number; }
 
 interface IncidentQueueTableProps {
   items: CaseOpsQueueItem[];
+  sort: CaseOpsQueueSort;
   loading: boolean;
   error: string;
   tabs: QueueTab[];
@@ -19,6 +20,7 @@ interface IncidentQueueTableProps {
   onCaseStatusChange: (incidentId: string, caseStatus: CaseStatus) => void;
   onCopyCaseId?: (incidentId: string) => void;
 }
+type QueueRowActions = Pick<IncidentQueueTableProps, "onOpen" | "onAssignMe" | "onCaseStatusChange" | "onCopyCaseId">;
 
 const STATUSES: CaseStatus[] = ["new", "awaiting_evidence", "in_review", "ready_for_export", "awaiting_follow_up", "escalated", "exported", "closed"];
 
@@ -29,7 +31,7 @@ function readinessContext(item: CaseOpsQueueItem) {
   return "Evidence readiness";
 }
 
-function QueueRow({ item, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: Omit<IncidentQueueTableProps, "items" | "loading" | "error" | "tabs" | "activeTab" | "onTabChange"> & { item: CaseOpsQueueItem }) {
+function QueueRow({ item, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: QueueRowActions & { item: CaseOpsQueueItem }) {
   const status = getCaseStatusMeta(item.case_status);
   const incident = incidentContext(item);
   const owner = ownerLabel(item.owner_user_id);
@@ -65,20 +67,21 @@ function MobileCaseCard(props: Parameters<typeof QueueRow>[0]) {
   const status = getCaseStatusMeta(item.case_status);
   const incident = incidentContext(item);
   const owner = ownerLabel(item.owner_user_id);
+  const onCopyCaseId = props.onCopyCaseId;
   return (
     <Card variant="subtle" className="md:hidden">
       <CardContent className="space-y-4">
         <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-text-primary">{caseLabel(item)}</h3><p className="mt-1 text-sm text-text-secondary">{incident.primary}</p><p className="text-xs text-text-muted">{incident.secondary}</p></div><StatusBadge tone={status.tone} dot>{status.label}</StatusBadge></div>
         <ProgressBar label={`Readiness for ${caseLabel(item)}`} value={Math.round(item.completeness_percent)} tone={item.completeness_percent >= 80 ? "success" : item.blockers.critical > 0 ? "critical" : "warning"}/>
         <div className="grid gap-2 text-sm text-text-secondary"><div>Owner: <span className="text-text-primary">{owner}</span></div><div>Updated: <time dateTime={item.last_activity_at_utc ?? item.created_at_utc ?? undefined} title={formatAbsoluteDate(item.last_activity_at_utc ?? item.created_at_utc)}>{formatRelativeTime(item.last_activity_at_utc ?? item.created_at_utc)}</time></div></div>
-        <div className="flex gap-2"><Button size="sm" onClick={() => onOpen(item.incident_id)} aria-label={`Open case ${caseLabel(item)}`}>Open case</Button><DropdownMenu label="More" items={[{ label: "Assign to me", onSelect: () => props.onAssignMe(item.incident_id), disabled: Boolean(item.owner_user_id) }, ...(props.onCopyCaseId ? [{ label: "Copy case ID", onSelect: () => props.onCopyCaseId(item.incident_id) }] : [])]}/></div>
+        <div className="flex gap-2"><Button size="sm" onClick={() => onOpen(item.incident_id)} aria-label={`Open case ${caseLabel(item)}`}>Open case</Button><DropdownMenu label="More" items={[{ label: "Assign to me", onSelect: () => props.onAssignMe(item.incident_id), disabled: Boolean(item.owner_user_id) }, ...(onCopyCaseId ? [{ label: "Copy case ID", onSelect: () => onCopyCaseId(item.incident_id) }] : [])]}/></div>
       </CardContent>
     </Card>
   );
 }
 
-export default function IncidentQueueTable({ items, loading, error, tabs, activeTab, onTabChange, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: IncidentQueueTableProps) {
-  const sortedItems = sortPriorityCases(items);
+export default function IncidentQueueTable({ items, sort, loading, error, tabs, activeTab, onTabChange, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }: IncidentQueueTableProps) {
+  const sortedItems = sort === "urgency" ? sortPriorityCases(items) : items;
   return (
     <Card className="overflow-visible">
       <CardHeader title="Priority Case Queue" description="Cases are ordered by blockers, readiness risk, ownership, and latest activity." />

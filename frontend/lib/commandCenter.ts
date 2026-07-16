@@ -99,6 +99,20 @@ export function formatRelativeTime(value?: string | null, now = new Date()) {
 }
 
 export type AttentionKey = "critical" | "missingEvidence" | "unassigned" | "overdue" | "exportReady" | "stalled";
+export type AttentionFilterPatch = {
+  status?: string;
+  readiness_state?: string;
+  blockers?: string;
+  search?: string;
+  sort?: "urgency" | "readiness" | "newest";
+};
+export interface AttentionItem {
+  key: AttentionKey;
+  label: string;
+  count: number;
+  explanation: string;
+  filter?: AttentionFilterPatch;
+}
 
 export function buildAttentionItems({ alerts, queue, overdueTasks }: { alerts: CaseOpsAlerts | null; queue: CaseOpsQueueItem[]; overdueTasks: CaseTaskWidgetItem[] }) {
   const counts = {
@@ -112,9 +126,9 @@ export function buildAttentionItems({ alerts, queue, overdueTasks }: { alerts: C
   return [
     { key: "critical" as const, label: "Critical blockers", count: counts.critical, explanation: "Cases blocked by critical evidence or escalation.", filter: { blockers: "critical" } },
     { key: "missingEvidence" as const, label: "Missing evidence", count: counts.missingEvidence, explanation: "Cases waiting on required evidence.", filter: { readiness_state: "not_ready" } },
-    { key: "overdue" as const, label: "Overdue follow-ups", count: counts.overdue, explanation: "Follow-up work is past due.", filter: { status: "awaiting_follow_up" } },
-    { key: "unassigned" as const, label: "Unassigned cases", count: counts.unassigned, explanation: "Ownership is missing.", filter: { search: "unassigned" } },
+    { key: "overdue" as const, label: "Overdue follow-ups", count: counts.overdue, explanation: "Follow-up work is past due." },
+    { key: "unassigned" as const, label: "Unassigned cases", count: counts.unassigned, explanation: "Ownership is missing." },
     { key: "exportReady" as const, label: "Ready for export", count: counts.exportReady, explanation: "Defense packets can be generated or reviewed.", filter: { status: "ready_for_export" } },
-    { key: "stalled" as const, label: "Stalled cases", count: counts.stalled, explanation: "No recent movement and at risk of delay.", filter: { sort: "urgency" as const } },
-  ].filter((item) => item.count > 0);
+    { key: "stalled" as const, label: "Stalled cases", count: counts.stalled, explanation: "No recent movement and at risk of delay." },
+  ].filter((item) => item.count > 0) as AttentionItem[];
 }
