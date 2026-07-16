@@ -83,7 +83,9 @@ export default function IncidentDetailClient() {
   const [notes, setNotes] = useState<IncidentNoteItem[]>([]);
   const [tasks, setTasks] = useState<IncidentTaskItem[]>([]);
   const [mutationError, setMutationError] = useState("");
-  const selectedTab = (searchParams.get("tab") as WorkspaceTab | null) ?? "overview";
+  const rawTab = searchParams.get("tab");
+  const selectedTab: WorkspaceTab =
+    rawTab && TABS.some((tab) => tab.id === rawTab) ? (rawTab as WorkspaceTab) : "overview";
 
   const artifactStatuses = useMemo(() => incident?.evidence_inventory.map((artifact) => artifact.status) ?? [], [incident]);
   const isCapturing = artifactStatuses.some((status) => status === "pending");
