@@ -23,8 +23,8 @@ export default function ExportListItem({
       items={[item]}
       showIncident={showIncident}
       onDownload={onDownload}
-      onRetry={onRetry} 
-      {...(onDetails ? { onDetails } : {})}
+      onRetry={onRetry}
+      onDetails={onDetails ?? (() => {})}
     />
   );
 }
