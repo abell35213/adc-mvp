@@ -131,7 +131,7 @@ export function buildExportDocumentViewModel(item: ExportSummary): ExportDocumen
     requestedBy,
     generatedLabel: formatDateTime(generated),
     generatedTitle: generated ?? "",
-    fileMeta: [fileName, size ? formatBytes(size) : null].filter(Boolean).join(" · ") || "File pending",
+    fileMeta: [fileName, size == null ? null : formatBytes(size)].filter(Boolean).join(" · ") || "File pending",
     versionLabel: version,
     safeFailureReason: safeFailureReason(item),
     missingRequirements: missingRequirements(item),
