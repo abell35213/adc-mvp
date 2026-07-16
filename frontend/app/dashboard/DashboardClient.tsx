@@ -47,7 +47,10 @@ export default function DashboardClient() {
   const refreshQueue = () => { setQueueLoading(true); Promise.all([getIncidentQueue({ ...buildQueueParams(filters), page_size: QUEUE_PAGE_SIZE }), getIncidentQueue({ ...buildQueueParams(filters, false), page_size: QUEUE_ALL_PAGE_SIZE })]).then(([filtered, unfiltered]) => { setQueue(filtered.items); setQueueAll(unfiltered.items); setQueueError(""); }).catch((err) => setQueueError(toUserErrorMessage(err, "Failed to reload queue"))).finally(() => setQueueLoading(false)); };
   const onAssignMe = async (incidentId: string) => { if (!user) return; try { setActionError(""); await patchIncidentOwner(incidentId, { operation: "assign", owner_user_id: user.user_id }); refreshQueue(); } catch (err) { setActionError(toUserErrorMessage(err, "Failed to assign owner")); } };
   const onCaseStatusChange = async (incidentId: string, caseStatus: CaseStatus) => { try { setActionError(""); await patchIncidentStatus(incidentId, { case_status: caseStatus, reason: "Updated from command center" }); refreshQueue(); } catch (err) { setActionError(toUserErrorMessage(err, "Failed to change status")); } };
-  const onCopyCaseId = (incidentId: string) => { void navigator.clipboard?.writeText(incidentId); };
+  const onCopyCaseId = (incidentId: string) => {
+    const write = navigator.clipboard?.writeText?.(incidentId);
+    if (write) void write.catch(() => {});
+  };
   const attentionTasks = overdueTasks.length > 0 ? overdueTasks : myOpenTasks.filter((task) => task.status !== "completed");
 
   return <MainLayout title="Command Center"><div className="space-y-5"><PageHeader title="Incident Command Center" description="Monitor active cases, resolve blockers, and prepare defense-ready records." metadata={firstPriority ? <>Next best action: open <strong>{caseLabel(firstPriority)}</strong> and resolve {firstPriority.blockers.critical} critical blockers.</> : "No active incidents in the current queue."} primaryAction={<Button onClick={() => router.push("/incidents?quick=create")}>Create Incident</Button>} secondaryActions={<Button variant="secondary" onClick={() => router.push(resumeOnboardingHref)}>Resume onboarding</Button>}/>
