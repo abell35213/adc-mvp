@@ -39,7 +39,7 @@ export function getOrganizationLabel(orgIds: string[]): string {
 }
 
 export function buildNavigation(role: string, variant: ShellVariant = "default"): ShellNavItem[] {
-  const canViewReadiness = hasRoleCapability(role, "readiness:view");
+  const canViewIntegrations = hasRoleCapability(role, "integrations:read");
   const canManageQr = hasRoleCapability(role, "vehicle_qr:write");
   const canViewAdmin = hasRoleCapability(role, "vehicle_qr:read");
   const canManageUsers = hasRoleCapability(role, "user_management:write");
@@ -52,7 +52,7 @@ export function buildNavigation(role: string, variant: ShellVariant = "default")
     { href: "/vehicles", label: "Vehicles", section: "primary", icon: "vehicles", hidden: !canManageQr },
     { href: "/reports", label: "Reports", section: "primary", icon: "reports" },
     { href: "/help", label: "Help", section: "secondary", icon: "help" },
-    { href: "/settings/integrations", label: "Settings", section: "secondary", icon: "settings", hidden: !canViewReadiness },
+    { href: "/settings/integrations", label: "Settings", section: "secondary", icon: "settings", hidden: !canViewIntegrations },
     { href: "/admin/ops", label: "Administration", section: "secondary", icon: "admin", activePrefixes: ["/admin"], hidden: !canViewAdmin },
   ];
 
