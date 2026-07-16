@@ -1,5 +1,5 @@
 import type { ArtifactSummary, CaseWorkspaceResponse, ExportSummary, IncidentDetail, IncidentNoteItem, IncidentTaskItem } from "@/lib/api";
-import { EVIDENCE_TYPES } from "@/components/EvidenceTable";
+import { EVIDENCE_TYPES } from "@/lib/evidenceTypes";
 import type { StatusTone } from "@/lib/design/tokens";
 
 export type WorkspaceTab = "overview" | "evidence" | "timeline" | "documents" | "activity";
@@ -36,7 +36,7 @@ export interface EvidenceItem { id: string; label: string; status: string; statu
 export interface DocumentGroup { id: string; title: string; items: DocumentItem[] }
 export interface DocumentItem { id: string; title: string; status: string; statusTone: StatusTone; createdAt: string; primaryAction: "download" | "retry" | "view" | "none"; exportId: string }
 export interface TimelineItem { id: string; title: string; timestamp: string; absolute: string; actor: string; description: string; technical: string }
-export interface ActivityItem { id: string; title: string; timestamp: string; body: string; actor: string }
+export interface ActivityItem { id: string; title: string; timestamp: string; body: string; actor: string; kind: "note" | "task"; taskStatus?: IncidentTaskItem["status"] }
 export interface NextAction { label: string; reason: string; kind: "missing_evidence" | "blockers" | "download" | "generate" | "update" }
 
 export function formatDateTime(iso?: string | null): string {
@@ -141,7 +141,7 @@ export function buildIncidentWorkspaceViewModel({ incident, workspace, notes, ta
     evidenceGroups: buildEvidenceGroups(incident.evidence_inventory),
     documentGroups: buildDocumentGroups(incident.export_status),
     timelineItems: buildTimelineItems(incident, workspace),
-    activityItems: [ ...(notes ?? []).map((note) => ({ id: note.note_id, title: humanize(note.note_type), timestamp: formatDateTime(note.created_at_utc), body: note.body, actor: note.created_by_user_id ? `User ${shortId(note.created_by_user_id)}` : "Case note" })), ...(tasks ?? []).map((task) => ({ id: task.task_id, title: task.title, timestamp: formatDateTime(task.created_at_utc), body: `${humanize(task.status)} · ${humanize(task.priority)} priority`, actor: task.assigned_to_user_id ? `Assigned to ${shortId(task.assigned_to_user_id)}` : "Task" })) ],
+    activityItems: [ ...(notes ?? []).map((note) => ({ id: note.note_id, title: humanize(note.note_type), timestamp: formatDateTime(note.created_at_utc), body: note.body, actor: note.created_by_user_id ? `User ${shortId(note.created_by_user_id)}` : "Case note", kind: "note" as const })), ...(tasks ?? []).map((task) => ({ id: task.task_id, title: task.title, timestamp: formatDateTime(task.created_at_utc), body: `${humanize(task.status)} · ${humanize(task.priority)} priority`, actor: task.assigned_to_user_id ? `Assigned to ${shortId(task.assigned_to_user_id)}` : "Task", kind: "task" as const, taskStatus: task.status })) ],
     nextAction: selectNextAction(missingItems, blockers, incident.export_status, readiness),
   };
 }

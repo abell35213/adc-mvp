@@ -25,6 +25,7 @@ test('view model centralizes blocker grouping and next best action priority', ()
 test('view model centralizes evidence and document grouping', () => {
   assertContains('function buildEvidenceGroups', 'evidence grouping helper should exist');
   assertContains('EVIDENCE_TYPES.map', 'supported evidence types should drive grouping');
+  assertContains('import { EVIDENCE_TYPES } from "@/lib/evidenceTypes"', 'evidence type catalog should stay in a shared non-component module');
   assertContains('function buildDocumentGroups', 'document grouping helper should exist');
   assertContains('primaryAction', 'document action mapping should exist');
 });
@@ -33,4 +34,10 @@ test('view model centralizes timeline ordering and technical details', () => {
   assertContains('function buildTimelineItems', 'timeline adapter should exist');
   assertContains('JSON.stringify(event.payload ?? {}, null, 2)', 'technical event detail should be retained behind disclosure');
   assertContains('new Date(b.absolute).getTime() - new Date(a.absolute).getTime()', 'timeline should sort newest first deterministically');
+});
+
+test('view model keeps task activity distinguishable from notes', () => {
+  assertContains('kind: "note" as const', 'notes should remain distinguishable in the activity model');
+  assertContains('kind: "task" as const', 'tasks should remain distinguishable in the activity model');
+  assertContains('taskStatus: task.status', 'task status should be preserved for task-specific actions');
 });
