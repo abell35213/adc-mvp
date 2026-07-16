@@ -38,7 +38,7 @@ function QueueRow({ item, onOpen, onAssignMe, onCaseStatusChange, onCopyCaseId }
   const menuItems = [
     { label: "Assign to me", onSelect: () => onAssignMe(item.incident_id), disabled: Boolean(item.owner_user_id) },
     ...STATUSES.filter((statusOption) => statusOption !== item.case_status).map((statusOption) => ({ label: `Set ${CASE_STATUS_META[statusOption].label}`, onSelect: () => onCaseStatusChange(item.incident_id, statusOption) })),
-    { label: "Copy case ID", onSelect: () => onCopyCaseId?.(item.incident_id), separatorBefore: true },
+    ...(onCopyCaseId ? [{ label: "Copy case ID", onSelect: () => onCopyCaseId(item.incident_id), separatorBefore: true }] : []),
   ];
 
   return (
