@@ -295,6 +295,7 @@ export default function IncidentDetailExportPanel({
         onClose={() => setShowModal(false)}
         onSubmit={startExport}
         disabled={submitting}
+        incidentLabel={`Case ${incidentId.slice(0, 8).toUpperCase()}`}
         warningCount={recentWarnings}
         preflightPendingCount={preflightPending.length}
         preflightUnavailableCount={preflightUnavailable.length}
