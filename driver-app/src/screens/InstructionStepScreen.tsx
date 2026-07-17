@@ -38,6 +38,27 @@ function normalizeStepOrder(steps: DriverInstructionStepResponse[]) {
   return [...steps].sort((left, right) => left.step_order - right.step_order);
 }
 
+function clampStepIndex(stepIndex: unknown, stepCount: number) {
+  if (typeof stepIndex !== 'number' || !Number.isFinite(stepIndex)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(Math.trunc(stepIndex), stepCount - 1));
+}
+
+function toValidStepIdSet(stepIds: unknown, validStepIds: Set<string>) {
+  if (!Array.isArray(stepIds)) {
+    return new Set<string>();
+  }
+
+  return new Set(
+    stepIds.filter(
+      (stepId): stepId is string =>
+        typeof stepId === 'string' && validStepIds.has(stepId),
+    ),
+  );
+}
+
 export default function InstructionStepScreen({ navigation }: Props) {
   const { completeRoute, protocolContext } = useProtocolFlow();
   useProtocolRouteGuard('InstructionStep', navigation);
@@ -47,7 +68,9 @@ export default function InstructionStepScreen({ navigation }: Props) {
   const [activeSet, setActiveSet] = useState<ActiveInstructionSet | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [viewedStepIds, setViewedStepIds] = useState<Set<string>>(new Set());
-  const [acknowledgedStepIds, setAcknowledgedStepIds] = useState<Set<string>>(new Set());
+  const [acknowledgedStepIds, setAcknowledgedStepIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [isAcknowledging, setIsAcknowledging] = useState(false);
 
   const persistProgress = useCallback(
@@ -111,6 +134,13 @@ export default function InstructionStepScreen({ navigation }: Props) {
         steps: normalizedSteps,
       };
 
+      if (!normalizedSteps.length) {
+        completeRoute('InstructionStep');
+        navigation.replace('SceneFacts');
+        return;
+      }
+
+      const validStepIds = new Set(normalizedSteps.map((step) => step.step_id));
       const storedRaw = await AsyncStorage.getItem(
         INSTRUCTION_PROGRESS_STORAGE_KEY,
       );
@@ -122,22 +152,31 @@ export default function InstructionStepScreen({ navigation }: Props) {
         try {
           const stored = JSON.parse(storedRaw) as StoredInstructionProgress;
           if (stored.instructionSetId === response.instruction_set_id) {
-            nextStepIndex = Math.max(
-              0,
-              Math.min(stored.currentStepIndex ?? 0, normalizedSteps.length - 1),
+            nextStepIndex = clampStepIndex(
+              stored.currentStepIndex,
+              normalizedSteps.length,
             );
-            nextViewedStepIds = new Set(stored.viewedStepIds ?? []);
-            nextAcknowledgedStepIds = new Set(stored.acknowledgedStepIds ?? []);
+            nextViewedStepIds = toValidStepIdSet(
+              stored.viewedStepIds,
+              validStepIds,
+            );
+            nextAcknowledgedStepIds = toValidStepIdSet(
+              stored.acknowledgedStepIds,
+              validStepIds,
+            );
           }
         } catch {
           // Ignore malformed local progress state and reset to defaults.
         }
       }
 
-      if (!normalizedSteps.length) {
-        completeRoute('InstructionStep');
-        navigation.replace('SceneFacts');
-        return;
+      const initialStep = normalizedSteps[nextStepIndex];
+      const shouldMarkInitialStepViewed = !nextViewedStepIds.has(
+        initialStep.step_id,
+      );
+      if (shouldMarkInitialStepViewed) {
+        nextViewedStepIds = new Set(nextViewedStepIds);
+        nextViewedStepIds.add(initialStep.step_id);
       }
 
       setActiveSet(nextActiveSet);
@@ -145,21 +184,25 @@ export default function InstructionStepScreen({ navigation }: Props) {
       setViewedStepIds(nextViewedStepIds);
       setAcknowledgedStepIds(nextAcknowledgedStepIds);
 
-      const initialStep = normalizedSteps[nextStepIndex];
-      await markStepViewed(
-        initialStep.step_id,
-        response.instruction_set_id,
-        nextStepIndex,
-        nextAcknowledgedStepIds,
-      );
+      if (shouldMarkInitialStepViewed) {
+        emitTimelineAndAnalyticsEvent('driver_instruction_step_viewed');
+        await persistProgress(
+          response.instruction_set_id,
+          nextStepIndex,
+          nextViewedStepIds,
+          nextAcknowledgedStepIds,
+        );
+      }
     } catch (error) {
       setLoadError(
-        error instanceof Error ? error.message : 'Failed to load active instructions.',
+        error instanceof Error
+          ? error.message
+          : 'Failed to load active instructions.',
       );
     } finally {
       setIsLoading(false);
     }
-  }, [completeRoute, markStepViewed, navigation]);
+  }, [completeRoute, navigation, persistProgress]);
 
   useEffect(() => {
     void loadActiveInstructions();
@@ -176,7 +219,9 @@ export default function InstructionStepScreen({ navigation }: Props) {
   const isCurrentStepAcknowledged =
     currentStep != null && acknowledgedStepIds.has(currentStep.step_id);
   const shouldDisableNext =
-    Boolean(activeSet?.require_ack) && currentStep != null && !isCurrentStepAcknowledged;
+    Boolean(activeSet?.require_ack) &&
+    currentStep != null &&
+    !isCurrentStepAcknowledged;
 
   const handleAcknowledgeStep = useCallback(async () => {
     if (!activeSet || !currentStep || isCurrentStepAcknowledged) {
@@ -205,7 +250,9 @@ export default function InstructionStepScreen({ navigation }: Props) {
       );
     } catch (error) {
       setLoadError(
-        error instanceof Error ? error.message : 'Unable to acknowledge this step.',
+        error instanceof Error
+          ? error.message
+          : 'Unable to acknowledge this step.',
       );
     } finally {
       setIsAcknowledging(false);
@@ -281,7 +328,10 @@ export default function InstructionStepScreen({ navigation }: Props) {
     return (
       <View style={styles.stateContainer}>
         <Text variant="bodyLarge">No instructions available.</Text>
-        <Button mode="contained" onPress={() => navigation.navigate('SceneFacts')}>
+        <Button
+          mode="contained"
+          onPress={() => navigation.navigate('SceneFacts')}
+        >
           Continue
         </Button>
       </View>
@@ -321,7 +371,11 @@ export default function InstructionStepScreen({ navigation }: Props) {
         <Button mode="outlined" onPress={() => navigation.goBack()}>
           Back
         </Button>
-        <Button mode="contained" onPress={() => void handleContinue()} disabled={shouldDisableNext}>
+        <Button
+          mode="contained"
+          onPress={() => void handleContinue()}
+          disabled={shouldDisableNext}
+        >
           {currentStepIndex >= activeSet.steps.length - 1 ? 'Continue' : 'Next'}
         </Button>
       </View>
