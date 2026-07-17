@@ -83,7 +83,9 @@ const STORAGE_KEY = 'driver_instruction_progress_v1';
 const mockedGetActive = () => jest.mocked(api.getDriverActiveInstructions);
 const mockedAck = () => jest.mocked(api.acknowledgeDriverInstructions);
 
-const buildResponse = (overrides: Partial<api.DriverActiveInstructionsResponse> = {}) => ({
+const buildResponse = (
+  overrides: Partial<api.DriverActiveInstructionsResponse> = {},
+) => ({
   instruction_set_id: 'set-1',
   scope: 'default' as const,
   require_ack: false,
@@ -104,7 +106,9 @@ const mountScreen = () =>
 describe('InstructionStepScreen', () => {
   beforeEach(async () => {
     AsyncStorage.__reset();
-    mockedAck().mockResolvedValue({ acknowledged: true } as api.DriverInstructionAckResponse);
+    mockedAck().mockResolvedValue({
+      acknowledged: true,
+    } as api.DriverInstructionAckResponse);
   });
 
   describe('loading + error', () => {
@@ -118,7 +122,9 @@ describe('InstructionStepScreen', () => {
       );
       mountScreen();
 
-      expect(screen.getByText(/Loading active instructions/i)).toBeOnTheScreen();
+      expect(
+        screen.getByText(/Loading active instructions/i),
+      ).toBeOnTheScreen();
 
       await act(async () => {
         resolveLoad!(buildResponse());
@@ -179,7 +185,9 @@ describe('InstructionStepScreen', () => {
       mountScreen();
 
       await screen.findByText('First');
-      expect(emitTimelineAndAnalyticsEvent).toHaveBeenCalledWith('driver_instruction_step_viewed');
+      expect(emitTimelineAndAnalyticsEvent).toHaveBeenCalledWith(
+        'driver_instruction_step_viewed',
+      );
       const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY))!);
       expect(stored).toEqual(
         expect.objectContaining({
@@ -194,7 +202,9 @@ describe('InstructionStepScreen', () => {
 
   describe('require_ack flow', () => {
     it('disables Next until Acknowledge runs, then unlocks Next and persists ack', async () => {
-      mockedGetActive().mockResolvedValueOnce(buildResponse({ require_ack: true }));
+      mockedGetActive().mockResolvedValueOnce(
+        buildResponse({ require_ack: true }),
+      );
       mountScreen();
 
       await screen.findByText('First');
@@ -225,7 +235,9 @@ describe('InstructionStepScreen', () => {
     });
 
     it('surfaces ack failures in the inline error slot', async () => {
-      mockedGetActive().mockResolvedValueOnce(buildResponse({ require_ack: true }));
+      mockedGetActive().mockResolvedValueOnce(
+        buildResponse({ require_ack: true }),
+      );
       mockedAck().mockRejectedValueOnce(new Error('Ack rejected by server.'));
       mountScreen();
 
@@ -234,7 +246,9 @@ describe('InstructionStepScreen', () => {
         fireEvent.press(screen.getByText('Acknowledge step'));
       });
 
-      expect(await screen.findByText('Ack rejected by server.')).toBeOnTheScreen();
+      expect(
+        await screen.findByText('Ack rejected by server.'),
+      ).toBeOnTheScreen();
       // Step still un-acknowledged → button label remains.
       expect(screen.getByText('Acknowledge step')).toBeOnTheScreen();
     });
@@ -254,7 +268,9 @@ describe('InstructionStepScreen', () => {
 
       expect(screen.getByText('Step 2 of 2')).toBeOnTheScreen();
       expect(screen.getByText('Second')).toBeOnTheScreen();
-      expect(emitTimelineAndAnalyticsEvent).toHaveBeenCalledWith('driver_instruction_step_viewed');
+      expect(emitTimelineAndAnalyticsEvent).toHaveBeenCalledWith(
+        'driver_instruction_step_viewed',
+      );
     });
 
     it('final step Continue completes the route and navigates to SceneFacts', async () => {
@@ -303,7 +319,9 @@ describe('InstructionStepScreen', () => {
           acknowledgedStepIds: ['step-a'],
         }),
       );
-      mockedGetActive().mockResolvedValueOnce(buildResponse({ require_ack: true }));
+      mockedGetActive().mockResolvedValueOnce(
+        buildResponse({ require_ack: true }),
+      );
       mountScreen();
 
       // We resume on step 2 (index 1) and step-b is not yet acknowledged.
@@ -336,6 +354,63 @@ describe('InstructionStepScreen', () => {
 
       await screen.findByText('First');
       expect(screen.getByText('Step 1 of 2')).toBeOnTheScreen();
+    });
+
+    it('starts at the first step when no stored progress exists', async () => {
+      mockedGetActive().mockResolvedValueOnce(buildResponse());
+      mountScreen();
+
+      await screen.findByText('First');
+      expect(screen.getByText('Step 1 of 2')).toBeOnTheScreen();
+    });
+
+    it('normalizes an out-of-range stored index to the last available step', async () => {
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          instructionSetId: 'set-1',
+          currentStepIndex: 99,
+          viewedStepIds: ['step-a'],
+          acknowledgedStepIds: [],
+        }),
+      );
+      mockedGetActive().mockResolvedValueOnce(buildResponse());
+      mountScreen();
+
+      await screen.findByText('Second');
+      expect(screen.getByText('Step 2 of 2')).toBeOnTheScreen();
+      const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY))!);
+      expect(stored.currentStepIndex).toBe(1);
+      expect(stored.viewedStepIds).toEqual(['step-a', 'step-b']);
+    });
+
+    it('does not let hydration overwrite a subsequent valid user action', async () => {
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          instructionSetId: 'set-1',
+          currentStepIndex: 0,
+          viewedStepIds: ['step-a'],
+          acknowledgedStepIds: [],
+        }),
+      );
+      mockedGetActive().mockResolvedValueOnce(buildResponse());
+      mountScreen();
+
+      await screen.findByText('First');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Next'));
+      });
+
+      expect(screen.getByText('Step 2 of 2')).toBeOnTheScreen();
+      expect(mockedGetActive()).toHaveBeenCalledTimes(1);
+      const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY))!);
+      expect(stored).toEqual(
+        expect.objectContaining({
+          currentStepIndex: 1,
+          viewedStepIds: ['step-a', 'step-b'],
+        }),
+      );
     });
   });
 });
