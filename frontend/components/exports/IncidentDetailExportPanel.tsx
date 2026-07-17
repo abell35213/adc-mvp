@@ -250,24 +250,27 @@ export default function IncidentDetailExportPanel({
       </CardContent></Card>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">Recent exports and generation status.</p>
+        <p className="text-xs text-text-muted">Recent exports and generation status.</p>
         <Button onClick={() => setShowModal(true)}>Generate Document</Button>
       </div>
 
       {latestReadinessSnapshot && (
-        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">
-            Readiness at request time: {(latestReadinessSnapshot.state ?? "unknown").replaceAll("_", " ")}
-          </p>
-          {latestReadinessWarning?.message && <p className="text-xs">{latestReadinessWarning.message}</p>}
-          {Array.isArray(latestReadinessSnapshot.reasons) && latestReadinessSnapshot.reasons.length > 0 && (
-            <ul className="mt-1 list-disc pl-5 text-xs">
-              {latestReadinessSnapshot.reasons.slice(0, 3).map((reason, index) => (
-                <li key={`${reason.code ?? "reason"}-${index}`}>{reason.message ?? reason.code ?? "Readiness reason unavailable"}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <Alert
+          tone="warning"
+          title={`Readiness at request time: ${(latestReadinessSnapshot.state ?? "unknown").replaceAll("_", " ")}`}
+          description={
+            <>
+              {latestReadinessWarning?.message && <p>{latestReadinessWarning.message}</p>}
+              {Array.isArray(latestReadinessSnapshot.reasons) && latestReadinessSnapshot.reasons.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-xs">
+                  {latestReadinessSnapshot.reasons.slice(0, 3).map((reason, index) => (
+                    <li key={`${reason.code ?? "reason"}-${index}`}>{reason.message ?? reason.code ?? "Readiness reason unavailable"}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          }
+        />
       )}
 
       {isProcessing && (

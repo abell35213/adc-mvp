@@ -28,7 +28,7 @@ test('incident documents tab shares the document list and action language', () =
 
 
 test('generate export modal uses shared primitives and safe workflow copy', () => {
-  for (const snippet of ['Modal', 'FormField', 'Select', 'StatusBadge', 'Alert', 'EmptyState', 'Generate defense document', 'Selected incident', 'Readiness', 'What happens next', 'Generation was not started']) assert.match(generateModal, new RegExp(snippet));
+  for (const snippet of ['Modal', 'FormField', 'Select', 'StatusBadge', 'Alert', 'EmptyState', 'Generate document', 'Selected incident', 'Readiness', 'What happens next']) assert.match(generateModal, new RegExp(snippet));
   assert.ok(generateModal.includes('if (disabled) return'));
   assert.doesNotMatch(generateModal, /bg-blue-600|bg-amber-50|text-amber-900|<button/);
   assert.doesNotMatch(generateModal, />court_defense<|>insurer_packet<|>internal_review<|>compliance_audit</);

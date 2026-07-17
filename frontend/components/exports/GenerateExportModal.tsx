@@ -55,7 +55,6 @@ export default function GenerateExportModal({
 }: GenerateExportModalProps) {
   const [exportType, setExportType] = useState<ExportType>("court_defense");
   const [options, setOptions] = useState<ExportOptions>(() => defaultOptionsForType("court_defense"));
-  const [errorMessage, setErrorMessage] = useState("");
   const selectedType = EXPORT_TYPES.find((type) => type.value === exportType) ?? EXPORT_TYPES[0];
   const readinessTone = preflightUnavailableCount > 0 ? "warning" : preflightPendingCount > 0 || warningCount > 0 ? "informational" : "success";
   const readinessLabel = preflightUnavailableCount > 0 ? "Can generate with blockers" : preflightPendingCount > 0 || warningCount > 0 ? "Review warnings" : "Ready to generate";
@@ -70,26 +69,20 @@ export default function GenerateExportModal({
 
   async function handleGenerate() {
     if (disabled) return;
-    setErrorMessage("");
-    try {
-      await onSubmit({ exportType, options });
-    } catch {
-      setErrorMessage("Document generation could not be started. Review the case and try again.");
-    }
+    await onSubmit({ exportType, options });
   }
 
   return (
     <Modal
-      open={open}
-      onClose={onClose}
-      title="Generate defense document"
-      description="Review readiness and choose the document type before starting generation."
-      size="lg"
-      footer={<><Button variant="secondary" onClick={onClose} disabled={disabled}>Cancel</Button><Button onClick={handleGenerate} loading={disabled} loadingLabel="Starting generation">Generate document</Button></>}
+    open={open}
+    onClose={onClose}
+    title="Generate document"
+    description="Review readiness and choose the document type before starting generation."
+    size="lg"
+    footer={<><Button variant="secondary" onClick={onClose} disabled={disabled}>Cancel</Button><Button onClick={handleGenerate} loading={disabled} loadingLabel="Starting generation">Generate document</Button></>}
     >
-      <div className="space-y-4">
-        {errorMessage && <Alert tone="critical" title="Generation was not started" description={errorMessage} />}
-        <Card><CardContent className="grid gap-3 md:grid-cols-3">
+    <div className="space-y-4">
+      <Card><CardContent className="grid gap-3 md:grid-cols-3">
           <div><p className="text-xs font-medium text-text-muted">Selected incident</p><p className="mt-1 text-sm font-semibold text-text-primary">{incidentLabel}</p></div>
           <div><p className="text-xs font-medium text-text-muted">Document type</p><p className="mt-1 text-sm font-semibold text-text-primary">{selectedType.label}</p></div>
           <div><p className="text-xs font-medium text-text-muted">Readiness</p><div className="mt-1"><StatusBadge tone={readinessTone}>{readinessLabel}</StatusBadge></div></div>
