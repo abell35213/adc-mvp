@@ -75,13 +75,14 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+# Register static case-ops incident paths before /incidents/{incident_id}.
+app.include_router(case_ops_router, tags=["case-ops"])
 app.include_router(incidents_router, prefix="/incidents", tags=["incidents"])
 app.include_router(exports_router, prefix="/exports", tags=["exports"])
 app.include_router(driver_auth_router, prefix="/driver/auth", tags=["driver-auth"])
 app.include_router(driver_router, prefix="/driver", tags=["driver"])
 app.include_router(driver_artifacts_router, prefix="/driver", tags=["driver-artifacts"])
 app.include_router(driver_report_router, prefix="/driver", tags=["driver-report"])
-app.include_router(case_ops_router, tags=["case-ops"])
 app.include_router(notes_router, tags=["notes"])
 app.include_router(dispatch_evidence_router, tags=["dispatch-evidence"])
 app.include_router(tasks_router, tags=["tasks"])

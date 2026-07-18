@@ -44,3 +44,15 @@ test('mobile navigation uses drawer, focus return capable trigger, active route 
   assert.doesNotMatch(mobile, /aria-label="Primary navigation"/);
   assert.match(mobile, /Create Incident/);
 });
+
+
+test('authenticated routes share a single auth provider source', () => {
+  const layout = read('app/layout.tsx');
+  const authContext = read('lib/auth-context.tsx');
+  const useAuth = read('lib/useAuth.ts');
+  assert.match(layout, /<AuthProvider>\{children\}<\/AuthProvider>/);
+  assert.match(authContext, /getMe\(\)/);
+  assert.match(useAuth, /useAuthContext/);
+  assert.doesNotMatch(useAuth, /getMe\(\)/);
+  assert.match(read('components/app-shell/AppShell.tsx'), /Loading secure workspace/);
+});

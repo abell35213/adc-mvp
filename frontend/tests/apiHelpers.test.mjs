@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildQuery, parseApiErrorPayload } from '../lib/api/queryString.mjs';
 
 /* ── buildQuery ─────────────────────────────────────────────────── */
@@ -76,4 +77,20 @@ test('parseApiErrorPayload returns empty object when detail is missing or wrong 
   assert.deepEqual(parseApiErrorPayload({}), {});
   assert.deepEqual(parseApiErrorPayload({ detail: 123 }), {});
   assert.deepEqual(parseApiErrorPayload({ detail: ['a'] }), {});
+});
+
+
+/* ── request header defaults ───────────────────────────────────── */
+
+test('request helper only adds JSON Content-Type when a body is present', () => {
+  const core = readFileSync(new URL('../lib/api/core.ts', import.meta.url), 'utf8');
+  assert.match(core, /export function mergeHeaders\(init: HeadersInit \| undefined, body\?: BodyInit \| null\)/);
+  assert.match(core, /body !== undefined && body !== null && !headers\.has\("Content-Type"\)/);
+  assert.match(core, /credentials: init\?\.credentials \?\? "include"/);
+});
+
+test('GET and HEAD without bodies do not automatically receive Content-Type', () => {
+  const core = readFileSync(new URL('../lib/api/core.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(core, /headers\.set\("Content-Type", "application\/json"\);[\s\S]*return headers;[\s\S]*const headers = mergeHeaders\(init\?\.headers\);/);
+  assert.match(core, /const headers = mergeHeaders\(init\?\.headers, init\?\.body\);/);
 });

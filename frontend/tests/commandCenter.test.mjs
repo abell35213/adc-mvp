@@ -49,3 +49,18 @@ test('demo tour remains compact, dismissible, and preserves demo routing', () =>
   assert.match(dashboard, /setDemoTourDismissed\(true\)/);
   assert.match(dashboard, /if \(isDemoMode\) query\.set\("demo", "1"\)/);
 });
+
+
+test('dashboard never requests unsupported page sizes and isolates partial failures', () => {
+  assert.doesNotMatch(dashboard, /page_size:\s*500|QUEUE_ALL_PAGE_SIZE\s*=\s*500/);
+  assert.match(dashboard, /const QUEUE_ALL_PAGE_SIZE = 100/);
+  assert.match(dashboard, /Promise\.allSettled\(\[getIncidentQueue/);
+  assert.match(dashboard, /Promise\.allSettled\(\[getIncidentSummaryMetrics/);
+});
+
+test('dashboard provides non-null loading shell and valid alert heading order', () => {
+  const page = read('app/dashboard/page.tsx');
+  assert.doesNotMatch(page, /fallback=\{null\}/);
+  assert.match(page, /Loading command center/);
+  assert.match(dashboard, /titleAs="h2" title="Command center partially unavailable"/);
+});

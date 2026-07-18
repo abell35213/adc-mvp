@@ -22,8 +22,8 @@
   /* Text */
   --text-primary: #062040;
   --text-secondary: #334b68;
-  --text-muted: #5c718c;
-  --text-inverse: #f7fbff;
+  --text-muted: #536985;
+  --text-inverse: #ffffff;
   --text-link: #1558c9;
   --text-disabled: #8ba0b8;
 
@@ -31,7 +31,7 @@
   --accent: #1b6ef3;
   --accent-strong: #1558c9;
   --accent-soft: #dfeafe;
-  --action-primary: #1b6ef3;
+  --action-primary: #1558d4;
   --action-primary-hover: #1558c9;
   --action-primary-active: #1148a7;
   --action-secondary: #ffffff;

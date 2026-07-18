@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "ADC Dashboard",
@@ -25,7 +26,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-page text-text-primary antialiased">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
         <div className="fixed bottom-2 right-2 rounded-md bg-shell/90 px-2 py-1 text-xs text-text-inverse" aria-label="deploy-version">
           Deploy {deployVersion}
         </div>
