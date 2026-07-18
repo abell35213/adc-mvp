@@ -346,6 +346,25 @@ class ArtifactSummary(BaseModel):
     unavailable_message: Optional[str] = None
 
 
+class EvidenceInventoryItem(BaseModel):
+    artifact_id: uuid.UUID
+    artifact_type: ShortText
+    status: ArtifactStatus
+    incident_id: uuid.UUID
+    case_reference: str
+    occurred_at_utc: Optional[datetime] = None
+    source: str = "ADC"
+    detail: Optional[str] = None
+    available: bool = False
+
+
+class EvidenceInventoryResponse(BaseModel):
+    items: list[EvidenceInventoryItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 50
+
+
 class ExportSummary(BaseModel):
     export_id: uuid.UUID
     incident_id: Optional[uuid.UUID] = None

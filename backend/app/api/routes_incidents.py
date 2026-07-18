@@ -13,6 +13,7 @@ from app.api.schemas import (
     CreateIncidentRequest,
     CreateIncidentResponse,
     EventSummary,
+    EvidenceInventoryResponse,
     ExportSummary,
     FmcsaInspectionSummary,
     IncidentDetailResponse,
@@ -27,7 +28,7 @@ from app.core.deps import get_current_user
 from app.core.logging import get_request_id, set_log_context
 from app.core.metrics import MetricNames, increment, timed
 from app.case_ops.service import build_case_snapshot, validate_case_status_transition
-from app.db.models import User
+from app.db.models import Artifact, Incident, User
 from app.db.repo.artifacts import get_artifacts_by_incident
 from app.db.repo.events import create_event, get_events_by_incident
 from app.db.repo.exports import create_export, get_exports_by_incident
@@ -223,6 +224,52 @@ def list_incidents_endpoint(
             )
         )
     return result
+
+
+@router.get("/evidence", response_model=EvidenceInventoryResponse)
+def list_evidence_inventory(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    status: str | None = Query(default=None),
+    artifact_type: str | None = Query(default=None),
+    incident_id: uuid.UUID | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return one tenant-scoped, paginated evidence inventory without browser fan-out."""
+    context = build_user_auth_context(db, current_user)
+    query = db.query(Artifact, Incident).join(
+        Incident, Incident.incident_id == Artifact.incident_id
+    ).filter(Incident.org_id.in_(context.org_ids), Artifact.org_id.in_(context.org_ids))
+    if status:
+        query = query.filter(Artifact.status == status)
+    if artifact_type:
+        query = query.filter(Artifact.artifact_type == artifact_type)
+    if incident_id:
+        query = query.filter(Artifact.incident_id == incident_id)
+    if search:
+        query = query.filter(Artifact.artifact_type.ilike(f"%{search}%"))
+    total = query.count()
+    rows = query.order_by(Artifact.created_at_utc.desc(), Artifact.artifact_id).offset(
+        (page - 1) * page_size
+    ).limit(page_size).all()
+    return EvidenceInventoryResponse(
+        items=[{
+            "artifact_id": artifact.artifact_id,
+            "artifact_type": artifact.artifact_type,
+            "status": artifact.status,
+            "incident_id": incident.incident_id,
+            "case_reference": f"ADC-{str(incident.incident_id)[:8].upper()}",
+            "occurred_at_utc": artifact.uploaded_at_utc or artifact.created_at_utc,
+            "source": "ADC capture workflow",
+            "detail": artifact.unavailable_reason_detail,
+            "available": artifact.status == "captured",
+        } for artifact, incident in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("/", response_model=CreateIncidentResponse, status_code=201)

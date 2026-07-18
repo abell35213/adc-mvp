@@ -206,7 +206,7 @@ def get_driver_protocol_settings(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
+        allowed=_is_ops_admin_role(admin.role) and can_access_admin_org(
             context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
         ),
         actor_id=admin.id,
@@ -235,7 +235,7 @@ def update_driver_protocol_settings(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
+        allowed=_is_ops_admin_role(admin.role) and can_access_admin_org(
             context, context.org_ids[0], Capability.DRIVER_PROTOCOL_WRITE
         ),
         actor_id=admin.id,
@@ -476,8 +476,9 @@ def list_admin_vehicles(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=_is_ops_admin_role(admin.role)
-        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_READ),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.VEHICLE_QR_READ
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicles.list",
@@ -499,8 +500,9 @@ def rotate_qr(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=_is_ops_admin_role(admin.role)
-        and can_access_admin_org(context, context.org_ids[0], Capability.VEHICLE_QR_WRITE),
+        allowed=can_access_admin_org(
+            context, context.org_ids[0], Capability.VEHICLE_QR_WRITE
+        ),
         actor_id=admin.id,
         org_id=context.org_ids[0],
         action="admin.vehicle_qr.rotate",

@@ -37,6 +37,57 @@ SCENARIO_KEY = "crash_with_full_packet"
 DEFAULT_DEMO_EMAIL = "demo-admin@adc.local"
 DEFAULT_DEMO_PASSWORD = "DemoAdmin!2345"
 DEFAULT_DEMO_ORG = "ADC Demo Org"
+BODY_PREVIEW_LIMIT = 500
+JSON_CONTENT_TYPES = {"application/json", "application/problem+json"}
+REQUEST_ID_HEADERS = ("x-request-id", "x-correlation-id", "traceparent")
+
+
+def _is_json_content_type(content_type: str) -> bool:
+    media_type = content_type.partition(";")[0].strip().lower()
+    return media_type in JSON_CONTENT_TYPES or media_type.endswith("+json")
+
+
+def _parse_response_body(body: str, content_type: str) -> Any:
+    """Parse JSON without allowing a misleading content type to mask HTTP errors."""
+    if not body:
+        return None
+    stripped = body.lstrip()
+    looks_like_json = stripped.startswith(("{", "["))
+    if _is_json_content_type(content_type) or looks_like_json:
+        try:
+            return json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return body
+
+
+def _safe_body_preview(body: str, limit: int = BODY_PREVIEW_LIMIT) -> str:
+    normalized = " ".join(body.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}… [truncated]"
+
+
+def _request_id(headers: Any) -> str | None:
+    for name in REQUEST_ID_HEADERS:
+        value = headers.get(name)
+        if value:
+            return str(value)[:200]
+    return None
+
+
+def _unexpected_response_message(
+    method: str, path: str, status: int, content_type: str, body: str, headers: Any
+) -> str:
+    lines = [
+        f"{method} {path} returned {status}",
+        f"Content-Type: {content_type or '(not provided)'}",
+        f"Body: {_safe_body_preview(body) or '(empty)'}",
+    ]
+    request_id = _request_id(headers)
+    if request_id:
+        lines.append(f"Request ID: {request_id}")
+    return "\n".join(lines)
 
 
 class ApiClient:
@@ -58,29 +109,31 @@ class ApiClient:
         expected: tuple[int, ...] = (200,),
     ) -> tuple[int, Any]:
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {"Accept": "application/json"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
         request = urllib.request.Request(
-            self.base_url + path,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method=method,
+            self.base_url + path, data=data, headers=headers, method=method
         )
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
-                body = response.read().decode("utf-8")
-                parsed = json.loads(body) if body else None
+                body = response.read().decode("utf-8", errors="replace")
+                content_type = response.headers.get("Content-Type", "")
+                parsed = _parse_response_body(body, content_type)
                 if response.status not in expected:
-                    raise RuntimeError(
-                        f"{method} {path} returned {response.status}: {parsed}"
-                    )
+                    raise RuntimeError(_unexpected_response_message(
+                        method, path, response.status, content_type, body, response.headers
+                    ))
                 return response.status, parsed
         except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8")
-            detail = json.loads(body) if body else body
+            body = exc.read().decode("utf-8", errors="replace")
+            content_type = exc.headers.get("Content-Type", "")
+            detail = _parse_response_body(body, content_type)
             if exc.code in expected:
                 return exc.code, detail
-            raise RuntimeError(
-                f"{method} {path} returned {exc.code}: {detail}"
-            ) from exc
+            raise RuntimeError(_unexpected_response_message(
+                method, path, exc.code, content_type, body, exc.headers
+            )) from exc
 
 
 def _check_api_login(api_base_url: str, email: str, password: str) -> bool:
