@@ -264,7 +264,19 @@ def run_local_db() -> int:
     print(f"  api={api_base_url}")
 
     from app.core.security import verify_password
-    from app.db.models import Incident, Org, User, UserOrg
+    from app.db.models import (
+        Artifact,
+        CaseNote,
+        CaseTask,
+        Event,
+        Export,
+        Driver,
+        Incident,
+        Org,
+        OrgVehicleRegistry,
+        User,
+        UserOrg,
+    )
     from app.db.session import SessionLocal
     from app.security.permissions import Role
 
@@ -304,7 +316,87 @@ def run_local_db() -> int:
         _check(
             "demo admin belongs to demo organization", membership_exists, errors=errors
         )
-        _check("at least one demo incident exists", incident_count >= 1, errors=errors)
+        _check(
+            "expanded demo has at least 24 incidents",
+            incident_count >= 24,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has at least 12 drivers",
+            db.query(Driver).filter(Driver.org_id == org.id).count() >= 12,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has at least 12 vehicles",
+            db.query(OrgVehicleRegistry)
+            .filter(OrgVehicleRegistry.org_id == org.id)
+            .count()
+            >= 12,
+            errors=errors,
+        )
+        demo_incident_ids = [
+            row.incident_id
+            for row in db.query(Incident.incident_id)
+            .filter(Incident.org_id == org.id)
+            .all()
+        ]
+        _check(
+            "expanded demo has evidence",
+            db.query(Artifact)
+            .filter(
+                Artifact.org_id == org.id, Artifact.incident_id.in_(demo_incident_ids)
+            )
+            .count()
+            >= 60,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has tasks",
+            db.query(CaseTask)
+            .filter(
+                CaseTask.org_id == org.id, CaseTask.incident_id.in_(demo_incident_ids)
+            )
+            .count()
+            >= 40,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has notes",
+            db.query(CaseNote)
+            .filter(
+                CaseNote.org_id == org.id, CaseNote.incident_id.in_(demo_incident_ids)
+            )
+            .count()
+            >= 30,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has timeline events",
+            db.query(Event)
+            .filter(Event.org_id == org.id, Event.incident_id.in_(demo_incident_ids))
+            .count()
+            >= 120,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has exports",
+            db.query(Export)
+            .filter(Export.org_id == org.id, Export.incident_id.in_(demo_incident_ids))
+            .count()
+            >= 18,
+            errors=errors,
+        )
+        _check(
+            "expanded demo has ready/failed/processing exports",
+            all(
+                db.query(Export)
+                .filter(Export.org_id == org.id, Export.status == status)
+                .count()
+                > 0
+                for status in ("ready", "failed", "processing")
+            ),
+            errors=errors,
+        )
         _check(
             "demo API login returns an access token",
             _check_api_login(api_base_url, email, password),

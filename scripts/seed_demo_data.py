@@ -24,15 +24,35 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from app.commercial.demo import DEFAULT_SCENARIO_KEY, reset_demo_tenant, seed_demo_tenant
+from app.commercial.demo import (
+    DEFAULT_SCENARIO_KEY,
+    reset_demo_tenant,
+    seed_demo_tenant,
+    seed_expanded_demo_workspace,
+)
 from app.core.security import hash_password
-from app.db.models import Driver, DriverVehicleAssignment, Org, User, UserOrg, VehicleQrToken
+from app.db.models import (
+    Driver,
+    DriverVehicleAssignment,
+    Org,
+    User,
+    UserOrg,
+    VehicleQrToken,
+)
 from app.db.repo.users import create_org
 from app.db.session import SessionLocal
 from app.security.permissions import Role
 
 
-def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password: str, driver_phone: str, vehicle_id: str):
+def _ensure_demo_identity(
+    db,
+    *,
+    org_name: str,
+    admin_email: str,
+    admin_password: str,
+    driver_phone: str,
+    vehicle_id: str,
+):
     org = db.query(Org).filter_by(name=org_name).first()
     if org is None:
         org = create_org(db, name=org_name)
@@ -58,7 +78,9 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
             .first()
             is not None
         )
-        is_stale_demo_seed = user.role == Role.SYSTEM_ADMIN.value or existing_demo_membership
+        is_stale_demo_seed = (
+            user.role == Role.SYSTEM_ADMIN.value or existing_demo_membership
+        )
 
         # Only self-heal known stale demo seeds. Do not mutate unrelated local
         # accounts that happen to share the configured demo admin email.
@@ -96,7 +118,11 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
         db.commit()
         db.refresh(driver)
 
-    token = db.query(VehicleQrToken).filter_by(adc_vehicle_id=vehicle_id, status="active").first()
+    token = (
+        db.query(VehicleQrToken)
+        .filter_by(adc_vehicle_id=vehicle_id, status="active")
+        .first()
+    )
     if token is None:
         from secrets import token_urlsafe
 
@@ -115,7 +141,9 @@ def _ensure_demo_identity(db, *, org_name: str, admin_email: str, admin_password
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", default=os.environ.get("DEMO_SCENARIO", DEFAULT_SCENARIO_KEY))
+    parser.add_argument(
+        "--scenario", default=os.environ.get("DEMO_SCENARIO", DEFAULT_SCENARIO_KEY)
+    )
     parser.add_argument("--reset-only", action="store_true")
     args = parser.parse_args()
 
@@ -155,7 +183,10 @@ def main() -> None:
             print(f"reset={reset_result}")
             return
 
-        seeded = seed_demo_tenant(db, org_id=org.id, actor=user, scenario_key=args.scenario)
+        seeded = seed_demo_tenant(
+            db, org_id=org.id, actor=user, scenario_key=args.scenario
+        )
+        expanded = seed_expanded_demo_workspace(db, org_id=org.id, actor=user)
 
         print(f"org={org.name} ({org.id})")
         print(f"admin={admin_email}")
@@ -164,6 +195,7 @@ def main() -> None:
         print(f"qr_token={token.qr_token}")
         print(f"reset={reset_result}")
         print(f"seeded={seeded}")
+        print(f"expanded={expanded}")
     finally:
         db.close()
 
