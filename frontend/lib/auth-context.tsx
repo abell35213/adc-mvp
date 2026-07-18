@@ -18,12 +18,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const publicPath = pathname === "/login" || pathname === "/" || pathname.startsWith("/company") || pathname.startsWith("/api");
+    const publicPath =
+      pathname === "/login" ||
+      pathname === "/" ||
+      pathname.startsWith("/company") ||
+      pathname.startsWith("/api");
+
     if (publicPath) {
-      queueMicrotask(() => setLoading(false));
+      setUser(null);
+      setLoading(false);
       return;
     }
-    queueMicrotask(() => setLoading(true));
+
+    // Avoid refetching /auth/me and flashing a loading shell on every route change
+    // after the session has already been validated.
+    if (user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     let active = true;
     getMe()
       .then((session) => {
@@ -41,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [pathname, router]);
+  }, [pathname, router, user]);
 
   const value = useMemo(() => ({ user, loading }), [user, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
