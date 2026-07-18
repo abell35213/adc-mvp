@@ -11,52 +11,47 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function isPublicPath(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname === "/" ||
+    pathname.startsWith("/company") ||
+    pathname.startsWith("/api")
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
-  const [user, setUser] = useState<MeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [sessionUser, setSessionUser] = useState<MeResponse | null>(null);
+
+  const publicPath = isPublicPath(pathname);
 
   useEffect(() => {
-    const publicPath =
-      pathname === "/login" ||
-      pathname === "/" ||
-      pathname.startsWith("/company") ||
-      pathname.startsWith("/api");
-
-    if (publicPath) {
-      setUser(null);
-      setLoading(false);
+    // Skip fetch on public paths or when session is already established.
+    if (publicPath || sessionUser) {
       return;
     }
 
-    // Avoid refetching /auth/me and flashing a loading shell on every route change
-    // after the session has already been validated.
-    if (user) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
     let active = true;
     getMe()
       .then((session) => {
-        if (active) setUser(session);
+        if (active) setSessionUser(session);
       })
       .catch(() => {
         if (active) {
-          setUser(null);
+          setSessionUser(null);
           router.replace("/login");
         }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [pathname, router, user]);
+  }, [pathname, router, sessionUser, publicPath]);
 
+  // Derive user and loading from session state — no synchronous setState in effect needed.
+  const user = publicPath ? null : sessionUser;
+  const loading = !publicPath && !sessionUser;
   const value = useMemo(() => ({ user, loading }), [user, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
