@@ -96,11 +96,12 @@ export function toUserErrorMessage(error: unknown, fallback = "Request failed"):
 
 /**
  * Merge `HeadersInit` (record, array, or `Headers`) into a single mutable
- * `Headers` instance, then ensure the JSON `Content-Type` default is set.
+ * `Headers` instance. Add the JSON `Content-Type` default only when a
+ * request body is present and the caller did not explicitly provide a type.
  */
-function mergeHeaders(init: HeadersInit | undefined): Headers {
+export function mergeHeaders(init: HeadersInit | undefined, body?: BodyInit | null): Headers {
   const headers = new Headers(init);
-  if (!headers.has("Content-Type")) {
+  if (body !== undefined && body !== null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   return headers;
@@ -110,7 +111,7 @@ export async function request<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const headers = mergeHeaders(init?.headers);
+  const headers = mergeHeaders(init?.headers, init?.body);
 
   let res: Response;
   try {

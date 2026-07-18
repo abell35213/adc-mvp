@@ -23,7 +23,7 @@ export function AppShell({
   const { user, loading } = useAuth();
   const pathname = usePathname() ?? "/";
 
-  if (loading) return <div className="p-6 text-text-muted">Loading…</div>;
+  if (loading) return <div className="min-h-screen bg-page p-6 text-text-muted"><div className="rounded-lg border border-border-default bg-surface p-6 shadow-bordered"><p className="text-lg font-semibold text-text-primary">Loading secure workspace…</p><p className="mt-2 text-sm text-text-secondary">Validating your session before loading protected case data.</p></div></div>;
 
   if (!user) {
     return (

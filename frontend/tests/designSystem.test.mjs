@@ -47,7 +47,7 @@ test('EmptyState supports actions', () => {
 
 test('Alert semantics distinguish critical announcements', () => {
   const s = read('components/ui/Alert.tsx');
-  assert.match(s, /role=\{tone==="critical"\?"alert":"status"\}/);
+  assert.match(s, /role=\{tone === "critical" \? "alert" : "status"\}/);
 });
 
 test('Modal and Drawer close with escape and restore focus', () => {
@@ -71,4 +71,30 @@ test('ProgressBar exposes numeric semantics', () => {
   assert.match(s, /role="progressbar"/);
   assert.match(s, /aria-valuenow/);
   assert.match(s, /aria-valuemin=\{0\}/);
+});
+
+
+function luminance(hex) {
+  const parts = hex.match(/[0-9a-f]{2}/gi).map((part) => parseInt(part, 16) / 255);
+  const [r, g, b] = parts.map((value) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrast(foreground, background) {
+  const a = luminance(foreground);
+  const b = luminance(background);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+test('semantic color tokens meet normal-text contrast targets', () => {
+  const css = read('app/globals.css');
+  const token = (name) => css.match(new RegExp(`${name}: (#(?:[0-9a-fA-F]{6}))`))[1];
+  assert.ok(contrast(token('--text-inverse'), token('--action-primary')) >= 4.5);
+  assert.ok(contrast(token('--text-muted'), token('--page')) >= 4.5);
+});
+
+test('Alert title is not a fixed h3 by default', () => {
+  const s = read('components/ui/Alert.tsx');
+  assert.match(s, /titleAs: TitleElement = "div"/);
+  assert.doesNotMatch(s, /<h3 className="text-sm font-semibold text-text-primary">\{title\}<\/h3>/);
 });
