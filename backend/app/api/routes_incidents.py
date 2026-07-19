@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import (
     ArtifactSummary,
+    ArtifactStatus,
     CreateExportResponse,
     CreateIncidentRequest,
     CreateIncidentResponse,
