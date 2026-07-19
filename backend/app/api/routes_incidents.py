@@ -230,7 +230,7 @@ def list_incidents_endpoint(
 def list_evidence_inventory(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
-    status: str | None = Query(default=None),
+    status: ArtifactStatus | None = Query(default=None),
     artifact_type: str | None = Query(default=None),
     incident_id: uuid.UUID | None = Query(default=None),
     search: str | None = Query(default=None, max_length=100),
