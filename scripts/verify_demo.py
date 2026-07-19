@@ -62,10 +62,24 @@ def _parse_response_body(body: str, content_type: str) -> Any:
 
 
 def _safe_body_preview(body: str, limit: int = BODY_PREVIEW_LIMIT) -> str:
-    normalized = " ".join(body.split())
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}… [truncated]"
+    if not body:
+        return ""
+    out: list[str] = []
+    in_ws = False
+    truncated = False
+    for ch in body:
+        if ch.isspace():
+            if not in_ws:
+                out.append(" ")
+                in_ws = True
+        else:
+            out.append(ch)
+            in_ws = False
+        if len(out) >= limit:
+            truncated = True
+            break
+    normalized = "".join(out).strip()
+    return f"{normalized}… [truncated]" if truncated else normalized
 
 
 def _request_id(headers: Any) -> str | None:
