@@ -500,7 +500,8 @@ def rotate_qr(
     context = build_user_auth_context(db, admin)
     _require_admin_policy(
         db,
-        allowed=can_access_admin_org(
+        allowed=_is_ops_admin_role(admin.role)
+        and can_access_admin_org(
             context, context.org_ids[0], Capability.VEHICLE_QR_WRITE
         ),
         actor_id=admin.id,
