@@ -75,6 +75,6 @@ def test_bodyless_request_does_not_send_json_content_type(monkeypatch):
 
     monkeypatch.setattr(client._opener, "open", fake_open)
     client.request("GET", "/health")
-lowered = {key.lower(): value for key, value in captured["headers"].items()}
-assert "content-type" not in lowered
-assert lowered["accept"] == "application/json"
+    lowered = {key.lower(): value for key, value in captured["headers"].items()}
+    assert "content-type" not in lowered
+    assert lowered["accept"] == "application/json"
