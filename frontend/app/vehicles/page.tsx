@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import Link from "next/link";
+import { hasRoleCapability } from "@/lib/permissions";
 
 /**
  * Vehicles management page (admin only).  Lists all vehicles in the
@@ -23,8 +24,7 @@ export default function VehiclesPage() {
   const [rotatingId, setRotatingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    if (user.role !== "admin") return;
+    if (!user || !hasRoleCapability(user.role, "vehicle_qr:read")) return;
     listAdminVehicles()
       .then(setVehicles)
       .catch((err) => setError(err.message))
@@ -53,7 +53,10 @@ export default function VehiclesPage() {
   }
 
   // If not an admin, inform and link back
-  if (user?.role !== "admin") {
+  const canReadVehicles = hasRoleCapability(user?.role, "vehicle_qr:read");
+  const canWriteVehicles = hasRoleCapability(user?.role, "vehicle_qr:write");
+
+  if (!canReadVehicles) {
     return (
       <MainLayout title="Vehicles">
         <p className="mb-4 text-red-600">You do not have permission to view this page.</p>
@@ -106,15 +109,16 @@ export default function VehiclesPage() {
                       {veh.display_label}
                     </td>
                   <td className="px-4 py-3">
-                    <button
+                    {canWriteVehicles ? <button
+                      type="button"
                       onClick={() => handleRotate(veh.adc_vehicle_id)}
                       disabled={rotatingId === veh.adc_vehicle_id}
-                      className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      className="cursor-pointer rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {rotatingId === veh.adc_vehicle_id
                         ? "Rotating…"
                         : "Rotate QR"}
-                    </button>
+                    </button> : <span className="text-xs text-gray-500">Read only</span>}
                   </td>
                 </tr>
               ))}

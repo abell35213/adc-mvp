@@ -199,6 +199,37 @@ export function listIncidents() {
   return request<Incident[]>("/incidents/");
 }
 
+export interface EvidenceInventoryItem {
+  artifact_id: string;
+  artifact_type: string;
+  status: "pending" | "captured" | "unavailable";
+  incident_id: string;
+  case_reference: string;
+  occurred_at_utc?: string | null;
+  source: string;
+  detail?: string | null;
+  available: boolean;
+}
+
+export interface EvidenceInventoryResponse {
+  items: EvidenceInventoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export function listEvidence(
+  params: {
+    page?: number;
+    page_size?: number;
+    status?: string;
+    artifact_type?: string;
+    search?: string;
+  } = {},
+) {
+  return request<EvidenceInventoryResponse>(`/incidents/evidence${buildQuery(params)}`);
+}
+
 export interface CreateIncidentRequest {
   severity: IncidentSeverity;
   adc_vehicle_id: string;

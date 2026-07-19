@@ -41,15 +41,16 @@ export function getOrganizationLabel(orgIds: string[]): string {
 export function buildNavigation(role: string, variant: ShellVariant = "default"): ShellNavItem[] {
   const canViewIntegrations = hasRoleCapability(role, "integrations:read");
   const canManageQr = hasRoleCapability(role, "vehicle_qr:write");
+  const canViewVehicles = hasRoleCapability(role, "vehicle_qr:read");
   const canViewAdmin = hasRoleCapability(role, "vehicle_qr:read");
   const canManageUsers = hasRoleCapability(role, "user_management:write");
 
   const base: ShellNavItem[] = [
     { href: "/dashboard", label: "Command Center", section: "primary", icon: "command" },
     { href: "/incidents", label: "Cases", section: "primary", icon: "cases", activePrefixes: ["/incidents"] },
-    { href: "/timeline", label: "Evidence", section: "primary", icon: "evidence" },
+    { href: "/evidence", label: "Evidence", section: "primary", icon: "evidence" },
     { href: "/exports", label: "Exports", section: "primary", icon: "exports", activePrefixes: ["/exports"] },
-    { href: "/vehicles", label: "Vehicles", section: "primary", icon: "vehicles", hidden: !canManageQr },
+    { href: "/vehicles", label: "Vehicles", section: "primary", icon: "vehicles", hidden: !canViewVehicles },
     { href: "/reports", label: "Reports", section: "primary", icon: "reports" },
     { href: "/help", label: "Help", section: "secondary", icon: "help" },
     { href: "/settings/integrations", label: "Settings", section: "secondary", icon: "settings", hidden: !canViewIntegrations },

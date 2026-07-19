@@ -82,6 +82,13 @@ def test_incident_queue_rejects_page_size_over_backend_cap(client, seeded):
     assert response.json()["detail"][0]["loc"] == ["query", "page_size"]
 
 
+def test_evidence_inventory_rejects_unknown_status(client, seeded):
+    user, _, _ = seeded
+    response = client.get("/incidents/evidence?status=unknown", headers=_headers(user))
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "status"]
+
+
 @pytest.mark.parametrize("path", ["/incidents/queue?page=1&page_size=50", "/incidents/summary-metrics", "/incidents/alerts"])
 def test_static_case_ops_routes_still_require_authorization(client, path):
     response = client.get(path)
