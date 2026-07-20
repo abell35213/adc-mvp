@@ -114,21 +114,26 @@ export interface AttentionItem {
   filter?: AttentionFilterPatch;
 }
 
+export function isAttentionFilterActive(filters: AttentionFilterPatch, item: AttentionItem) {
+  if (!item.filter) return false;
+  return Object.entries(item.filter).every(([key, value]) => filters[key as keyof AttentionFilterPatch] === value);
+}
+
 export function buildAttentionItems({ alerts, queue, overdueTasks }: { alerts: CaseOpsAlerts | null; queue: CaseOpsQueueItem[]; overdueTasks: CaseTaskWidgetItem[] }) {
   const counts = {
-    critical: queue.filter((item) => item.blockers.critical > 0 || item.case_status === "escalated").length,
-    missingEvidence: queue.filter((item) => item.case_status === "awaiting_evidence" || item.readiness_state === "not_ready" || item.readiness_state === "blocked").length,
+    critical: queue.filter((item) => item.blockers.critical > 0).length,
+    missingEvidence: queue.filter((item) => item.case_status === "awaiting_evidence").length,
     unassigned: alerts?.unassigned ?? queue.filter((item) => !item.owner_user_id).length,
     overdue: alerts?.overdue ?? overdueTasks.length,
-    exportReady: alerts?.export_aging ?? queue.filter(readyForExport).length,
+    exportReady: queue.filter((item) => item.case_status === "ready_for_export").length,
     stalled: alerts?.stalled ?? 0,
   };
   return [
     { key: "critical" as const, label: "Critical blockers", count: counts.critical, explanation: "Cases blocked by critical evidence or escalation.", filter: { blockers: "critical" } },
-    { key: "missingEvidence" as const, label: "Missing evidence", count: counts.missingEvidence, explanation: "Cases waiting on required evidence.", filter: { readiness_state: "not_ready" } },
+    { key: "missingEvidence" as const, label: "Missing evidence", count: counts.missingEvidence, explanation: "Cases in the awaiting-evidence queue.", filter: { status: "awaiting_evidence" } },
     { key: "overdue" as const, label: "Overdue follow-ups", count: counts.overdue, explanation: "Follow-up work is past due." },
     { key: "unassigned" as const, label: "Unassigned cases", count: counts.unassigned, explanation: "Ownership is missing." },
     { key: "exportReady" as const, label: "Ready for export", count: counts.exportReady, explanation: "Defense packets can be generated or reviewed.", filter: { status: "ready_for_export" } },
     { key: "stalled" as const, label: "Stalled cases", count: counts.stalled, explanation: "No recent movement and at risk of delay." },
-  ].filter((item) => item.count > 0) as AttentionItem[];
+  ] as AttentionItem[];
 }

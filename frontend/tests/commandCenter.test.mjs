@@ -39,7 +39,24 @@ test('priority queue de-emphasizes raw ids and moves secondary row actions into 
 test('filters and needs attention support required dashboard actions', () => {
   for (const label of ['Search', 'Status', 'Readiness', 'Blockers', 'Sort', 'Clear filters']) assert.match(filter, new RegExp(label));
   for (const category of ['Critical blockers', 'Missing evidence', 'Overdue follow-ups', 'Unassigned cases', 'Ready for export', 'Stalled cases']) assert.match(model, new RegExp(category));
-  assert.match(dashboard, /Show cases/);
+  for (const mapping of ['blockers: "critical"', 'status: "awaiting_evidence"', 'status: "ready_for_export"']) assert.match(model, new RegExp(mapping));
+  assert.match(dashboard, /aria-pressed=\{active\}/);
+  assert.match(dashboard, /item\.filter && item\.count > 0/);
+  assert.match(dashboard, /isAttentionFilterActive/);
+  assert.match(dashboard, /scrollIntoView/);
+  assert.match(dashboard, /role="status"/);
+  assert.match(dashboard, /filter applied/);
+  assert.match(dashboard, /filter cleared/);
+  assert.match(dashboard, /<button type="button"/);
+  assert.match(dashboard, /cursor-pointer/);
+  assert.match(dashboard, /aria-disabled="true"/);
+});
+
+test('attention filters use the canonical queue URL fields and replace conflicting filters', () => {
+  assert.match(dashboard, /status: "", readiness_state: "", blockers: ""/);
+  for (const query of ['status', 'readiness_state', 'blockers']) assert.match(dashboard, new RegExp(`query\\.set\\("${query}"`));
+  assert.match(dashboard, /updateFilters\(next\)/);
+  assert.match(dashboard, /getIncidentQueue\(\{ \.\.\.buildQueueParams\(filters\)/);
 });
 
 test('demo tour remains compact, dismissible, and preserves demo routing', () => {
