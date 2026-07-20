@@ -129,7 +129,7 @@ export function buildAttentionItems({ alerts, queue, overdueTasks }: { alerts: C
     stalled: alerts?.stalled ?? 0,
   };
   return [
-    { key: "critical" as const, label: "Critical blockers", count: counts.critical, explanation: "Cases blocked by critical evidence or escalation.", filter: { blockers: "critical" } },
+    { key: "critical" as const, label: "Critical blockers", count: counts.critical, explanation: "Cases blocked by critical evidence.", filter: { blockers: "critical" } },
     { key: "missingEvidence" as const, label: "Missing evidence", count: counts.missingEvidence, explanation: "Cases in the awaiting-evidence queue.", filter: { status: "awaiting_evidence" } },
     { key: "overdue" as const, label: "Overdue follow-ups", count: counts.overdue, explanation: "Follow-up work is past due." },
     { key: "unassigned" as const, label: "Unassigned cases", count: counts.unassigned, explanation: "Ownership is missing." },
