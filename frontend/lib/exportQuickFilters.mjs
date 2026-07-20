@@ -6,10 +6,9 @@ export const EXPORT_QUICK_FILTERS = {
 };
 
 export function startOfCurrentWeek(now = new Date()) {
-  const start = new Date(now);
-  const daySinceMonday = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - daySinceMonday);
-  start.setHours(0, 0, 0, 0);
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daySinceMonday = (start.getUTCDay() + 6) % 7;
+  start.setUTCDate(start.getUTCDate() - daySinceMonday);
   return start;
 }
 
