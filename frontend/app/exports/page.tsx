@@ -23,7 +23,12 @@ export default function ExportsPage() {
   const [query, setQuery] = useState(() => initialParam("search"));
   const [status, setStatus] = useState<"all" | ExportStatus>(() => (initialParam("status") || "all") as "all" | ExportStatus);
   const [sort, setSort] = useState(() => initialParam("sort") || "priority");
-  const [quickFilter, setQuickFilter] = useState<ExportQuickFilter | null>(() => (initialParam("quick") || null) as ExportQuickFilter | null);
+  const [quickFilter, setQuickFilter] = useState<ExportQuickFilter | null>(() => {
+    const value = initialParam("quick");
+    return value === "ready" || value === "generating" || value === "attention" || value === "completedThisWeek"
+      ? value
+      : null;
+  });
   const [selectedExportId, setSelectedExportId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ExportSummary | null>(null);
   const [contents, setContents] = useState<ExportContentsItem[] | null>(null);
