@@ -806,7 +806,7 @@ def get_org_settings(
 def patch_org_settings(
     payload: OrgSettingsUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     _require_phase6_capability(
         current_user, Capability.ORG_SETTINGS_WRITE, message="Insufficient permission to manage org settings"
@@ -1139,7 +1139,7 @@ def get_org_mappings_issues(
 def mark_org_onboarding_step(
     payload: OrgOnboardingStepUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_integration_admin),
 ):
     _require_phase6_capability(
         current_user, Capability.ONBOARDING_WRITE, message="Insufficient permission to manage onboarding validations"
