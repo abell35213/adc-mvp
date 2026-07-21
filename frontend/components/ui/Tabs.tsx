@@ -42,7 +42,7 @@ export function Tabs({
           disabled={item.disabled}
           onClick={() => onChange(item.id)}
           className={cn(
-            "-mb-px border-b-2 px-3 py-2 text-sm font-medium",
+            "-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm font-medium",
             focusRing,
             item.id === activeId
               ? "border-action-primary text-text-primary"
@@ -78,10 +78,10 @@ export function SegmentedControl({
           disabled={item.disabled}
           onClick={() => onChange(item.id)}
           className={cn(
-            "rounded px-3 py-1.5 text-sm",
+            "cursor-pointer rounded px-3 py-1.5 text-sm",
             focusRing,
             item.id === activeId ? "bg-action-primary text-text-inverse" : "text-text-secondary hover:bg-surface-subtle",
-            item.disabled && "opacity-50",
+            item.disabled && "cursor-not-allowed opacity-50",
           )}
         >
           {item.label}
